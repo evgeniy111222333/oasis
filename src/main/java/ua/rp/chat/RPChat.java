@@ -1,10 +1,21 @@
 package ua.rp.chat;
 
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class RPChat extends JavaPlugin {
+    private PlayerIdManager idManager;
+
     @Override
     public void onEnable() {
+        // Initialize ID Manager
+        idManager = new PlayerIdManager();
+
+        // Assign IDs to any players already online (e.g. in case of reloads)
+        for (Player onlinePlayer : getServer().getOnlinePlayers()) {
+            idManager.getOrAssignId(onlinePlayer);
+        }
+
         // Register events
         getServer().getPluginManager().registerEvents(new ChatListener(this), this);
 
@@ -22,5 +33,9 @@ public class RPChat extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("RPChat has been disabled.");
+    }
+
+    public PlayerIdManager getIdManager() {
+        return idManager;
     }
 }

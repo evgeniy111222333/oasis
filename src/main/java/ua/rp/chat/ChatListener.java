@@ -3,10 +3,13 @@ package ua.rp.chat;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.audience.Audience;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import java.util.Set;
 
 public class ChatListener implements Listener {
@@ -15,6 +18,16 @@ public class ChatListener implements Listener {
 
     public ChatListener(RPChat plugin) {
         this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        plugin.getIdManager().getOrAssignId(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        plugin.getIdManager().releaseId(event.getPlayer());
     }
 
     @EventHandler
@@ -38,15 +51,26 @@ public class ChatListener implements Listener {
             }
         }
 
-        // Format message: replace "_" in username with space for RP styling
+        // Format message: replace "_" with space, get session ID
         final String rpName = sender.getName().replace("_", " ");
+        final int id = plugin.getIdManager().getId(sender);
         
+        // Colors
+        final TextColor nameColor = TextColor.color(0xE8C58C);    // Soft Gold
+        final TextColor idColor = TextColor.color(0xA9A9A9);      // Dark Gray
+        final TextColor connectorColor = TextColor.color(0xD3D3D3); // Light Gray
+        final TextColor textColor = TextColor.color(0xFFFFFF);      // White
+
         event.renderer((source, sourceDisplayName, message, viewer) -> {
             return Component.text()
-                .append(Component.text("[Локальний] ", NamedTextColor.GRAY))
-                .append(Component.text(rpName, NamedTextColor.WHITE))
-                .append(Component.text(": ", NamedTextColor.GRAY))
-                .append(message.color(NamedTextColor.WHITE))
+                .append(Component.text(rpName, nameColor))
+                .append(Component.text(" [", connectorColor))
+                .append(Component.text(id, idColor))
+                .append(Component.text("]", connectorColor))
+                .append(Component.text(" каже: ", connectorColor))
+                .append(Component.text("«", textColor))
+                .append(message.color(textColor))
+                .append(Component.text("»", textColor))
                 .build();
         });
     }

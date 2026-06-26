@@ -2,6 +2,7 @@ package ua.rp.chat;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -12,6 +13,15 @@ import java.util.concurrent.ThreadLocalRandom;
 public class RPCommands implements CommandExecutor {
     private final RPChat plugin;
     private final double radius = 20.0;
+
+    // Hex Color Palette
+    private final TextColor goldColor = TextColor.color(0xE8C58C);      // Soft Gold
+    private final TextColor purpleColor = TextColor.color(0xC68BFF);    // Purple
+    private final TextColor actionColor = TextColor.color(0xD6A2E8);    // Soft Purple
+    private final TextColor aquaColor = TextColor.color(0x81ECEC);      // Aqua
+    private final TextColor blueColor = TextColor.color(0x70A1FF);      // Soft Blue
+    private final TextColor grayColor = TextColor.color(0x95A5A6);      // Medium Gray
+    private final TextColor darkGrayColor = TextColor.color(0xA9A9A9);  // Dark Gray
 
     public RPCommands(RPChat plugin) {
         this.plugin = plugin;
@@ -31,40 +41,63 @@ public class RPCommands implements CommandExecutor {
 
         String message = String.join(" ", args).trim();
         String rpName = player.getName().replace("_", " ");
+        int id = plugin.getIdManager().getId(player);
 
         switch (label.toLowerCase()) {
-            case "me" -> handleMe(player, rpName, message);
-            case "do" -> handleDo(player, rpName, message);
-            case "try" -> handleTry(player, rpName, message);
-            case "todo" -> handleTodo(player, rpName, message);
-            case "b" -> handleB(player, rpName, message);
+            case "me" -> handleMe(player, rpName, id, message);
+            case "do" -> handleDo(player, rpName, id, message);
+            case "try" -> handleTry(player, rpName, id, message);
+            case "todo" -> handleTodo(player, rpName, id, message);
+            case "b" -> handleB(player, rpName, id, message);
         }
 
         return true;
     }
 
-    private void handleMe(Player player, String rpName, String action) {
-        Component message = Component.text("* " + rpName + " " + action, NamedTextColor.LIGHT_PURPLE);
+    private void handleMe(Player player, String rpName, int id, String action) {
+        Component message = Component.text()
+            .append(Component.text(rpName, purpleColor))
+            .append(Component.text(" [", darkGrayColor))
+            .append(Component.text(id, grayColor))
+            .append(Component.text("] ", darkGrayColor))
+            .append(Component.text(action, actionColor).decorate(TextDecoration.ITALIC))
+            .build();
+            
         broadcastLocal(player, message);
     }
 
-    private void handleDo(Player player, String rpName, String description) {
-        Component message = Component.text("* " + description + " (( " + rpName + " ))", NamedTextColor.AQUA);
+    private void handleDo(Player player, String rpName, int id, String description) {
+        Component message = Component.text()
+            .append(Component.text(description, aquaColor).decorate(TextDecoration.ITALIC))
+            .append(Component.text(" (( ", blueColor))
+            .append(Component.text(rpName, blueColor))
+            .append(Component.text(" [", darkGrayColor))
+            .append(Component.text(id, grayColor))
+            .append(Component.text("] ))", darkGrayColor))
+            .build();
+            
         broadcastLocal(player, message);
     }
 
-    private void handleTry(Player player, String rpName, String action) {
+    private void handleTry(Player player, String rpName, int id, String action) {
         boolean success = ThreadLocalRandom.current().nextBoolean();
         Component result = success 
-            ? Component.text(" [Успішно]", NamedTextColor.GREEN).decorate(TextDecoration.BOLD)
-            : Component.text(" [Неуспішно]", NamedTextColor.RED).decorate(TextDecoration.BOLD);
+            ? Component.text(" [УСПІШНО]", TextColor.color(0x2ECC71)).decorate(TextDecoration.BOLD)
+            : Component.text(" [НЕУСПІШНО]", TextColor.color(0xE74C3C)).decorate(TextDecoration.BOLD);
 
-        Component message = Component.text("* " + rpName + " намагається " + action, NamedTextColor.LIGHT_PURPLE)
-            .append(result);
+        Component message = Component.text()
+            .append(Component.text(rpName, purpleColor))
+            .append(Component.text(" [", darkGrayColor))
+            .append(Component.text(id, grayColor))
+            .append(Component.text("] ", darkGrayColor))
+            .append(Component.text("намагається " + action + "... ", actionColor).decorate(TextDecoration.ITALIC))
+            .append(result)
+            .build();
+            
         broadcastLocal(player, message);
     }
 
-    private void handleTodo(Player player, String rpName, String rawText) {
+    private void handleTodo(Player player, String rpName, int id, String rawText) {
         if (!rawText.contains("*")) {
             player.sendMessage(Component.text("Помилка! Використовуйте символ '*' для розділення мови та дії. Приклад: /todo Привіт! * потиснув руку", NamedTextColor.RED));
             return;
@@ -74,17 +107,20 @@ public class RPCommands implements CommandExecutor {
         String speech = parts[0].trim();
         String action = parts[1].trim();
 
+        // Convert trailing action to gerund participle form visually or just print
         Component message = Component.text()
-            .append(Component.text("\"" + speech + "\", - сказав ", NamedTextColor.WHITE))
-            .append(Component.text(rpName, NamedTextColor.YELLOW))
-            .append(Component.text(", " + action, NamedTextColor.LIGHT_PURPLE))
+            .append(Component.text("«" + speech + "»", NamedTextColor.WHITE))
+            .append(Component.text(" — сказав(ла) ", goldColor))
+            .append(Component.text(rpName, goldColor))
+            .append(Component.text(" [" + id + "], ", darkGrayColor))
+            .append(Component.text(action, actionColor).decorate(TextDecoration.ITALIC))
             .build();
             
         broadcastLocal(player, message);
     }
 
-    private void handleB(Player player, String rpName, String oocMessage) {
-        Component message = Component.text("(( [OOC] " + rpName + ": " + oocMessage + " ))", NamedTextColor.GRAY);
+    private void handleB(Player player, String rpName, int id, String oocMessage) {
+        Component message = Component.text("(( OOC | " + rpName + " [" + id + "]: " + oocMessage + " ))", grayColor);
         broadcastLocal(player, message);
     }
 
