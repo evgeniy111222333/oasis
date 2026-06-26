@@ -2,7 +2,6 @@ package ua.rp.chat;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.audience.Audience;
 import org.bukkit.entity.Player;
@@ -51,23 +50,18 @@ public class ChatListener implements Listener {
             }
         }
 
-        // Format message: replace "_" with space, get session ID
+        // Format message: replace "_" with space
         final String rpName = sender.getName().replace("_", " ");
-        final int id = plugin.getIdManager().getId(sender);
         
         // Colors
         final TextColor nameColor = TextColor.color(0xE8C58C);    // Soft Gold
-        final TextColor idColor = TextColor.color(0xA9A9A9);      // Dark Gray
-        final TextColor connectorColor = TextColor.color(0xD3D3D3); // Light Gray
+        final TextColor separatorColor = TextColor.color(0xD3D3D3); // Light Gray
         final TextColor textColor = TextColor.color(0xFFFFFF);      // White
 
         event.renderer((source, sourceDisplayName, message, viewer) -> {
             return Component.text()
                 .append(Component.text(rpName, nameColor))
-                .append(Component.text(" [", connectorColor))
-                .append(Component.text(id, idColor))
-                .append(Component.text("]", connectorColor))
-                .append(Component.text(" каже: ", connectorColor))
+                .append(Component.text(": ", separatorColor))
                 .append(Component.text("«", textColor))
                 .append(message.color(textColor))
                 .append(Component.text("»", textColor))

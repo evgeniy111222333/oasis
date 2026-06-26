@@ -3,7 +3,7 @@ version: 1.0.0
 main: ua.rp.chat.RPChat
 api-version: '1.21'
 author: Antigravity
-description: Custom Roleplay Chat system with local chat and RP commands.
+description: Custom Roleplay Chat system with local chat, RP commands, and plugin reloader.
 commands:
   me:
     description: Describes character action.
@@ -20,3 +20,11 @@ commands:
   b:
     description: Local Out-Of-Character chat.
     usage: /b <message>
+  rpreload:
+    description: Hot-reloads a server plugin from disk.
+    usage: /rpreload [plugin_name]
+    permission: rpchat.admin
+  rpcrun:
+    description: Executes an RP command on behalf of a target player.
+    usage: /rpcrun [player] [me/do/try/todo/b] [args...]
+    permission: rpchat.admin

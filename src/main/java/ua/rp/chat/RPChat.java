@@ -11,7 +11,7 @@ public class RPChat extends JavaPlugin {
         // Initialize ID Manager
         idManager = new PlayerIdManager();
 
-        // Assign IDs to any players already online (e.g. in case of reloads)
+        // Assign IDs to any players already online
         for (Player onlinePlayer : getServer().getOnlinePlayers()) {
             idManager.getOrAssignId(onlinePlayer);
         }
@@ -26,6 +26,8 @@ public class RPChat extends JavaPlugin {
         getCommand("try").setExecutor(commands);
         getCommand("todo").setExecutor(commands);
         getCommand("b").setExecutor(commands);
+        getCommand("rpreload").setExecutor(commands);
+        getCommand("rpcrun").setExecutor(commands);
 
         getLogger().info("RPChat has been successfully enabled!");
     }
