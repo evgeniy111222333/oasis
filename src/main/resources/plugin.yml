@@ -1,0 +1,22 @@
+name: RPChat
+version: 1.0.0
+main: ua.rp.chat.RPChat
+api-version: '1.21'
+author: Antigravity
+description: Custom Roleplay Chat system with local chat and RP commands.
+commands:
+  me:
+    description: Describes character action.
+    usage: /me <action>
+  do:
+    description: Describes state of environment.
+    usage: /do <state>
+  try:
+    description: Probabilistic action attempt.
+    usage: /try <action>
+  todo:
+    description: Character speech with action.
+    usage: /todo <speech> * <action>
+  b:
+    description: Local Out-Of-Character chat.
+    usage: /b <message>
