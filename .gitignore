@@ -1,0 +1,37 @@
+# Minecraft Server Gitignore
+
+# Ignore server executable and libraries
+/*.jar
+/libraries/
+/versions/
+/cache/
+/bundler/
+
+# Ignore auto-generated runtime directories
+/world/
+/world_nether/
+/world_the_end/
+/logs/
+/crash-reports/
+/plugins/.paper-remapped/
+
+# Ignore database and user files
+/usernamecache.json
+/usercache.json
+/banned-ips.json
+/banned-players.json
+/whitelist.json
+/ops.json
+
+# Keep server configurations but ignore local/temp files
+/server.properties
+# Note: In production you might want to keep server.properties out of git,
+# but for development it is useful. We track it by default.
+
+# Track plugin folders but ignore the plugin binary jars
+/plugins/*.jar
+/plugins/update/
+
+# Track all other plugin configuration folders
+# (Allow tracking of folders and configuration files inside /plugins/)
+!/plugins/
