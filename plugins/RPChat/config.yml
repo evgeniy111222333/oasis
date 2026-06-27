@@ -1,0 +1,26 @@
+# ==========================================
+#               RPChat Config
+# ==========================================
+# Глобальний стиль чату (від 1 до 10)
+# Ви можете змінити цей параметр командою /rpdemo select [1-10] прямо в грі.
+#
+# 1. Aether Minimalist (Чистий пастельний)
+# 2. Chamber Theatre (Художній літературний)
+# 3. Nordic Aurora (Контрастний синьо-зелений)
+# 4. Sakura Blossom (Ніжна сакура)
+# 5. Cyber Glow (Неоновий кіберпанк)
+# 6. Mono Noir (Чорно-білий темний)
+# 7. Sunset Boulevard (Оксамитовий вечірній)
+# 8. Earthy Forest (Лісові деревні тони)
+# 9. Vogue Elegant (Вишуканий висококонтрастний)
+# 10. Echo Whisper (Зоряний космічний)
+active-style: 1
+
+# ==========================================
+#             Web Auth Settings
+# ==========================================
+web:
+  # Port for the embedded HTTP server (Must be open on firewall)
+  port: 25580
+  # Base URL shown to players in game (e.g. "http://yourserverip:25580")
+  url: "http://localhost:25580"

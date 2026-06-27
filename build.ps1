@@ -24,8 +24,8 @@ $classpath = "versions/26.1.2/purpur-26.1.2.jar;$jars"
 javac -encoding UTF-8 -cp $classpath -d target/classes $javaFiles
 
 
-Write-Host "Copying plugin.yml..." -ForegroundColor Cyan
-Copy-Item src/main/resources/plugin.yml target/classes/
+Write-Host "Copying resources..." -ForegroundColor Cyan
+Copy-Item -Recurse -Force src/main/resources/* target/classes/
 
 Write-Host "Packaging into JAR..." -ForegroundColor Cyan
 $jarExe = "C:\Program Files\Java\jdk-25.0.3\bin\jar.exe"

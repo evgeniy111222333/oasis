@@ -1,0 +1,473 @@
+package ua.rp.chat.auth;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.title.Title;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
+
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Core authentication state manager.
+ * Manages login status, timeout, and coordinates the cinematic camera + NPC.
+ */
+public class AuthManager {
+
+    // Desert Oasis palette
+    private static final TextColor SAND_GOLD = TextColor.color(0xE3C099);
+    private static final TextColor PEBBLE_GRAY = TextColor.color(0xB0A8A0);
+    private static final TextColor SEAFOAM = TextColor.color(0xA5C3C4);
+    private static final TextColor SOFT_GREEN = TextColor.color(0x99C3A2);
+    private static final TextColor TERRACOTTA = TextColor.color(0xE3A899);
+    private static final TextColor DRY_EARTH = TextColor.color(0x8A827A);
+    private static final TextColor WARM_DUST = TextColor.color(0xAFA69E);
+
+    private final ua.rp.chat.RPChat plugin;
+    private final AuthDatabase database;
+    private final AuthCameraManager cameraManager;
+
+    // Track which players are NOT yet authenticated
+    private final Set<UUID> pendingAuth = ConcurrentHashMap.newKeySet();
+    // Track timeout tasks
+    private final Map<UUID, Integer> timeoutTasks = new ConcurrentHashMap<>();
+    // Store original locations before camera setup
+    private final Map<UUID, Location> originalLocations = new ConcurrentHashMap<>();
+    
+    // Web Auth Tokens (Token -> Player UUID)
+    private final Map<String, UUID> tokenToUuid = new ConcurrentHashMap<>();
+    // Active Nametag Text Displays (Player UUID -> TextDisplay)
+    private final Map<UUID, org.bukkit.entity.TextDisplay> activeNametags = new ConcurrentHashMap<>();
+
+    // Auth timeout in seconds
+    private static final int AUTH_TIMEOUT_SECONDS = 120;
+
+    public AuthManager(ua.rp.chat.RPChat plugin, AuthDatabase database) {
+        this.plugin = plugin;
+        this.database = database;
+        this.cameraManager = new AuthCameraManager(plugin);
+    }
+
+    /**
+     * Called when a player joins. Sets up the cinematic auth screen and token.
+     */
+    public void handleJoin(Player player) {
+        UUID uuid = player.getUniqueId();
+
+        // Check for IP-session auto-login
+        String currentIp = getPlayerIp(player);
+        if (database.isRegistered(uuid)) {
+            String lastIp = database.getLastIp(uuid);
+            if (lastIp != null && lastIp.equals(currentIp)) {
+                // Auto-login: same IP session
+                plugin.getLogger().info("Auto-login for " + player.getName() + " (IP session match)");
+                database.updateLogin(uuid, currentIp);
+                
+                String rpName = database.getRpName(uuid);
+                applyRpIdentity(player, rpName);
+                sendAutoLoginTitle(player);
+                return;
+            }
+        }
+
+        // Mark as pending auth
+        pendingAuth.add(uuid);
+
+        // Store original location
+        originalLocations.put(uuid, player.getLocation().clone());
+
+        // Setup cinematic camera (delayed 5 ticks so player is fully loaded)
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) return;
+
+                // Set spectator mode (CEF overlay works on spectator as well, or adventure)
+                player.setGameMode(GameMode.SPECTATOR);
+
+                // Setup camera
+                cameraManager.setupCinematicView(player);
+
+                // Generate one-time token for web login
+                String token = UUID.randomUUID().toString().substring(0, 8);
+                tokenToUuid.put(token, uuid);
+
+                // Send visual auth instructions with link
+                sendAuthMenu(player, token);
+
+                // Start timeout
+                startTimeout(player);
+            }
+        }.runTaskLater(plugin, 5L);
+    }
+
+    /**
+     * Web Registration Handler.
+     */
+    public boolean webRegister(UUID uuid, String loginName, String rpName, String email, String password) {
+        Player player = plugin.getServer().getPlayer(uuid);
+        if (player == null || !pendingAuth.contains(uuid)) {
+            return false;
+        }
+
+        if (database.isRegistered(uuid)) {
+            return false;
+        }
+
+        if (database.isLoginNameTaken(loginName)) {
+            return false;
+        }
+
+        String hash = PasswordHasher.hash(password);
+        if (database.register(uuid, loginName, rpName, email, hash)) {
+            database.updateLogin(uuid, getPlayerIp(player));
+            
+            // Apply name tag and chat styles
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    applyRpIdentity(player, rpName);
+                    completeAuth(player);
+                }
+            }.runTask(plugin); // Run on main server thread!
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Web Login Handler.
+     */
+    public boolean webLogin(UUID uuid, String loginName, String password) {
+        Player player = plugin.getServer().getPlayer(uuid);
+        if (player == null || !pendingAuth.contains(uuid)) {
+            return false;
+        }
+
+        String storedLogin = database.getLoginName(uuid);
+        if (storedLogin == null || !storedLogin.equalsIgnoreCase(loginName)) {
+            return false;
+        }
+
+        String storedHash = database.getPasswordHash(uuid);
+        if (storedHash == null) {
+            return false;
+        }
+
+        if (PasswordHasher.verify(password, storedHash)) {
+            database.updateLogin(uuid, getPlayerIp(player));
+            
+            String rpName = database.getRpName(uuid);
+            // Apply name tag and chat styles on main thread
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    applyRpIdentity(player, rpName);
+                    completeAuth(player);
+                }
+            }.runTask(plugin);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Applies custom display names, tablist names, and spawns the 3D Text Display nametag.
+     */
+    public void applyRpIdentity(Player player, String rpName) {
+        if (player == null || rpName == null) return;
+        
+        // Remove existing nametags if any
+        removeRpIdentity(player);
+
+        // 1. Update Bukkit display & tab names
+        player.displayName(Component.text(rpName));
+        player.playerListName(Component.text(rpName));
+
+        // 2. Hide standard name tag using scoreboard team
+        org.bukkit.scoreboard.Scoreboard scoreboard = org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = scoreboard.getTeam(player.getName());
+        if (team == null) {
+            team = scoreboard.registerNewTeam(player.getName());
+        }
+        team.setOption(org.bukkit.scoreboard.Team.Option.NAME_TAG_VISIBILITY, org.bukkit.scoreboard.Team.OptionStatus.NEVER);
+        team.addEntry(player.getName());
+
+        // 3. Spawn floating TextDisplay passenger
+        org.bukkit.Location loc = player.getLocation().add(0, 2.2, 0);
+        org.bukkit.entity.TextDisplay textDisplay = player.getWorld().spawn(loc, org.bukkit.entity.TextDisplay.class, td -> {
+            td.text(Component.text(rpName, net.kyori.adventure.text.format.NamedTextColor.WHITE));
+            td.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
+            td.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0)); // transparent
+            td.setShadowed(true);
+            td.setGravity(false);
+            td.setPersistent(false);
+        });
+
+        player.addPassenger(textDisplay);
+        
+        // Hide entity from player himself so it doesn't block their first-person camera view
+        player.hideEntity(plugin, textDisplay);
+
+        activeNametags.put(player.getUniqueId(), textDisplay);
+    }
+
+    /**
+     * Cleans up the custom TextDisplay nametag and scoreboard team.
+     */
+    public void removeRpIdentity(Player player) {
+        if (player == null) return;
+        UUID uuid = player.getUniqueId();
+
+        org.bukkit.entity.TextDisplay td = activeNametags.remove(uuid);
+        if (td != null && td.isValid()) {
+            td.remove();
+        }
+
+        org.bukkit.scoreboard.Scoreboard scoreboard = org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = scoreboard.getTeam(player.getName());
+        if (team != null) {
+            team.unregister();
+        }
+    }
+
+    /**
+     * Completes authentication: removes pending state, restores player.
+     */
+    private void completeAuth(Player player) {
+        UUID uuid = player.getUniqueId();
+        pendingAuth.remove(uuid);
+
+        // Cancel timeout
+        Integer taskId = timeoutTasks.remove(uuid);
+        if (taskId != null) {
+            plugin.getServer().getScheduler().cancelTask(taskId);
+        }
+
+        // Cleanup NPC and camera
+        cameraManager.cleanup(player);
+
+        // Clear token mapping
+        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+
+        // Restore player to survival mode
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) return;
+
+                player.setGameMode(GameMode.SURVIVAL);
+
+                // Restore original location
+                Location original = originalLocations.remove(uuid);
+                if (original != null) {
+                    player.teleport(original);
+                }
+
+                // Welcome title
+                sendWelcomeTitle(player);
+            }
+        }.runTaskLater(plugin, 2L);
+    }
+
+    /**
+     * Sends the visual welcome menu instructions (opens Chest GUI).
+     */
+    public void sendAuthMenu(Player player, String token) {
+        // Clear chat space
+        for (int i = 0; i < 20; i++) {
+            player.sendMessage(Component.empty());
+        }
+
+        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
+        String finalLink = webUrl + "/auth?token=" + token;
+
+        // Broadcast to client-side Fabric Mod (automatically renders HTML screen)
+        // Encode using VarInt + UTF-8 to match Fabric's PacketCodecs.STRING format
+        try {
+            byte[] urlBytes = finalLink.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream byteOut = new java.io.ByteArrayOutputStream();
+            // Write VarInt length prefix (Minecraft protocol format)
+            int len = urlBytes.length;
+            while ((len & ~0x7F) != 0) {
+                byteOut.write((len & 0x7F) | 0x80);
+                len >>>= 7;
+            }
+            byteOut.write(len);
+            // Write UTF-8 bytes
+            byteOut.write(urlBytes);
+            player.sendPluginMessage(plugin, "rpchat:auth_init", byteOut.toByteArray());
+        } catch (java.io.IOException e) {
+            plugin.getLogger().warning("Failed to send client-mod auth packet: " + e.getMessage());
+        }
+
+        // Visual Chat Card
+        player.sendMessage(Component.text("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", DRY_EARTH));
+        player.sendMessage(Component.empty());
+        player.sendMessage(
+            Component.text("               OASIS ROLEPLAY", SAND_GOLD)
+                .decoration(TextDecoration.BOLD, true)
+        );
+        player.sendMessage(Component.empty());
+        player.sendMessage(Component.text("     Будь ласка, пройдіть авторизацію у браузері.", PEBBLE_GRAY));
+        player.sendMessage(Component.text("     Для цього натисніть на посилання нижче:", PEBBLE_GRAY));
+        player.sendMessage(Component.empty());
+        
+        // Clickable Button
+        player.sendMessage(
+            Component.text("     [ КЛІКНІТЬ ТУТ ЩОБ ВІДКРИТИ ВІКНО ВХОДУ ]", SEAFOAM)
+                .decoration(TextDecoration.BOLD, true)
+                .clickEvent(net.kyori.adventure.text.event.ClickEvent.openUrl(finalLink))
+                .hoverEvent(net.kyori.adventure.text.event.HoverEvent.showText(Component.text("Клацніть для переходу на веб-інтерфейс", WARM_DUST)))
+        );
+        player.sendMessage(Component.empty());
+        player.sendMessage(Component.text("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", DRY_EARTH));
+
+        // Show a beautiful full screen Title
+        Title.Times times = Title.Times.times(
+            Duration.ofMillis(300),
+            Duration.ofSeconds(10),
+            Duration.ofMillis(500)
+        );
+        Title title = Title.title(
+            Component.text("ПОТРІБНА АВТОРИЗАЦІЯ", SAND_GOLD).decoration(TextDecoration.BOLD, true),
+            Component.text("Посилання відправлено в чат (Натисніть T)", PEBBLE_GRAY),
+            times
+        );
+        player.showTitle(title);
+    }
+
+    /**
+     * Fallback to satisfy interface.
+     */
+    public void sendAuthMenu(Player player) {
+        sendAuthMenu(player, "err");
+    }
+
+    /**
+     * Sends an auto-login title effect.
+     */
+    private void sendAutoLoginTitle(Player player) {
+        Title.Times times = Title.Times.times(
+            Duration.ofMillis(200),
+            Duration.ofSeconds(2),
+            Duration.ofMillis(500)
+        );
+        String rpName = database.getRpName(player.getUniqueId());
+        Title title = Title.title(
+            Component.text("З поверненням", SAND_GOLD),
+            Component.text(rpName != null ? rpName : player.getName(), PEBBLE_GRAY),
+            times
+        );
+        player.showTitle(title);
+    }
+
+    /**
+     * Sends a welcome title after successful auth.
+     */
+    private void sendWelcomeTitle(Player player) {
+        Title.Times times = Title.Times.times(
+            Duration.ofMillis(300),
+            Duration.ofSeconds(3),
+            Duration.ofMillis(800)
+        );
+        String rpName = database.getRpName(player.getUniqueId());
+        Title title = Title.title(
+            Component.text("Ласкаво просимо", SAND_GOLD),
+            Component.text(rpName != null ? rpName : player.getName(), PEBBLE_GRAY),
+            times
+        );
+        player.showTitle(title);
+    }
+
+    /**
+     * Starts the auth timeout timer.
+     */
+    private void startTimeout(Player player) {
+        UUID uuid = player.getUniqueId();
+
+        int taskId = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (pendingAuth.contains(uuid) && player.isOnline()) {
+                    cameraManager.cleanup(player);
+                    player.kick(
+                        Component.text()
+                            .append(Component.text("Час авторизації вичерпано", TERRACOTTA))
+                            .append(Component.newline())
+                            .append(Component.text("Підключіться повторно та пройдіть авторизацію.", PEBBLE_GRAY))
+                            .build()
+                    );
+                    pendingAuth.remove(uuid);
+                    originalLocations.remove(uuid);
+                    tokenToUuid.values().removeIf(id -> id.equals(uuid));
+                }
+            }
+        }.runTaskLater(plugin, AUTH_TIMEOUT_SECONDS * 20L).getTaskId();
+
+        timeoutTasks.put(uuid, taskId);
+    }
+
+    /**
+     * Checks if a player is currently pending authentication.
+     */
+    public boolean isPendingAuth(UUID uuid) {
+        return pendingAuth.contains(uuid);
+    }
+
+    /**
+     * Handles player disconnect during auth.
+     */
+    public void handleQuit(Player player) {
+        UUID uuid = player.getUniqueId();
+        pendingAuth.remove(uuid);
+        originalLocations.remove(uuid);
+        cameraManager.cleanup(player);
+        removeRpIdentity(player);
+
+        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+
+        Integer taskId = timeoutTasks.remove(uuid);
+        if (taskId != null) {
+            plugin.getServer().getScheduler().cancelTask(taskId);
+        }
+    }
+
+    public String getRpName(UUID uuid) {
+        return database.getRpName(uuid);
+    }
+
+    public String getLoginName(UUID uuid) {
+        return database.getLoginName(uuid);
+    }
+
+    public Map<String, UUID> getTokenToUuid() {
+        return tokenToUuid;
+    }
+
+    public AuthDatabase getDatabase() {
+        return database;
+    }
+
+    /**
+     * Returns the camera manager for coordinate checks.
+     */
+    public AuthCameraManager getCameraManager() {
+        return cameraManager;
+    }
+
+    private String getPlayerIp(Player player) {
+        if (player == null) return null;
+        InetSocketAddress addr = player.getAddress();
+        return addr != null ? addr.getAddress().getHostAddress() : null;
+    }
+}

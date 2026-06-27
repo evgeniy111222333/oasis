@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oasis RolePlay — Launcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Кастомний заголовок вікна (frameless window draggable) -->
+    <div class="window-titlebar">
+        <div class="titlebar-logo">
+            <i class="fa-solid fa-hotel logo-mini"></i>
+            <span>Oasis RP Launcher</span>
+        </div>
+        <div class="titlebar-controls">
+            <button id="btnSettings" class="control-btn"><i class="fa-solid fa-gear"></i></button>
+            <button id="btnMinimize" class="control-btn"><i class="fa-solid fa-minus"></i></button>
+            <button id="btnClose" class="control-btn close-hover"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+
+    <!-- Основний контейнер лаунчера -->
+    <div class="launcher-container">
+        <!-- Ліва панель: Управління грою -->
+        <div class="control-panel">
+            <div class="brand-section">
+                <div class="launcher-logo">
+                    <i class="fa-solid fa-hotel logo-icon"></i>
+                </div>
+                <h1 class="project-name">OASIS <span class="accent">ROLEPLAY</span></h1>
+                <p class="project-slogan">Клієнтський завантажувач версії 1.0.0</p>
+            </div>
+
+            <div class="server-status-card">
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Сервер працює в штатному режимі</span>
+                </div>
+                <div class="online-counter">
+                    <i class="fa-solid fa-users"></i> Гравців онлайн: <span class="online-count">128 / 500</span>
+                </div>
+            </div>
+
+            <!-- Форма запуску -->
+            <div class="launch-form">
+                <div class="input-group">
+                    <label for="usernameInput"><i class="fa-solid fa-id-card-clip"></i> Введіть ваш ігровий нікнейм</label>
+                    <input type="text" id="usernameInput" placeholder="Наприклад: zVinka" value="zVinka" required>
+                    <span class="input-tip">З цим ніком ви увійдете в ігровий світ</span>
+                </div>
+
+                <!-- Блок завантаження / перевірки файлів -->
+                <div class="progress-container" id="progressContainer">
+                    <div class="progress-info">
+                        <span id="progressMessage">Підготовка до запуску...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progressBarFill"></div>
+                    </div>
+                </div>
+
+                <button class="play-btn" id="btnPlay">
+                    <span class="btn-text"><i class="fa-solid fa-play"></i> ГРАТИ</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Права панель: Новини та інформація -->
+        <div class="news-panel">
+            <div class="section-title">
+                <h2><i class="fa-regular fa-newspaper"></i> Останні оновлення та новини</h2>
+            </div>
+            
+            <div class="news-slider">
+                <div class="slide active">
+                    <div class="slide-badge">СЬОГОДНІ</div>
+                    <h3>Передова система оверлеїв впроваджена!</h3>
+                    <p>Ми успішно інтегрували CEF-браузер прямо в ігровий клієнт. Відтепер авторизація та створення персонажа відбуваються через вишуканий скляний інтерфейс з прозорим фоном!</p>
+                </div>
+            </div>
+
+            <div class="quick-links">
+                <a href="#" class="link-card"><i class="fa-brands fa-discord"></i> Discord</a>
+                <a href="#" class="link-card"><i class="fa-solid fa-globe"></i> Сайт</a>
+                <a href="#" class="link-card"><i class="fa-solid fa-comments"></i> Форум</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальне вікно налаштувань -->
+    <div class="settings-modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-gear"></i> Налаштування лаунчера</h3>
+                <button id="btnSettingsClose" class="modal-close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="gamePathInput"><i class="fa-solid fa-folder-open"></i> Шлях до папки з грою</label>
+                    <div class="path-chooser-row">
+                        <input type="text" id="gamePathInput" readonly>
+                        <button class="browse-btn" id="btnBrowseFolder">Огляд...</button>
+                    </div>
+                    <span class="input-tip">Сюди будуть завантажені всі клієнтські файли, моди та ресурси.</span>
+                </div>
+                <div class="input-group" style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">
+                    <div class="toggle-row" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span class="toggle-label" style="color: var(--pebble-gray); font-size: 13px; font-weight: 500;"><i class="fa-solid fa-expand" style="color: var(--sand-gold); margin-right: 6px;"></i> Повноекранний режим</span>
+                        <label class="switch">
+                            <input type="checkbox" id="fullscreenInput">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <span class="input-tip">Запускати гру відразу на весь екран вашого монітора.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальне вікно оновлення файлів -->
+    <div class="update-modal" id="updateModal">
+        <div class="modal-content update-content">
+            <div class="update-header">
+                <i class="fa-solid fa-cloud-arrow-down update-icon"></i>
+                <h3>Виявлено важливе оновлення</h3>
+            </div>
+            <div class="update-body">
+                <p>Для стабільної роботи гри необхідно завантажити нові файли оптимізації та безпеки (Sodium, Iris, MCEF, Оновлені мапінги).</p>
+                <div class="update-files-list">
+                    <div class="file-item"><i class="fa-solid fa-circle-check"></i> Модифікації оптимізації (Sodium, Iris, Zoomify, Continuity)</div>
+                    <div class="file-item"><i class="fa-solid fa-circle-check"></i> Модулі авторизації та оверлеїв (OasisAuth, MCEF)</div>
+                    <div class="file-item"><i class="fa-solid fa-circle-check"></i> Системні карти відповідності (Fabric API, Intermediary)</div>
+                </div>
+                
+                <div class="modal-progress-container" id="modalProgressContainer" style="display: none;">
+                    <div class="modal-progress-info">
+                        <span id="modalProgressMessage">Завантаження файлів...</span>
+                        <span id="modalProgressPercent">0%</span>
+                    </div>
+                    <div class="modal-progress-bar-bg">
+                        <div class="modal-progress-bar-fill" id="modalProgressBarFill"></div>
+                    </div>
+                </div>
+
+                <button class="update-action-btn" id="btnStartUpdate">
+                    <i class="fa-solid fa-download"></i> ОНОВИТИ КЛІЄНТ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Завантажуємо скрипт рендерера -->
+    <script src="renderer.js"></script>
+</body>
+</html>

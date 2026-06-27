@@ -1,0 +1,13 @@
+{
+  "name": "oasis-launcher",
+  "version": "1.0.0",
+  "description": "Oasis RolePlay Desktop Launcher",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^31.0.0",
+    "minecraft-launcher-core": "^3.18.2"
+  }
+}

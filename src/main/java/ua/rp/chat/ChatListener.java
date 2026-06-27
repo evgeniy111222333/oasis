@@ -2,13 +2,10 @@ package ua.rp.chat;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.audience.Audience;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import java.util.Set;
 
 public class ChatListener implements Listener {
@@ -20,18 +17,13 @@ public class ChatListener implements Listener {
     }
 
     @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        plugin.getIdManager().getOrAssignId(event.getPlayer());
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        plugin.getIdManager().releaseId(event.getPlayer());
-    }
-
-    @EventHandler
     public void onChat(AsyncChatEvent event) {
         Player sender = event.getPlayer();
+
+        // Skip if player is not authenticated (AuthListener handles the block)
+        if (plugin.getAuthManager() != null && plugin.getAuthManager().isPendingAuth(sender.getUniqueId())) {
+            return;
+        }
         
         // Remove standard viewers
         Set<Audience> viewers = event.viewers();
@@ -50,22 +42,18 @@ public class ChatListener implements Listener {
             }
         }
 
-        // Format message: replace "_" with space
-        final String rpName = sender.getName().replace("_", " ");
-        
-        // Colors
-        final TextColor nameColor = TextColor.color(0xE8C58C);    // Soft Gold
-        final TextColor separatorColor = TextColor.color(0xD3D3D3); // Light Gray
-        final TextColor textColor = TextColor.color(0xFFFFFF);      // White
+        // Format message: use registered RP name if present, fallback to username
+        String nameVal = plugin.getAuthManager() != null ? plugin.getAuthManager().getRpName(sender.getUniqueId()) : null;
+        if (nameVal == null) {
+            nameVal = sender.getName().replace("_", " ");
+        }
+        final String rpName = nameVal;
+        final int style = plugin.getActiveStyle();
 
         event.renderer((source, sourceDisplayName, message, viewer) -> {
-            return Component.text()
-                .append(Component.text(rpName, nameColor))
-                .append(Component.text(": ", separatorColor))
-                .append(Component.text("«", textColor))
-                .append(message.color(textColor))
-                .append(Component.text("»", textColor))
-                .build();
+            // Get raw message text
+            String rawMessage = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(message);
+            return ChatFormatter.formatSpeech(rpName, rawMessage, style);
         });
     }
 }
