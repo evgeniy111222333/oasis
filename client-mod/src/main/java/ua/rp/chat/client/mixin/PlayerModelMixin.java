@@ -222,7 +222,7 @@ public class PlayerModelMixin {
         arm.addOrReplaceChild("oasis_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
 
         CubeDeformation sleeve = deformation.extend(0.25f);
-        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 12.0f, 4, sleeve), PartPose.offset(x, 2.0f, 0.0f));
+        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
         sleeveRoot.addOrReplaceChild("oasis_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
         sleeveRoot.addOrReplaceChild("oasis_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.offset(0.0f, 3.8f, 0.0f));
     }
@@ -235,7 +235,7 @@ public class PlayerModelMixin {
         shin.addOrReplaceChild("oasis_foot", CubeListBuilder.create().texOffs(texX, texY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, deformation), PartPose.ZERO);
 
         CubeDeformation pants = deformation.extend(0.25f);
-        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 12.0f, 4, pants), PartPose.offset(x, 12.0f, 0.0f));
+        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
         pantsRoot.addOrReplaceChild("oasis_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, pants), PartPose.ZERO);
         PartDefinition pantsShin = pantsRoot.addOrReplaceChild("oasis_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, pants), PartPose.offset(0.0f, 5.9f, 0.0f));
         pantsShin.addOrReplaceChild("oasis_foot_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, pants), PartPose.ZERO);

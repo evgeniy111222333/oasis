@@ -14,7 +14,7 @@ const SERVER_URL = 'http://localhost:25580';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 
 const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '0be728f18798537a6ace00174835f0352c882df2', size: 63560 },
+    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '343e6c266e506fbf58da56cd39953c288a24fb22', size: 63645 },
     { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
     { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
     { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
