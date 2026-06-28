@@ -1,4 +1,4 @@
-{
+﻿{
   "schemaVersion": 1,
   "id": "oasisauth",
   "name": "Oasis Auth Mod",
@@ -9,10 +9,13 @@
       "ua.rp.chat.client.OasisAuthMod"
     ]
   },
-  "mixins": [],
+  "mixins": [
+    "oasisauth.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.19.3",
     "minecraft": "~26.1",
     "java": ">=25"
   }
 }
+

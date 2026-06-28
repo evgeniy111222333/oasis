@@ -34,6 +34,7 @@ public class AuthManager {
 
     private final ua.rp.chat.RPChat plugin;
     private final AuthDatabase database;
+    private final AppearanceManager appearanceManager;
     private final AuthCameraManager cameraManager;
 
     // Track which players are NOT yet authenticated
@@ -51,9 +52,10 @@ public class AuthManager {
     // Auth timeout in seconds
     private static final int AUTH_TIMEOUT_SECONDS = 120;
 
-    public AuthManager(ua.rp.chat.RPChat plugin, AuthDatabase database) {
+    public AuthManager(ua.rp.chat.RPChat plugin, AuthDatabase database, AppearanceManager appearanceManager) {
         this.plugin = plugin;
         this.database = database;
+        this.appearanceManager = appearanceManager;
         this.cameraManager = new AuthCameraManager(plugin);
     }
 
@@ -101,8 +103,8 @@ public class AuthManager {
                 String token = UUID.randomUUID().toString().substring(0, 8);
                 tokenToUuid.put(token, uuid);
 
-                // Send visual auth instructions with link
-                sendAuthMenu(player, token);
+                // Open client-side visual auth overlay.
+                openAuthOverlay(player, token);
 
                 // Start timeout
                 startTimeout(player);
@@ -114,6 +116,10 @@ public class AuthManager {
      * Web Registration Handler.
      */
     public boolean webRegister(UUID uuid, String loginName, String rpName, String email, String password) {
+        return webRegister(uuid, loginName, rpName, email, password, null, "classic");
+    }
+
+    public boolean webRegister(UUID uuid, String loginName, String rpName, String email, String password, String appearanceDataUrl, String appearanceModel) {
         Player player = plugin.getServer().getPlayer(uuid);
         if (player == null || !pendingAuth.contains(uuid)) {
             return false;
@@ -127,8 +133,18 @@ public class AuthManager {
             return false;
         }
 
+        AppearanceManager.SaveResult validation = appearanceManager.validateAppearance(appearanceDataUrl);
+        if (!validation.success()) {
+            plugin.getLogger().warning("Appearance validation failed for " + player.getName() + ": " + validation.message());
+            return false;
+        }
+
         String hash = PasswordHasher.hash(password);
         if (database.register(uuid, loginName, rpName, email, hash)) {
+            AppearanceManager.SaveResult appearanceResult = appearanceManager.saveAppearance(uuid, appearanceModel, appearanceDataUrl);
+            if (!appearanceResult.success()) {
+                plugin.getLogger().warning("Appearance upload failed for " + player.getName() + ": " + appearanceResult.message());
+            }
             database.updateLogin(uuid, getPlayerIp(player));
             
             // Apply name tag and chat styles
@@ -277,6 +293,75 @@ public class AuthManager {
                 sendWelcomeTitle(player);
             }
         }.runTaskLater(plugin, 2L);
+    }
+
+    public void openAuthOverlay(Player player, String token) {
+        String finalLink = getAuthUrl(token, player.getName());
+        sendAuthPayload(player, finalLink);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (player.isOnline() && pendingAuth.contains(player.getUniqueId())) {
+                    sendAuthPayload(player, finalLink);
+                }
+            }
+        }.runTaskLater(plugin, 20L);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (player.isOnline() && pendingAuth.contains(player.getUniqueId())) {
+                    sendAuthPayload(player, finalLink);
+                }
+            }
+        }.runTaskLater(plugin, 60L);
+    }
+
+    private void sendAuthPayload(Player player, String finalLink) {
+        try {
+            byte[] urlBytes = finalLink.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream byteOut = new java.io.ByteArrayOutputStream();
+            int len = urlBytes.length;
+            while ((len & ~0x7F) != 0) {
+                byteOut.write((len & 0x7F) | 0x80);
+                len >>>= 7;
+            }
+            byteOut.write(len);
+            byteOut.write(urlBytes);
+            player.sendPluginMessage(plugin, "rpchat:auth_init", byteOut.toByteArray());
+            plugin.getLogger().info("Sent Oasis auth overlay trigger to " + player.getName() + ": " + finalLink);
+        } catch (java.io.IOException e) {
+            plugin.getLogger().warning("Failed to send client-mod auth packet: " + e.getMessage());
+        }
+    }
+
+    public String getAuthUrl(String token) {
+        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
+        return webUrl + "/auth?token=" + token + "&ts=" + System.currentTimeMillis();
+    }
+
+    public String getAuthUrl(String token, String username) {
+        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
+        String encodedName = java.net.URLEncoder.encode(username == null ? "" : username, java.nio.charset.StandardCharsets.UTF_8);
+        return webUrl + "/auth?token=" + token + "&username=" + encodedName + "&ts=" + System.currentTimeMillis();
+    }
+
+    public String getActiveToken(UUID uuid) {
+        for (Map.Entry<String, UUID> entry : tokenToUuid.entrySet()) {
+            if (entry.getValue().equals(uuid)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    public String getActiveAuthUrl(Player player) {
+        if (player == null || !pendingAuth.contains(player.getUniqueId())) {
+            return null;
+        }
+        String token = getActiveToken(player.getUniqueId());
+        return token == null ? null : getAuthUrl(token, player.getName());
     }
 
     /**
@@ -456,6 +541,10 @@ public class AuthManager {
 
     public AuthDatabase getDatabase() {
         return database;
+    }
+
+    public AppearanceManager getAppearanceManager() {
+        return appearanceManager;
     }
 
     /**

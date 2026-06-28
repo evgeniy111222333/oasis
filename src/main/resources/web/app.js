@@ -1,314 +1,357 @@
-// 🌾 Oasis RP Server — Frontend Logic (app.js)
-
-// Global state
-let authToken = '';
+let authToken = "";
 let isRegisteredUser = false;
-let mcUsername = '';
+let mcUsername = "";
+let mcUuid = "";
+let appearanceData = "";
+let sessionRecoveryTried = false;
 
-// Get URL query parameters
-document.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    authToken = urlParams.get('token');
+document.addEventListener("DOMContentLoaded", () => {
+    const params = new URLSearchParams(window.location.search);
+    authToken = params.get("token") || "";
+    mcUsername = params.get("username") || "";
+
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+        button.addEventListener("click", () => switchTab(button.dataset.tab));
+    });
+
+    document.querySelectorAll("[data-toggle]").forEach((button) => {
+        button.addEventListener("click", () => togglePassword(button.dataset.toggle, button));
+    });
+
+    document.getElementById("loginForm").addEventListener("submit", handleLoginSubmit);
+    document.getElementById("registerForm").addEventListener("submit", handleRegisterSubmit);
+    document.getElementById("recoveryForm").addEventListener("submit", handleRecoverySubmit);
+    document.getElementById("appearanceFile").addEventListener("change", handleAppearanceSelect);
 
     if (!authToken) {
-        showGlobalError('Відсутній токен авторизації. Перезайдіть у гру.');
+        recoverAuthSession("Восстанавливаем сессию авторизации...");
         return;
     }
 
-    // Fetch initial player status from server
     fetchStatus();
 });
 
-// Fetch registration status and details from server API
 async function fetchStatus() {
     try {
         const response = await fetch(`/api/status?token=${encodeURIComponent(authToken)}`);
         const data = await response.json();
 
         if (!data.success) {
-            showGlobalError(data.message || 'Недійсний токен авторизації.');
+            if (await recoverAuthSession(data.message || "Сессия авторизации обновляется...")) {
+                return;
+            }
+            showGlobalError(data.message || "Сессия авторизации уже недействительна. Перезайдите на сервер.");
             return;
         }
 
-        mcUsername = data.username;
-        isRegisteredUser = data.registered;
+        mcUuid = data.uuid || "";
+        mcUsername = data.username || "Steve";
+        isRegisteredUser = Boolean(data.registered);
+        hydratePlayerCard(data.appearanceUrl);
 
         if (isRegisteredUser) {
-            // User is registered, show login tab, pre-fill login field if returned
-            switchTab('login');
+            switchTab("login");
             if (data.loginName) {
-                document.getElementById('loginName').value = data.loginName;
-                document.getElementById('loginName').readOnly = true; // prevent changing registered login
+                const loginInput = document.getElementById("loginName");
+                loginInput.value = data.loginName;
+                loginInput.readOnly = true;
             }
         } else {
-            // User is new, show registration tab
-            switchTab('register');
+            switchTab("register");
         }
-    } catch (err) {
-        console.error(err);
-        showGlobalError('Помилка зв\'язку з сервером авторизації.');
+    } catch (error) {
+        if (await recoverAuthSession("Проверяем активную сессию...")) {
+            return;
+        }
+        showGlobalError("Нет связи с сервером авторизации.");
     }
 }
 
-// Global error banner (if token invalid)
-function showGlobalError(msg) {
-    const errorBox = document.getElementById('loginError');
-    errorBox.innerText = msg;
-    errorBox.style.display = 'block';
-    
-    // Disable all submit buttons
-    document.querySelectorAll('.submit-btn').forEach(btn => {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.style.cursor = 'not-allowed';
-    });
+async function recoverAuthSession(message) {
+    if (sessionRecoveryTried) {
+        return false;
+    }
+    sessionRecoveryTried = true;
+    const username = mcUsername || new URLSearchParams(window.location.search).get("username") || "";
+    if (!username) {
+        showGlobalError("Сессия авторизации не найдена. Перезайдите на сервер.");
+        return false;
+    }
+
+    showGlobalError(message);
+    try {
+        const response = await fetch(`/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
+            cache: "no-store"
+        });
+        if (response.status === 204) {
+            return false;
+        }
+        const data = await response.json();
+        if (data.success && data.authUrl) {
+            window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
+            return true;
+        }
+    } catch (error) {
+        return false;
+    }
+    return false;
 }
 
-// Switch tabs: login, register, recovery
+function hydratePlayerCard(appearanceUrl = "") {
+    document.getElementById("playerName").textContent = mcUsername;
+    document.getElementById("playerMode").textContent = isRegisteredUser ? "Облик найден" : "Новый персонаж";
+    document.getElementById("playerSeal").textContent = getInitials(mcUsername);
+    setSkinPreview(appearanceUrl || `https://minotar.net/armor/body/${encodeURIComponent(mcUsername)}/320.png`);
+}
+
+function setSkinPreview(src) {
+    const skinImage = document.getElementById("skinImage");
+    skinImage.src = src;
+    skinImage.onerror = () => {
+        skinImage.onerror = null;
+        skinImage.src = "https://minotar.net/armor/body/Steve/320.png";
+    };
+}
+
+function getInitials(username) {
+    return (username || "ID").slice(0, 2).toUpperCase();
+}
+
 function switchTab(tabName) {
-    // If not validated and trying to navigate when token is invalid
-    if (!authToken && tabName !== 'login') return;
+    clearAlerts();
+    document.querySelectorAll(".auth-form").forEach((form) => form.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach((button) => button.classList.remove("active"));
 
-    // Reset alert boxes
-    document.querySelectorAll('.alert-box').forEach(box => {
-        box.style.display = 'none';
-        box.innerText = '';
-    });
+    const tabs = document.getElementById("tabsNav");
+    tabs.style.display = tabName === "recovery" ? "none" : "grid";
 
-    // Remove active class from buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
-    // Hide all forms
-    document.querySelectorAll('.auth-form').forEach(form => {
-        form.classList.remove('active');
-    });
-
-    // Activate the selected tab
-    const tabsNav = document.getElementById('tabsNav');
-    if (tabName === 'login') {
-        document.getElementById('loginForm').classList.add('active');
-        tabsNav.querySelector('button:nth-child(1)').classList.add('active');
-        tabsNav.style.display = 'flex';
-    } else if (tabName === 'register') {
-        document.getElementById('registerForm').classList.add('active');
-        tabsNav.querySelector('button:nth-child(2)').classList.add('active');
-        tabsNav.style.display = 'flex';
-    } else if (tabName === 'recovery') {
-        document.getElementById('recoveryForm').classList.add('active');
-        tabsNav.style.display = 'none'; // hide navigation for recovery
+    if (tabName === "register") {
+        document.getElementById("registerForm").classList.add("active");
+        document.querySelector('[data-tab="register"]').classList.add("active");
+        setModeCopy("Новый облик", "Задайте имя, доступ и внешний образ персонажа.", "Регистрация");
+        return;
     }
+
+    if (tabName === "recovery") {
+        document.getElementById("recoveryForm").classList.add("active");
+        setModeCopy("Возврат доступа", "Восстановление через привязанный email.", "Восстановление");
+        return;
+    }
+
+    document.getElementById("loginForm").classList.add("active");
+    document.querySelector('[data-tab="login"]').classList.add("active");
+    setModeCopy("Вход в мир", "Персонаж ожидает подтверждения владельца.", "Вход");
 }
 
-// Password visibility toggler
-function togglePasswordVisibility(inputId, btn) {
+function setModeCopy(sceneTitle, sceneLead, panelTitle) {
+    document.getElementById("sceneTitle").textContent = sceneTitle;
+    document.getElementById("sceneLead").textContent = sceneLead;
+    document.getElementById("panelTitle").textContent = panelTitle;
+}
+
+function togglePassword(inputId, button) {
     const input = document.getElementById(inputId);
-    const icon = btn.querySelector('i');
-    
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.classList.remove('fa-eye');
-        icon.classList.add('fa-eye-slash');
-    } else {
-        input.type = 'password';
-        icon.classList.remove('fa-eye-slash');
-        icon.classList.add('fa-eye');
-    }
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    button.textContent = showing ? "Показать" : "Скрыть";
 }
 
-// Handle login submission
+function handleAppearanceSelect(event) {
+    const file = event.target.files && event.target.files[0];
+    const errorBox = document.getElementById("registerError");
+    clearAlerts();
+    appearanceData = "";
+
+    if (!file) {
+        document.getElementById("appearanceFileLabel").textContent = "Загрузить образ";
+        return;
+    }
+
+    if (file.type !== "image/png") {
+        showError(errorBox, "Облик должен быть PNG-файлом.");
+        event.target.value = "";
+        return;
+    }
+
+    if (file.size > 512 * 1024) {
+        showError(errorBox, "Файл образа слишком большой. Максимум 512 KB.");
+        event.target.value = "";
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+            if (img.width !== 64 || (img.height !== 64 && img.height !== 32)) {
+                showError(errorBox, "Размер образа должен быть 64x64 или 64x32.");
+                event.target.value = "";
+                return;
+            }
+            appearanceData = reader.result;
+            document.getElementById("appearanceFileLabel").textContent = file.name;
+            setSkinPreview(reader.result);
+            document.getElementById("playerMode").textContent = "Облик выбран";
+        };
+        img.onerror = () => showError(errorBox, "Не удалось прочитать PNG-файл.");
+        img.src = reader.result;
+    };
+    reader.onerror = () => showError(errorBox, "Не удалось прочитать файл образа.");
+    reader.readAsDataURL(file);
+}
+
 async function handleLoginSubmit(event) {
     event.preventDefault();
-    const loginError = document.getElementById('loginError');
-    loginError.style.display = 'none';
-
-    const loginName = document.getElementById('loginName').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const rememberMe = document.getElementById('rememberMe').checked;
+    const errorBox = document.getElementById("loginError");
+    const loginName = document.getElementById("loginName").value.trim();
+    const password = document.getElementById("loginPassword").value;
 
     if (!loginName || !password) {
-        showError(loginError, 'Будь ласка, заповніть всі поля.');
+        showError(errorBox, "Заполните логин и пароль.");
         return;
     }
 
-    setButtonLoading('loginBtn', true);
-
-    try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                token: authToken,
-                loginName: loginName,
-                password: password,
-                rememberMe: rememberMe
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showSuccessScreen('Успішна авторизація!', `Вітаємо з поверненням, ${result.rpName || loginName}!`);
-        } else {
-            showError(loginError, result.message || 'Невірний пароль.');
-        }
-    } catch (err) {
-        showError(loginError, 'Помилка мережі при авторизації.');
-    } finally {
-        setButtonLoading('loginBtn', false);
-    }
+    await submitAuth("loginBtn", "/api/login", {
+        token: authToken,
+        loginName,
+        password,
+        rememberMe: document.getElementById("rememberMe").checked
+    }, errorBox, (result) => {
+        showSuccess("Вход подтвержден", `С возвращением, ${result.rpName || loginName}.`);
+    });
 }
 
-// Handle register submission
 async function handleRegisterSubmit(event) {
     event.preventDefault();
-    const registerError = document.getElementById('registerError');
-    registerError.style.display = 'none';
+    const errorBox = document.getElementById("registerError");
+    const loginName = document.getElementById("regLogin").value.trim();
+    const rpName = document.getElementById("regRpName").value.trim();
+    const email = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPassword").value;
+    const confirmPassword = document.getElementById("regConfirmPassword").value;
+    const appearanceModel = document.querySelector('input[name="appearanceModel"]:checked')?.value || "classic";
 
-    const loginName = document.getElementById('regLogin').value.trim();
-    const rpName = document.getElementById('regRpName').value.trim();
-    const email = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value;
-    const confirmPassword = document.getElementById('regConfirmPassword').value;
-    const agreeTerms = document.getElementById('agreeTerms').checked;
-
-    // Validation checks
     if (!loginName || !rpName || !email || !password || !confirmPassword) {
-        showError(registerError, 'Будь ласка, заповніть всі обов\'язкові поля.');
+        showError(errorBox, "Заполните все поля регистрации.");
         return;
     }
 
-    // Account login validation (alphanumeric, 4-16 chars)
-    const loginRegex = /^[a-zA-Z0-9_]{4,16}$/;
-    if (!loginRegex.test(loginName)) {
-        showError(registerError, 'Логін повинен містити тільки англійські літери, цифри та символ підкреслення (4-16 символів).');
+    if (!appearanceData) {
+        showError(errorBox, "Загрузите облик персонажа перед созданием профиля.");
         return;
     }
 
-    // RolePlay Name validation: FirstName LastName (e.g. "Іван Петренко" or "Иван Петренко")
-    // Allows Ukrainian/Russian Cyrillic and English characters, must start with capital letter
-    const rpNameRegex = /^[A-ZА-ЯІЄЇ][a-zа-яієї']+\s+[A-ZА-ЯІЄЇ][a-zа-яієї']+$/;
-    if (!rpNameRegex.test(rpName)) {
-        showError(registerError, 'Ім\'я та Прізвище мають бути у форматі "Іван Петренко" (два слова з великої літери).');
+    if (!/^[a-zA-Z0-9_]{4,16}$/.test(loginName)) {
+        showError(errorBox, "Логин: 4-16 символов, латиница, цифры или подчеркивание.");
+        return;
+    }
+
+    if (!/^[A-ZА-ЯЁ][a-zа-яё']+\s+[A-ZА-ЯЁ][a-zа-яё']+$/.test(rpName)) {
+        showError(errorBox, "Имя персонажа должно быть в формате: Иван Петров.");
         return;
     }
 
     if (password.length < 6) {
-        showError(registerError, 'Пароль повинен містити не менше 6 символів.');
+        showError(errorBox, "Пароль должен содержать минимум 6 символов.");
         return;
     }
 
     if (password !== confirmPassword) {
-        showError(registerError, 'Паролі не збігаються.');
+        showError(errorBox, "Пароли не совпадают.");
         return;
     }
 
-    if (!agreeTerms) {
-        showError(registerError, 'Ви повинні погодитися з правилами сервера.');
+    if (!document.getElementById("agreeTerms").checked) {
+        showError(errorBox, "Нужно принять правила сервера.");
         return;
     }
 
-    setButtonLoading('registerBtn', true);
-
-    try {
-        const response = await fetch('/api/register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                token: authToken,
-                loginName: loginName,
-                rpName: rpName,
-                email: email,
-                password: password
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showSuccessScreen('Акаунт створено!', `Вітаємо на сервері, ${rpName}! Ваш нікнейм змінено.`);
-        } else {
-            showError(registerError, result.message || 'Помилка реєстрації. Логін вже зайнятий.');
-        }
-    } catch (err) {
-        showError(registerError, 'Помилка мережі при реєстрації.');
-    } finally {
-        setButtonLoading('registerBtn', false);
-    }
+    await submitAuth("registerBtn", "/api/register", {
+        token: authToken,
+        loginName,
+        rpName,
+        email,
+        password,
+        appearanceModel,
+        appearanceData
+    }, errorBox, () => {
+        showSuccess("Персонаж создан", `Добро пожаловать, ${rpName}.`);
+    });
 }
 
-// Handle password recovery submission
 async function handleRecoverySubmit(event) {
     event.preventDefault();
-    const recoveryError = document.getElementById('recoveryError');
-    const recoverySuccess = document.getElementById('recoverySuccess');
-    recoveryError.style.display = 'none';
-    recoverySuccess.style.display = 'none';
-
-    const email = document.getElementById('recoveryEmail').value.trim();
+    const errorBox = document.getElementById("recoveryError");
+    const successBox = document.getElementById("recoverySuccess");
+    const email = document.getElementById("recoveryEmail").value.trim();
 
     if (!email) {
-        showError(recoveryError, 'Будь ласка, введіть email.');
+        showError(errorBox, "Укажите email.");
         return;
     }
 
-    setButtonLoading('recoveryBtn', true);
+    await submitAuth("recoveryBtn", "/api/recovery", {
+        token: authToken,
+        email
+    }, errorBox, (result) => {
+        successBox.textContent = result.message || "Код восстановления отправлен.";
+        successBox.style.display = "block";
+    });
+}
+
+async function submitAuth(buttonId, url, payload, errorBox, onSuccess) {
+    setLoading(buttonId, true);
+    clearAlerts();
 
     try {
-        const response = await fetch('/api/recovery', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                token: authToken,
-                email: email
-            })
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
         });
-
         const result = await response.json();
 
-        if (result.success) {
-            recoverySuccess.innerText = result.message || 'Код відновлення надіслано на вашу пошту!';
-            recoverySuccess.style.display = 'block';
-            document.getElementById('recoveryEmail').value = '';
-        } else {
-            showError(recoveryError, result.message || 'Цей email не знайдено в базі даних.');
+        if (!result.success) {
+            showError(errorBox, result.message || "Запрос не выполнен.");
+            return;
         }
-    } catch (err) {
-        showError(recoveryError, 'Помилка мережі при відновленні.');
+
+        onSuccess(result);
+    } catch (error) {
+        showError(errorBox, "Ошибка сети. Попробуйте еще раз.");
     } finally {
-        setButtonLoading('recoveryBtn', false);
+        setLoading(buttonId, false);
     }
 }
 
-// Helper: Show error alert
-function showError(element, msg) {
-    element.innerText = msg;
-    element.style.display = 'block';
+function showGlobalError(message) {
+    switchTab("login");
+    showError(document.getElementById("loginError"), message);
+    document.querySelectorAll("button, input").forEach((element) => {
+        element.disabled = true;
+    });
 }
 
-// Helper: Set submit button loading state
-function setButtonLoading(btnId, isLoading) {
-    const btn = document.getElementById(btnId);
-    if (isLoading) {
-        btn.classList.add('loading');
-        btn.disabled = true;
-    } else {
-        btn.classList.remove('loading');
-        btn.disabled = false;
-    }
+function showError(element, message) {
+    element.textContent = message;
+    element.style.display = "block";
 }
 
-// Helper: Show full-screen success screen
-function showSuccessScreen(title, message) {
-    const successScreen = document.getElementById('successScreen');
-    successScreen.querySelector('h2').innerText = title;
-    document.getElementById('successMessage').innerText = message;
-    successScreen.classList.add('active');
+function clearAlerts() {
+    document.querySelectorAll(".alert").forEach((element) => {
+        element.textContent = "";
+        element.style.display = "none";
+    });
+}
+
+function setLoading(buttonId, loading) {
+    const button = document.getElementById(buttonId);
+    button.disabled = loading;
+    button.classList.toggle("loading", loading);
+}
+
+function showSuccess(title, message) {
+    document.getElementById("successTitle").textContent = title;
+    document.getElementById("successMessage").textContent = message;
+    document.getElementById("successScreen").classList.add("active");
 }

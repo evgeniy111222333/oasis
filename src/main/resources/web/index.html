@@ -1,176 +1,189 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RP Server — Авторизація</title>
+    <title>Oasis Roleplay Auth</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="screen-split">
-        <!-- ЛІВА ЧАСТИНА: ВІЗУАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ/РЕЄСТРАЦІЇ -->
-        <div class="left-panel">
-            <div class="glass-container">
-                <!-- Заголовок проекту -->
-                <div class="brand-section">
-                    <div class="server-logo">
-                        <i class="fa-solid fa-hotel logo-icon"></i>
+    <main class="auth-shell">
+        <section class="scene-panel" aria-label="Персонаж">
+            <div class="ambient-grid"></div>
+            <div class="horizon-glow"></div>
+            <div class="sand-trace trace-a"></div>
+            <div class="sand-trace trace-b"></div>
+
+            <header class="brand-mark">
+                <span class="brand-kicker">Oasis Roleplay</span>
+                <h1 id="sceneTitle">Вход в мир</h1>
+                <p id="sceneLead">Персонаж ожидает подтверждения владельца.</p>
+            </header>
+
+            <div class="scene-stats" aria-hidden="true">
+                <span>RP-профиль</span>
+                <span>Сессия защищена</span>
+            </div>
+
+            <div class="character-stage">
+                <div class="stage-arch"></div>
+                <div class="stage-light"></div>
+                <div class="skin-frame">
+                    <img id="skinImage" src="https://minotar.net/armor/body/Steve/320.png" alt="Облик персонажа" draggable="false">
+                </div>
+                <div class="stand-shadow"></div>
+                <div class="stand-base">
+                    <span></span>
+                </div>
+                <div class="plate">
+                    <div>
+                        <span id="playerName">Игрок</span>
+                        <small id="playerMode">Проверка профиля</small>
                     </div>
-                    <h1 class="server-name">OASIS <span class="accent-text">ROLEPLAY</span></h1>
-                    <p class="server-slogan">Поринь у світ справжнього життя</p>
-                </div>
-
-                <!-- Вкладки (Tabs) -->
-                <div class="tabs-nav" id="tabsNav">
-                    <button class="tab-btn active" onclick="switchTab('login')">Вхід</button>
-                    <button class="tab-btn" onclick="switchTab('register')">Реєстрація</button>
-                </div>
-
-                <!-- Контент форм -->
-                <div class="form-content">
-                    <!-- Форма Входу -->
-                    <form id="loginForm" class="auth-form active" onsubmit="handleLoginSubmit(event)">
-                        <div class="input-group">
-                            <label for="loginName"><i class="fa-solid fa-user"></i> Логін акаунта</label>
-                            <input type="text" id="loginName" placeholder="Введіть ваш логін" required>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="loginPassword"><i class="fa-solid fa-lock"></i> Пароль</label>
-                            <div class="password-wrapper">
-                                <input type="password" id="loginPassword" placeholder="Введіть пароль" required>
-                                <button type="button" class="toggle-pwd" onclick="togglePasswordVisibility('loginPassword', this)">
-                                    <i class="fa-solid fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-helpers">
-                            <label class="checkbox-container">
-                                <input type="checkbox" id="rememberMe" checked>
-                                <span class="checkmark"></span>
-                                Запам'ятати мене
-                            </label>
-                            <a href="#" class="forgot-link" onclick="switchTab('recovery')">Забули пароль?</a>
-                        </div>
-
-                        <div id="loginError" class="alert-box error"></div>
-
-                        <button type="submit" class="submit-btn" id="loginBtn">
-                            <span class="btn-text">УВІЙТИ В ГРУ</span>
-                            <span class="spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                        </button>
-                    </form>
-
-                    <!-- Форма Реєстрації -->
-                    <form id="registerForm" class="auth-form" onsubmit="handleRegisterSubmit(event)">
-                        <div class="input-group">
-                            <label for="regLogin"><i class="fa-solid fa-user-plus"></i> Логін акаунта</label>
-                            <input type="text" id="regLogin" placeholder="Створіть унікальний логін" required>
-                            <span class="input-desc">Тільки англійські літери та цифри, 4-16 символів</span>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="regRpName"><i class="fa-solid fa-id-card"></i> Ім'я та Прізвище персонажа (ПІБ)</label>
-                            <input type="text" id="regRpName" placeholder="Наприклад: Іван Петренко або Иван Петренко" required>
-                            <span class="input-desc">Реальне RP ім'я та прізвище через пробіл</span>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="regEmail"><i class="fa-solid fa-envelope"></i> Електронна пошта</label>
-                            <input type="email" id="regEmail" placeholder="example@email.com" required>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="regPassword"><i class="fa-solid fa-lock"></i> Пароль</label>
-                            <div class="password-wrapper">
-                                <input type="password" id="regPassword" placeholder="Створіть надійний пароль" required>
-                                <button type="button" class="toggle-pwd" onclick="togglePasswordVisibility('regPassword', this)">
-                                    <i class="fa-solid fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="regConfirmPassword"><i class="fa-solid fa-shield-halved"></i> Підтвердження пароля</label>
-                            <div class="password-wrapper">
-                                <input type="password" id="regConfirmPassword" placeholder="Повторіть пароль" required>
-                                <button type="button" class="toggle-pwd" onclick="togglePasswordVisibility('regConfirmPassword', this)">
-                                    <i class="fa-solid fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-helpers">
-                            <label class="checkbox-container">
-                                <input type="checkbox" id="agreeTerms" required>
-                                <span class="checkmark"></span>
-                                Я погоджуюся з правилами сервера
-                            </label>
-                        </div>
-
-                        <div id="registerError" class="alert-box error"></div>
-
-                        <button type="submit" class="submit-btn" id="registerBtn">
-                            <span class="btn-text">ЗАРЕЄСТРУВАТИСЯ</span>
-                            <span class="spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                        </button>
-                    </form>
-
-                    <!-- Форма Відновлення Пароля -->
-                    <form id="recoveryForm" class="auth-form" onsubmit="handleRecoverySubmit(event)">
-                        <div class="back-link-wrapper">
-                            <a href="#" class="back-link" onclick="switchTab('login')"><i class="fa-solid fa-arrow-left"></i> Назад до входу</a>
-                        </div>
-                        
-                        <div class="brand-section mini">
-                            <h2>Відновлення доступу</h2>
-                            <p>Вкажіть пошту, яку ви використовували при реєстрації</p>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="recoveryEmail"><i class="fa-solid fa-envelope"></i> Електронна пошта</label>
-                            <input type="email" id="recoveryEmail" placeholder="example@email.com" required>
-                        </div>
-
-                        <div id="recoveryError" class="alert-box error"></div>
-                        <div id="recoverySuccess" class="alert-box success"></div>
-
-                        <button type="submit" class="submit-btn" id="recoveryBtn">
-                            <span class="btn-text">НАДІСЛАТИ КОД</span>
-                            <span class="spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                        </button>
-                    </form>
+                    <strong id="playerSeal">ID</strong>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- ПРАВА ЧАСТИНА: ПОВНІСТЮ ПРОЗОРА ДЛЯ ВІДОБРАЖЕННЯ ІГРОВОГО СВІТУ (Персонажа) -->
-        <div class="right-panel">
-            <div class="in-game-indicator">
-                <span class="indicator-dot"></span> Камера зафіксована на персонажі
+        <section class="panel-wrap" aria-label="Авторизация">
+            <div class="auth-panel">
+                <header class="panel-head">
+                    <span class="secure-dot"></span>
+                    <div>
+                        <p>Защищенная сессия</p>
+                        <h2 id="panelTitle">Вход</h2>
+                    </div>
+                </header>
+
+                <div class="tabs" id="tabsNav">
+                    <button class="tab-btn active" type="button" data-tab="login">Вход</button>
+                    <button class="tab-btn" type="button" data-tab="register">Регистрация</button>
+                </div>
+
+                <form id="loginForm" class="auth-form active" novalidate>
+                    <label>
+                        <span>Логин аккаунта</span>
+                        <input id="loginName" type="text" autocomplete="username" placeholder="Ваш логин">
+                    </label>
+
+                    <label>
+                        <span>Пароль</span>
+                        <div class="password-field">
+                            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Введите пароль">
+                            <button type="button" class="ghost-btn" data-toggle="loginPassword">Показать</button>
+                        </div>
+                    </label>
+
+                    <div class="row-line">
+                        <label class="check-line">
+                            <input id="rememberMe" type="checkbox" checked>
+                            <span>Запомнить устройство</span>
+                        </label>
+                        <button type="button" class="link-btn" data-tab="recovery">Восстановить</button>
+                    </div>
+
+                    <div id="loginError" class="alert error"></div>
+                    <button id="loginBtn" class="submit-btn" type="submit">
+                        <span>Войти в мир</span>
+                    </button>
+                </form>
+
+                <form id="registerForm" class="auth-form" novalidate>
+                    <label>
+                        <span>Логин аккаунта</span>
+                        <input id="regLogin" type="text" autocomplete="username" placeholder="Например: oasis_player">
+                    </label>
+
+                    <label>
+                        <span>Имя персонажа</span>
+                        <input id="regRpName" type="text" autocomplete="name" placeholder="Например: Иван Петров">
+                    </label>
+
+                    <div class="appearance-field">
+                        <div class="field-title">
+                            <span>Облик персонажа</span>
+                            <small>PNG 64x64 или 64x32</small>
+                        </div>
+                        <div class="appearance-actions">
+                            <label class="upload-btn">
+                                <input id="appearanceFile" type="file" accept="image/png">
+                                <span id="appearanceFileLabel">Загрузить образ</span>
+                            </label>
+                            <div class="model-choice" role="group" aria-label="Телосложение">
+                                <label>
+                                    <input type="radio" name="appearanceModel" value="classic" checked>
+                                    <span>Обычный</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="appearanceModel" value="slim">
+                                    <span>Стройный</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <label>
+                        <span>Email</span>
+                        <input id="regEmail" type="email" autocomplete="email" placeholder="name@example.com">
+                    </label>
+
+                    <label>
+                        <span>Пароль</span>
+                        <div class="password-field">
+                            <input id="regPassword" type="password" autocomplete="new-password" placeholder="Минимум 6 символов">
+                            <button type="button" class="ghost-btn" data-toggle="regPassword">Показать</button>
+                        </div>
+                    </label>
+
+                    <label>
+                        <span>Повторите пароль</span>
+                        <div class="password-field">
+                            <input id="regConfirmPassword" type="password" autocomplete="new-password" placeholder="Еще раз пароль">
+                            <button type="button" class="ghost-btn" data-toggle="regConfirmPassword">Показать</button>
+                        </div>
+                    </label>
+
+                    <label class="check-line terms-line">
+                        <input id="agreeTerms" type="checkbox">
+                        <span>Я принимаю правила Oasis Roleplay.</span>
+                    </label>
+
+                    <div id="registerError" class="alert error"></div>
+                    <button id="registerBtn" class="submit-btn" type="submit">
+                        <span>Создать персонажа</span>
+                    </button>
+                </form>
+
+                <form id="recoveryForm" class="auth-form" novalidate>
+                    <button type="button" class="link-btn back" data-tab="login">Назад ко входу</button>
+                    <div class="recovery-copy">
+                        <h3>Восстановление доступа</h3>
+                        <p>Укажите email, привязанный к аккаунту.</p>
+                    </div>
+
+                    <label>
+                        <span>Email</span>
+                        <input id="recoveryEmail" type="email" autocomplete="email" placeholder="name@example.com">
+                    </label>
+
+                    <div id="recoveryError" class="alert error"></div>
+                    <div id="recoverySuccess" class="alert success"></div>
+                    <button id="recoveryBtn" class="submit-btn" type="submit">
+                        <span>Отправить код</span>
+                    </button>
+                </form>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
-    <!-- Екран успіху (Накладання після авторизації) -->
     <div class="success-screen" id="successScreen">
-        <div class="success-content">
-            <div class="success-checkmark">
-                <div class="check-icon">
-                    <span class="icon-line line-tip"></span>
-                    <span class="icon-line line-long"></span>
-                    <div class="icon-circle"></div>
-                    <div class="icon-fix"></div>
-                </div>
-            </div>
-            <h2>Успішне підключення!</h2>
-            <p id="successMessage">Приємної гри на Oasis RolePlay.</p>
-            <p class="return-game-hint">Повертайтеся до вікна гри...</p>
+        <div class="success-card">
+            <div class="success-ring"></div>
+            <h2 id="successTitle">Готово</h2>
+            <p id="successMessage">Возвращаем вас в игру.</p>
         </div>
     </div>
 

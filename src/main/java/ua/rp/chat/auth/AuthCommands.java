@@ -62,7 +62,7 @@ public class AuthCommands implements CommandExecutor {
         }
 
         player.sendMessage(Component.text("Будь ласка, використовуйте візуальний інтерфейс для входу.", TERRACOTTA));
-        authManager.sendAuthMenu(player, token);
+        authManager.openAuthOverlay(player, token);
         return true;
     }
 
@@ -87,7 +87,7 @@ public class AuthCommands implements CommandExecutor {
         }
 
         player.sendMessage(Component.text("Будь ласка, використовуйте візуальний інтерфейс для реєстрації.", TERRACOTTA));
-        authManager.sendAuthMenu(player, token);
+        authManager.openAuthOverlay(player, token);
         return true;
     }
 }

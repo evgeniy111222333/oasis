@@ -14,7 +14,7 @@ const SERVER_URL = 'http://localhost:25580';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 
 const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: 'dd7938dcfc2c2e5c5050bd973aad140279c30614', size: 6885 },
+    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '0be728f18798537a6ace00174835f0352c882df2', size: 63560 },
     { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
     { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
     { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
@@ -350,18 +350,6 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         }
         currentStep++;
 
-        // 2. Download intermediary mappings if missing
-        const intermediaryJarPath = path.join(activeGamePath, 'libraries', 'net', 'fabricmc', 'intermediary', '1.21.2', 'intermediary-1.21.2.jar');
-        if (false && !fs.existsSync(intermediaryJarPath)) {
-            updateProgress('Завантаження карт деобфускації (Intermediary)...', Math.round((currentStep / totalSteps) * 100));
-            const localSource = 'D:\\oasis\\libraries\\net\\fabricmc\\intermediary\\1.21.2\\intermediary-1.21.2.jar';
-            if (fs.existsSync(localSource) && activeGamePath !== 'D:\\oasis') {
-                fs.mkdirSync(path.dirname(intermediaryJarPath), { recursive: true });
-                fs.copyFileSync(localSource, intermediaryJarPath);
-            } else {
-                await downloadFile('https://maven.fabricmc.net/net/fabricmc/intermediary/1.21.2/intermediary-1.21.2.jar', intermediaryJarPath);
-            }
-        }
         // 2. Download or repair managed mods
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);

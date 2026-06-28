@@ -35,3 +35,18 @@
 # Track all other plugin configuration folders
 # (Allow tracking of folders and configuration files inside /plugins/)
 !/plugins/
+
+# Ignore build artifacts and temp files
+.gradle/
+build/
+target/
+.codex-temp/
+*.db-shm
+*.db-wal
+*.db
+*.class
+.DS_Store
+tools/
+node_modules/
+
+

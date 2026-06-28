@@ -173,9 +173,9 @@ body {
 .status-dot {
     width: 7px;
     height: 7px;
-    background-color: var(--success-green);
+    background-color: #E3A899;
     border-radius: 50%;
-    box-shadow: 0 0 8px var(--success-green);
+    box-shadow: 0 0 8px #E3A899;
     animation: pulseStatus 2s infinite;
 }
 

@@ -11,6 +11,7 @@ public class RPChat extends JavaPlugin {
     private AuthManager authManager;
     private AuthWebServer authWebServer;
     private AuthGuiManager authGuiManager;
+    private AppearanceManager appearanceManager;
 
     @Override
     public void onEnable() {
@@ -27,6 +28,7 @@ public class RPChat extends JavaPlugin {
         try {
             authDatabase = new AuthDatabase(getDataFolder(), getLogger());
             authDatabase.connect();
+            appearanceManager = new AppearanceManager(getDataFolder(), authDatabase, getLogger());
         } catch (SQLException e) {
             getLogger().severe("Failed to initialize AuthDatabase! Disabling plugin.");
             e.printStackTrace();
@@ -34,7 +36,7 @@ public class RPChat extends JavaPlugin {
             return;
         }
 
-        authManager = new AuthManager(this, authDatabase);
+        authManager = new AuthManager(this, authDatabase, appearanceManager);
         
         // Initialize and register GUI Manager
         authGuiManager = new AuthGuiManager(this, authManager);
@@ -122,5 +124,9 @@ public class RPChat extends JavaPlugin {
 
     public AuthGuiManager getAuthGuiManager() {
         return authGuiManager;
+    }
+
+    public AppearanceManager getAppearanceManager() {
+        return appearanceManager;
     }
 }

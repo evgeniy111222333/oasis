@@ -54,6 +54,9 @@ public class AuthDatabase {
                     password_hash TEXT NOT NULL,
                     last_ip TEXT,
                     last_login INTEGER,
+                    appearance_model TEXT,
+                    appearance_hash TEXT,
+                    appearance_updated_at INTEGER,
                     registered_at INTEGER NOT NULL
                 )
             """);
@@ -73,6 +76,15 @@ public class AuthDatabase {
             } catch (SQLException ignored) {}
             try {
                 stmt.execute("ALTER TABLE players ADD COLUMN email TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE players ADD COLUMN appearance_model TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE players ADD COLUMN appearance_hash TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE players ADD COLUMN appearance_updated_at INTEGER");
             } catch (SQLException ignored) {}
         } catch (SQLException e) {
             logger.severe("AuthDB: Failed to upgrade database: " + e.getMessage());
@@ -125,6 +137,40 @@ public class AuthDatabase {
             logger.severe("AuthDB: Failed to get RP name for " + uuid + ": " + e.getMessage());
         }
         return null;
+    }
+
+    public AppearanceProfile getAppearanceProfile(UUID uuid) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT appearance_model, appearance_hash, appearance_updated_at FROM players WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                String model = rs.getString("appearance_model");
+                String hash = rs.getString("appearance_hash");
+                long updatedAt = rs.getLong("appearance_updated_at");
+                if (model == null || hash == null || updatedAt <= 0) {
+                    return null;
+                }
+                return new AppearanceProfile(model, hash, updatedAt);
+            }
+        } catch (SQLException e) {
+            logger.severe("AuthDB: Failed to get appearance profile for " + uuid + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean updateAppearance(UUID uuid, String model, String hash) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE players SET appearance_model = ?, appearance_hash = ?, appearance_updated_at = ? WHERE uuid = ?")) {
+            ps.setString(1, model);
+            ps.setString(2, hash);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.setString(4, uuid.toString());
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.severe("AuthDB: Failed to update appearance for " + uuid + ": " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -235,4 +281,6 @@ public class AuthDatabase {
             }
         }
     }
+
+    public record AppearanceProfile(String model, String hash, long updatedAt) {}
 }

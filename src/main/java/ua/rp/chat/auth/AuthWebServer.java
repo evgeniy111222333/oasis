@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.*;
@@ -37,17 +38,20 @@ public class AuthWebServer {
             server = HttpServer.create(new InetSocketAddress(port), 0);
             
             // Route web UI page
-            server.createContext("/auth", new StaticFileHandler("index.html", "text/html"));
-            server.createContext("/", new StaticFileHandler("index.html", "text/html"));
-            server.createContext("/index.html", new StaticFileHandler("index.html", "text/html"));
-            server.createContext("/style.css", new StaticFileHandler("style.css", "text/css"));
-            server.createContext("/app.js", new StaticFileHandler("app.js", "application/javascript"));
+            server.createContext("/auth", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
+            server.createContext("/", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
+            server.createContext("/index.html", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
+            server.createContext("/style.css", new StaticFileHandler("style.css", "text/css; charset=utf-8"));
+            server.createContext("/app.js", new StaticFileHandler("app.js", "application/javascript; charset=utf-8"));
             
             // Route API endpoints
             server.createContext("/api/status", new ApiStatusHandler());
             server.createContext("/api/login", new ApiLoginHandler());
             server.createContext("/api/register", new ApiRegisterHandler());
             server.createContext("/api/recovery", new ApiRecoveryHandler());
+            server.createContext("/api/client-session", new ApiClientSessionHandler());
+            server.createContext("/api/appearance/profile", new ApiAppearanceProfileHandler());
+            server.createContext("/api/appearance/texture", new ApiAppearanceTextureHandler());
             server.createContext("/api/server-status", new ApiServerStatusHandler());
             server.createContext("/api/required-mods", new ApiRequiredModsHandler());
             server.createContext("/client", new ClientDownloadHandler());
@@ -113,13 +117,13 @@ public class AuthWebServer {
             String token = queryParams.get("token");
 
             if (token == null || token.isEmpty()) {
-                sendJsonResponse(exchange, 400, createErrorJson("Відсутній токен авторизації."));
+                sendJsonResponse(exchange, 400, createErrorJson("Отсутствует токен авторизации."));
                 return;
             }
 
             UUID uuid = authManager.getTokenToUuid().get(token);
             if (uuid == null) {
-                sendJsonResponse(exchange, 400, createErrorJson("Недійсний або прострочений токен."));
+                sendJsonResponse(exchange, 400, createErrorJson("Недействительный или просроченный токен."));
                 return;
             }
 
@@ -129,12 +133,53 @@ public class AuthWebServer {
 
             JsonObject responseJson = new JsonObject();
             responseJson.addProperty("success", true);
+            responseJson.addProperty("uuid", uuid.toString());
             responseJson.addProperty("username", username);
             responseJson.addProperty("registered", registered);
+            AuthDatabase.AppearanceProfile appearance = authManager.getDatabase().getAppearanceProfile(uuid);
+            if (appearance != null && authManager.getAppearanceManager().hasAppearance(uuid)) {
+                responseJson.addProperty("appearanceModel", appearance.model());
+                responseJson.addProperty("appearanceHash", appearance.hash());
+                responseJson.addProperty("appearanceUrl", "/api/appearance/texture/" + uuid + ".png?v=" + appearance.hash());
+            }
             if (loginName != null) {
                 responseJson.addProperty("loginName", loginName);
             }
 
+            sendJsonResponse(exchange, 200, responseJson);
+        }
+    }
+
+    /**
+     * GET /api/client-session?username=...
+     */
+    private class ApiClientSessionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+
+            Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getQuery());
+            String username = queryParams.get("username");
+
+            if (username == null || username.isBlank()) {
+                sendJsonResponse(exchange, 400, createErrorJson("Missing username."));
+                return;
+            }
+
+            Player player = plugin.getServer().getPlayerExact(username);
+            String authUrl = authManager.getActiveAuthUrl(player);
+            if (authUrl == null) {
+                exchange.sendResponseHeaders(204, -1);
+                exchange.close();
+                return;
+            }
+
+            JsonObject responseJson = new JsonObject();
+            responseJson.addProperty("success", true);
+            responseJson.addProperty("authUrl", authUrl);
             sendJsonResponse(exchange, 200, responseJson);
         }
     }
@@ -145,6 +190,7 @@ public class AuthWebServer {
     private class ApiLoginHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
@@ -160,7 +206,7 @@ public class AuthWebServer {
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Час сесії вичерпано. Перезайдіть у гру."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Время сессии истекло. Перезайдите в игру."));
                     return;
                 }
 
@@ -171,10 +217,10 @@ public class AuthWebServer {
                     responseJson.addProperty("rpName", rpName);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("Невірний пароль або логін. Спробуйте ще раз."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Неверный логин или пароль. Попробуйте еще раз."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Помилка обробки запиту: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("Ошибка обработки запроса: " + e.getMessage()));
             }
         }
     }
@@ -185,6 +231,7 @@ public class AuthWebServer {
     private class ApiRegisterHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
@@ -199,39 +246,45 @@ public class AuthWebServer {
                 String rpName = json.get("rpName").getAsString().trim();
                 String email = json.get("email").getAsString().trim();
                 String password = json.get("password").getAsString();
+                String appearanceData = json.has("appearanceData") && !json.get("appearanceData").isJsonNull()
+                        ? json.get("appearanceData").getAsString()
+                        : null;
+                String appearanceModel = json.has("appearanceModel") && !json.get("appearanceModel").isJsonNull()
+                        ? json.get("appearanceModel").getAsString()
+                        : "classic";
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Час сесії вичерпано. Перезайдіть у гру."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Время сессии истекло. Перезайдите в игру."));
                     return;
                 }
 
                 // Check patterns on backend as well for security
                 if (!loginName.matches("^[a-zA-Z0-9_]{4,16}$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Логін повинен містити тільки англійські літери та цифри (4-16)."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Логин должен содержать 4-16 символов: латиница, цифры или подчеркивание."));
                     return;
                 }
 
                 // Cyrillic Firstname Lastname validation
-                if (!rpName.matches("^[A-ZА-ЯІЄЇ][a-zа-яієї']+\\s+[A-ZА-ЯІЄЇ][a-zа-яієї']+$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Рольове ім'я має бути у форматі: Іван Петренко або Иван Петренко."));
+                if (!rpName.matches("^[A-ZА-ЯЁ][a-zа-яё']+\\s+[A-ZА-ЯЁ][a-zа-яё']+$")) {
+                    sendJsonResponse(exchange, 400, createErrorJson("Имя персонажа должно быть в формате: Иван Петров."));
                     return;
                 }
 
                 if (authManager.getDatabase().isLoginNameTaken(loginName)) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Цей логін вже зайнятий іншим гравцем."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Этот логин уже занят другим игроком."));
                     return;
                 }
 
-                if (authManager.webRegister(uuid, loginName, rpName, email, password)) {
+                if (authManager.webRegister(uuid, loginName, rpName, email, password, appearanceData, appearanceModel)) {
                     JsonObject responseJson = new JsonObject();
                     responseJson.addProperty("success", true);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("Помилка реєстрації. Перевірте введені дані."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Ошибка регистрации. Проверьте введенные данные."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Помилка обробки: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("Ошибка обработки: " + e.getMessage()));
             }
         }
     }
@@ -242,6 +295,7 @@ public class AuthWebServer {
     private class ApiRecoveryHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
@@ -255,15 +309,99 @@ public class AuthWebServer {
                 // Mock recovery logic
                 JsonObject responseJson = new JsonObject();
                 responseJson.addProperty("success", true);
-                responseJson.addProperty("message", "Код для відновлення надіслано на пошту " + email + "!");
+                responseJson.addProperty("message", "Код восстановления отправлен на почту " + email + "!");
                 sendJsonResponse(exchange, 200, responseJson);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Помилка: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("Ошибка: " + e.getMessage()));
+            }
+        }
+    }
+
+    /**
+     * GET /api/appearance/profile?uuid=...
+     */
+    private class ApiAppearanceProfileHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+
+            Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getQuery());
+            String uuidRaw = queryParams.get("uuid");
+            if (uuidRaw == null || uuidRaw.isBlank()) {
+                sendJsonResponse(exchange, 400, createErrorJson("Missing uuid."));
+                return;
+            }
+
+            try {
+                UUID uuid = UUID.fromString(uuidRaw);
+                AuthDatabase.AppearanceProfile appearance = authManager.getDatabase().getAppearanceProfile(uuid);
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("success", true);
+                if (appearance != null && authManager.getAppearanceManager().hasAppearance(uuid)) {
+                    responseJson.addProperty("hasAppearance", true);
+                    responseJson.addProperty("model", appearance.model());
+                    responseJson.addProperty("hash", appearance.hash());
+                    responseJson.addProperty("updatedAt", appearance.updatedAt());
+                    responseJson.addProperty("textureUrl", "/api/appearance/texture/" + uuid + ".png?v=" + appearance.hash());
+                } else {
+                    responseJson.addProperty("hasAppearance", false);
+                }
+                sendJsonResponse(exchange, 200, responseJson);
+            } catch (IllegalArgumentException e) {
+                sendJsonResponse(exchange, 400, createErrorJson("Invalid uuid."));
+            }
+        }
+    }
+
+    /**
+     * GET /api/appearance/texture/{uuid}.png
+     */
+    private class ApiAppearanceTextureHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendResponse(exchange, 405, "text/plain", "Method Not Allowed");
+                return;
+            }
+
+            String path = exchange.getRequestURI().getPath();
+            String prefix = "/api/appearance/texture/";
+            if (!path.startsWith(prefix) || !path.endsWith(".png")) {
+                sendResponse(exchange, 404, "text/plain", "404 Not Found");
+                return;
+            }
+
+            String uuidRaw = path.substring(prefix.length(), path.length() - ".png".length());
+            try {
+                UUID uuid = UUID.fromString(uuidRaw);
+                File file = authManager.getAppearanceManager().getAppearanceFile(uuid);
+                if (!file.isFile()) {
+                    sendResponse(exchange, 404, "text/plain", "404 Not Found");
+                    return;
+                }
+                byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
+                sendResponse(exchange, 200, "image/png", bytes);
+            } catch (IllegalArgumentException e) {
+                sendResponse(exchange, 400, "text/plain", "Invalid uuid");
             }
         }
     }
 
     // --- Utility Web Methods ---
+
+    private boolean handleOptions(HttpExchange exchange) throws IOException {
+        if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            sendResponse(exchange, 204, "text/plain", "");
+            return true;
+        }
+        return false;
+    }
 
     private void sendResponse(HttpExchange exchange, int statusCode, String contentType, String content) throws IOException {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
@@ -419,7 +557,7 @@ public class AuthWebServer {
         try {
             file.getParentFile().mkdirs();
             String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"dd7938dcfc2c2e5c5050bd973aad140279c30614\", \"size\": 6885 },\n" +
+                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"0be728f18798537a6ace00174835f0352c882df2\", \"size\": 63560 },\n" +
                     "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
                     "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
                     "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +

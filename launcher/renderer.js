@@ -19,6 +19,21 @@ const fullscreenInput = document.getElementById('fullscreenInput');
 
 let currentGamePath = '';
 
+function setServerStatus({ online, text, players = '-- / --' }) {
+    const statusDot = document.querySelector('.status-dot');
+    const statusText = document.querySelector('.status-text');
+    const onlineCount = document.querySelector('.online-count');
+    if (!statusDot || !statusText || !onlineCount) {
+        return;
+    }
+    statusDot.style.backgroundColor = online ? '#99C3A2' : '#E3A899';
+    statusDot.style.boxShadow = online ? '0 0 8px #99C3A2' : '0 0 8px #E3A899';
+    statusText.innerText = text;
+    onlineCount.innerText = players;
+}
+
+setServerStatus({ online: false, text: 'Проверка сервера...' });
+
 // Load config on startup
 ipcRenderer.send('get-config');
 ipcRenderer.on('config-data', (event, data) => {
@@ -126,32 +141,32 @@ ipcRenderer.on('game-closed', () => {
     btnPlay.classList.remove('in-game-style');
 });
 
-// Dynamic server status & online query from plugin API
+// Dynamic server status & online query from plugin API.
 async function updateServerStatus() {
-    const statusDot = document.querySelector('.status-dot');
-    const statusText = document.querySelector('.status-text');
-    const onlineCount = document.querySelector('.online-count');
-    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1400);
     try {
-        const response = await fetch('http://localhost:25580/api/server-status');
+        const response = await fetch(`http://localhost:25580/api/server-status?ts=${Date.now()}`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.json();
-        
         if (data.success && data.status === 'online') {
-            statusDot.style.backgroundColor = '#99C3A2'; // Success green
-            statusDot.style.boxShadow = '0 0 8px #99C3A2';
-            statusText.innerText = 'Сервер працює в штатному режимі';
-            onlineCount.innerText = `${data.onlinePlayers} / ${data.maxPlayers}`;
+            setServerStatus({
+                online: true,
+                text: 'Сервер работает',
+                players: `${data.onlinePlayers} / ${data.maxPlayers}`
+            });
         } else {
-            statusDot.style.backgroundColor = '#E3A899'; // Offline red
-            statusDot.style.boxShadow = '0 0 8px #E3A899';
-            statusText.innerText = 'Сервер не відповідає';
-            onlineCount.innerText = '-- / --';
+            setServerStatus({ online: false, text: 'Сервер не отвечает' });
         }
     } catch (error) {
-        statusDot.style.backgroundColor = '#E3A899'; // Offline red
-        statusDot.style.boxShadow = '0 0 8px #E3A899';
-        statusText.innerText = 'Сервер вимкнено';
-        onlineCount.innerText = '-- / --';
+        clearTimeout(timeoutId);
+        setServerStatus({ online: false, text: 'Сервер выключен' });
     }
 }
 
