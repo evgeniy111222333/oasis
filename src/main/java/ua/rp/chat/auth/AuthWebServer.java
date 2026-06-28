@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import ua.rp.chat.vitals.StaminaManager;
 
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -25,12 +26,14 @@ public class AuthWebServer {
 
     private final JavaPlugin plugin;
     private final AuthManager authManager;
+    private final StaminaManager staminaManager;
     private HttpServer server;
     private final Gson gson = new Gson();
 
-    public AuthWebServer(JavaPlugin plugin, AuthManager authManager) {
+    public AuthWebServer(JavaPlugin plugin, AuthManager authManager, StaminaManager staminaManager) {
         this.plugin = plugin;
         this.authManager = authManager;
+        this.staminaManager = staminaManager;
     }
 
     public void start(int port) {
@@ -43,6 +46,9 @@ public class AuthWebServer {
             server.createContext("/index.html", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
             server.createContext("/style.css", new StaticFileHandler("style.css", "text/css; charset=utf-8"));
             server.createContext("/app.js", new StaticFileHandler("app.js", "application/javascript; charset=utf-8"));
+            server.createContext("/body", new StaticFileHandler("body.html", "text/html; charset=utf-8"));
+            server.createContext("/body.css", new StaticFileHandler("body.css", "text/css; charset=utf-8"));
+            server.createContext("/body.js", new StaticFileHandler("body.js", "application/javascript; charset=utf-8"));
             
             // Route API endpoints
             server.createContext("/api/status", new ApiStatusHandler());
@@ -53,6 +59,7 @@ public class AuthWebServer {
             server.createContext("/api/appearance/profile", new ApiAppearanceProfileHandler());
             server.createContext("/api/appearance/texture", new ApiAppearanceTextureHandler());
             server.createContext("/api/server-status", new ApiServerStatusHandler());
+            server.createContext("/api/vitals", new ApiVitalsHandler());
             server.createContext("/api/required-mods", new ApiRequiredModsHandler());
             server.createContext("/client", new ClientDownloadHandler());
 
@@ -117,13 +124,13 @@ public class AuthWebServer {
             String token = queryParams.get("token");
 
             if (token == null || token.isEmpty()) {
-                sendJsonResponse(exchange, 400, createErrorJson("Отсутствует токен авторизации."));
+                sendJsonResponse(exchange, 400, createErrorJson("РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ С‚РѕРєРµРЅ Р°РІС‚РѕСЂРёР·Р°С†РёРё."));
                 return;
             }
 
             UUID uuid = authManager.getTokenToUuid().get(token);
             if (uuid == null) {
-                sendJsonResponse(exchange, 400, createErrorJson("Недействительный или просроченный токен."));
+                sendJsonResponse(exchange, 400, createErrorJson("РќРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅС‹Р№ РёР»Рё РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Р№ С‚РѕРєРµРЅ."));
                 return;
             }
 
@@ -203,24 +210,27 @@ public class AuthWebServer {
                 String token = json.get("token").getAsString();
                 String loginName = json.get("loginName").getAsString().trim();
                 String password = json.get("password").getAsString();
+                boolean rememberDevice = json.has("rememberMe")
+                        && !json.get("rememberMe").isJsonNull()
+                        && json.get("rememberMe").getAsBoolean();
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Время сессии истекло. Перезайдите в игру."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Р’СЂРµРјСЏ СЃРµСЃСЃРёРё РёСЃС‚РµРєР»Рѕ. РџРµСЂРµР·Р°Р№РґРёС‚Рµ РІ РёРіСЂСѓ."));
                     return;
                 }
 
-                if (authManager.webLogin(uuid, loginName, password)) {
+                if (authManager.webLogin(uuid, loginName, password, rememberDevice)) {
                     String rpName = authManager.getRpName(uuid);
                     JsonObject responseJson = new JsonObject();
                     responseJson.addProperty("success", true);
                     responseJson.addProperty("rpName", rpName);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("Неверный логин или пароль. Попробуйте еще раз."));
+                    sendJsonResponse(exchange, 400, createErrorJson("РќРµРІРµСЂРЅС‹Р№ Р»РѕРіРёРЅ РёР»Рё РїР°СЂРѕР»СЊ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Ошибка обработки запроса: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё Р·Р°РїСЂРѕСЃР°: " + e.getMessage()));
             }
         }
     }
@@ -255,24 +265,24 @@ public class AuthWebServer {
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Время сессии истекло. Перезайдите в игру."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Р’СЂРµРјСЏ СЃРµСЃСЃРёРё РёСЃС‚РµРєР»Рѕ. РџРµСЂРµР·Р°Р№РґРёС‚Рµ РІ РёРіСЂСѓ."));
                     return;
                 }
 
                 // Check patterns on backend as well for security
                 if (!loginName.matches("^[a-zA-Z0-9_]{4,16}$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Логин должен содержать 4-16 символов: латиница, цифры или подчеркивание."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Р›РѕРіРёРЅ РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ 4-16 СЃРёРјРІРѕР»РѕРІ: Р»Р°С‚РёРЅРёС†Р°, С†РёС„СЂС‹ РёР»Рё РїРѕРґС‡РµСЂРєРёРІР°РЅРёРµ."));
                     return;
                 }
 
                 // Cyrillic Firstname Lastname validation
-                if (!rpName.matches("^[A-ZА-ЯЁ][a-zа-яё']+\\s+[A-ZА-ЯЁ][a-zа-яё']+$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Имя персонажа должно быть в формате: Иван Петров."));
+                if (!rpName.matches("^[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+\\s+[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+$")) {
+                    sendJsonResponse(exchange, 400, createErrorJson("РРјСЏ РїРµСЂСЃРѕРЅР°Р¶Р° РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ: РРІР°РЅ РџРµС‚СЂРѕРІ."));
                     return;
                 }
 
                 if (authManager.getDatabase().isLoginNameTaken(loginName)) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Этот логин уже занят другим игроком."));
+                    sendJsonResponse(exchange, 400, createErrorJson("Р­С‚РѕС‚ Р»РѕРіРёРЅ СѓР¶Рµ Р·Р°РЅСЏС‚ РґСЂСѓРіРёРј РёРіСЂРѕРєРѕРј."));
                     return;
                 }
 
@@ -281,10 +291,10 @@ public class AuthWebServer {
                     responseJson.addProperty("success", true);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("Ошибка регистрации. Проверьте введенные данные."));
+                    sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° СЂРµРіРёСЃС‚СЂР°С†РёРё. РџСЂРѕРІРµСЂСЊС‚Рµ РІРІРµРґРµРЅРЅС‹Рµ РґР°РЅРЅС‹Рµ."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Ошибка обработки: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё: " + e.getMessage()));
             }
         }
     }
@@ -309,10 +319,10 @@ public class AuthWebServer {
                 // Mock recovery logic
                 JsonObject responseJson = new JsonObject();
                 responseJson.addProperty("success", true);
-                responseJson.addProperty("message", "Код восстановления отправлен на почту " + email + "!");
+                responseJson.addProperty("message", "РљРѕРґ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РѕС‚РїСЂР°РІР»РµРЅ РЅР° РїРѕС‡С‚Сѓ " + email + "!");
                 sendJsonResponse(exchange, 200, responseJson);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Ошибка: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР°: " + e.getMessage()));
             }
         }
     }
@@ -488,6 +498,34 @@ public class AuthWebServer {
     }
 
     /**
+     * GET /api/vitals?username=...
+     */
+    private class ApiVitalsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+
+            Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getQuery());
+            String username = queryParams.get("username");
+            if (username == null || username.isBlank()) {
+                sendJsonResponse(exchange, 400, createErrorJson("Missing username"));
+                return;
+            }
+
+            Player player = plugin.getServer().getPlayerExact(username);
+            if (player == null) {
+                sendJsonResponse(exchange, 404, createErrorJson("Player is offline"));
+                return;
+            }
+
+            sendJsonResponse(exchange, 200, staminaManager.toJson(player));
+        }
+    }
+
+    /**
      * Handler to serve client update files from the plugin client folder.
      */
     private class ClientDownloadHandler implements HttpHandler {
@@ -557,7 +595,7 @@ public class AuthWebServer {
         try {
             file.getParentFile().mkdirs();
             String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"343e6c266e506fbf58da56cd39953c288a24fb22\", \"size\": 63645 },\n" +
+                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"5b2d97ac0fd240a310fb7602f85ffd123bf94e7f\", \"size\": 73339 },\n" +
                     "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
                     "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
                     "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +

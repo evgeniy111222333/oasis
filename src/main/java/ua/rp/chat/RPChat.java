@@ -2,6 +2,7 @@ package ua.rp.chat;
 
 import org.bukkit.plugin.java.JavaPlugin;
 import ua.rp.chat.auth.*;
+import ua.rp.chat.vitals.StaminaManager;
 
 import java.sql.SQLException;
 
@@ -12,6 +13,7 @@ public class RPChat extends JavaPlugin {
     private AuthWebServer authWebServer;
     private AuthGuiManager authGuiManager;
     private AppearanceManager appearanceManager;
+    private StaminaManager staminaManager;
 
     @Override
     public void onEnable() {
@@ -37,6 +39,8 @@ public class RPChat extends JavaPlugin {
         }
 
         authManager = new AuthManager(this, authDatabase, appearanceManager);
+        staminaManager = new StaminaManager(this);
+        staminaManager.start();
         
         // Initialize and register GUI Manager
         authGuiManager = new AuthGuiManager(this, authManager);
@@ -59,7 +63,7 @@ public class RPChat extends JavaPlugin {
 
         // Start Web Server
         int webPort = getConfig().getInt("web.port", 8080);
-        authWebServer = new AuthWebServer(this, authManager);
+        authWebServer = new AuthWebServer(this, authManager, staminaManager);
         authWebServer.start(webPort);
 
         // --- Register Chat Events ---
@@ -86,7 +90,7 @@ public class RPChat extends JavaPlugin {
             webFolder.mkdirs();
         }
 
-        String[] files = {"index.html", "style.css", "app.js"};
+        String[] files = {"index.html", "style.css", "app.js", "body.html", "body.css", "body.js"};
         for (String filename : files) {
             java.io.File outFile = new java.io.File(webFolder, filename);
             if (!outFile.exists()) {
@@ -128,5 +132,9 @@ public class RPChat extends JavaPlugin {
 
     public AppearanceManager getAppearanceManager() {
         return appearanceManager;
+    }
+
+    public StaminaManager getStaminaManager() {
+        return staminaManager;
     }
 }

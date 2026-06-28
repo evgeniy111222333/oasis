@@ -36,7 +36,7 @@ public class PlayerModelMixin {
     private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
         oasis$applyStableRoleplayPose(model, state);
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
+        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
         Player player = oasis$getRenderedPlayer(state);
@@ -50,28 +50,54 @@ public class PlayerModelMixin {
         }
 
         float moving = oasis$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
+        ItemStack main = state.getMainHandItemStack();
+        String heldItem = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
+        boolean heavyItem = heldItem.contains("axe") || heldItem.contains("mace") || heldItem.contains("hammer") || heldItem.contains("great") || heldItem.contains("halberd");
+        boolean aiming = state.isUsingItem && (heldItem.contains("bow") || heldItem.contains("crossbow") || heldItem.contains("trident") || heldItem.contains("spear"));
         // НЕ повне згасання — реальні люди дихають i при ходьбі.
         // minCalm 0.30 гарантує видиму амплітуду дихання під час руху.
-        float calmBase = state.isCrouching ? 0.55f : 1.0f;
-        float calm = calmBase * Math.max(0.30f, 1.0f - moving * 0.6f);
+        float calmBase = state.isCrouching ? 0.62f : 1.0f;
+        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        float fatigue = 1.0f - stamina;
+        float motionDamp = 1.0f - moving * 0.55f;
+        if (heavyItem) {
+            motionDamp *= 0.86f;
+        }
+        if (aiming) {
+            motionDamp *= 0.55f;
+        }
+        float calm = calmBase * oasis$clamp(motionDamp, 0.28f, 1.0f);
 
         // --- ДИХАННЯ ---
         // ~13 дихань/хв при 20 TPS. Амплітуди підібрані так, щоб рух було
         // видно неозброєним оком (кути ~2-3° замість колишніх 0.3-0.5°).
         // ВАЖЛИВО: НЕ модифікуємо body.y — це рвало тулуб від голови.
-        float breath = (float) Math.sin(state.ageInTicks * 0.06981317f);
-        float breathLift = breath * calm;
-        model.body.xRot += breathLift * 0.045f;
-        model.leftArm.xRot += breathLift * 0.055f;
-        model.rightArm.xRot += breathLift * 0.055f;
-        model.leftArm.zRot += breathLift * 0.025f;
-        model.rightArm.zRot -= breathLift * 0.025f;
+        float breathRate = 0.0114f + moving * 0.0038f + oasis$clamp(state.speedValue, 0.0f, 0.35f) * 0.0030f + fatigue * 0.017f;
+        float breath = oasis$breathCurve(state.ageInTicks * breathRate);
+        float inhale = breath * calm;
+        float exhale = (1.0f - breath) * calm;
+        float micro = ((float) Math.sin(state.ageInTicks * 0.173f + 0.7f) * 0.10f
+                + (float) Math.sin(state.ageInTicks * 0.041f + 1.9f) * 0.07f) * calm;
+        float breathLift = (inhale - exhale * 0.18f + micro * 0.12f) * (1.0f + fatigue * 1.15f);
+        model.body.xRot += breathLift * (0.010f + fatigue * 0.010f);
+        model.leftArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
+        model.rightArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
+        model.leftArm.zRot += breathLift * (0.012f + fatigue * 0.012f);
+        model.rightArm.zRot -= breathLift * (0.012f + fatigue * 0.012f);
+        model.leftArm.yRot -= inhale * (0.006f + fatigue * 0.009f);
+        model.rightArm.yRot += inhale * (0.006f + fatigue * 0.009f);
+        if (fatigue > 0.55f && moving < 0.25f) {
+            float exhausted = (fatigue - 0.55f) / 0.45f;
+            model.body.xRot += exhausted * 0.035f;
+            model.leftArm.xRot += exhausted * 0.080f;
+            model.rightArm.xRot += exhausted * 0.080f;
+        }
 
         // Легкий ваго-перенос (вес тела переносится с ноги на ногу).
-        float idleShift = (float) Math.sin(state.ageInTicks * 0.01396263f) * calm;
-        model.body.zRot += idleShift * 0.010f;
-        model.leftArm.zRot += idleShift * 0.004f;
-        model.rightArm.zRot += idleShift * 0.004f;
+        float idleShift = (float) Math.sin(state.ageInTicks * 0.0105f + Math.sin(state.ageInTicks * 0.003f) * 0.4f) * calm * (1.0f - moving * 0.35f);
+        model.body.zRot += idleShift * 0.005f;
+        model.leftArm.zRot += idleShift * 0.003f;
+        model.rightArm.zRot += idleShift * 0.003f;
 
         // --- НАХИЛ ПРИ ПОГЛЯДІ ВНИЗ ---
         // Поріг знижено з 58°→86° до 25°→65°: нахил починається раніше,
@@ -81,7 +107,7 @@ public class PlayerModelMixin {
         // при оберті навколо X — точка кріплення голови (0,0,0) не змінюється).
         float lookDown = oasis$smoothStep(25.0f, 65.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
         float lean = lookDown * (state.isCrouching ? 0.5f : 1.0f);
-        float torsoLeanDelta = lean * 0.22f;
+        float torsoLeanDelta = lean * 0.060f;
         model.body.xRot += torsoLeanDelta;
         model.leftArm.xRot -= lean * 0.24f;
         model.rightArm.xRot -= lean * 0.24f;
@@ -260,6 +286,18 @@ public class PlayerModelMixin {
     }
 
     @Unique
+    private float oasis$breathCurve(float cycles) {
+        float phase = cycles - (float) Math.floor(cycles);
+        if (phase < 0.34f) {
+            return oasis$smoothStep(0.0f, 0.34f, phase);
+        }
+        if (phase < 0.88f) {
+            return 1.0f - oasis$smoothStep(0.34f, 0.88f, phase);
+        }
+        return 0.0f;
+    }
+
+    @Unique
     private float oasis$clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
@@ -386,24 +424,20 @@ public class PlayerModelMixin {
 
     @Unique
     private void oasis$syncWearableLayers(PlayerModel model) {
-        oasis$copyPose(model.rightArm, model.rightSleeve);
-        oasis$copyPose(model.leftArm, model.leftSleeve);
-        oasis$copyPose(model.rightLeg, model.rightPants);
-        oasis$copyPose(model.leftLeg, model.leftPants);
-        oasis$copyPose(model.body, model.jacket);
+        oasis$resetWearableLocalPose(model.hat);
+        oasis$resetWearableLocalPose(model.rightSleeve);
+        oasis$resetWearableLocalPose(model.leftSleeve);
+        oasis$resetWearableLocalPose(model.rightPants);
+        oasis$resetWearableLocalPose(model.leftPants);
+        oasis$resetWearableLocalPose(model.jacket);
     }
 
     @Unique
-    private void oasis$copyPose(ModelPart from, ModelPart to) {
-        if (from == null || to == null) {
+    private void oasis$resetWearableLocalPose(ModelPart part) {
+        if (part == null) {
             return;
         }
-        to.x = from.x;
-        to.y = from.y;
-        to.z = from.z;
-        to.xRot = from.xRot;
-        to.yRot = from.yRot;
-        to.zRot = from.zRot;
+        part.loadPose(part.getInitialPose());
     }
 
     @Unique

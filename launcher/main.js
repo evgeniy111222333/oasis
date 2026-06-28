@@ -14,7 +14,7 @@ const SERVER_URL = 'http://localhost:25580';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 
 const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '343e6c266e506fbf58da56cd39953c288a24fb22', size: 63645 },
+    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '5b2d97ac0fd240a310fb7602f85ffd123bf94e7f', size: 73339 },
     { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
     { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
     { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
@@ -339,7 +339,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         // 1. Download the Fabric 26.1.2 profile if missing or stale
         const versionJsonPath = getClientProfilePath(activeGamePath);
         if (!isClientProfileValid(versionJsonPath)) {
-            updateProgress('Завантаження профілю запуску...', Math.round((currentStep / totalSteps) * 100));
+            updateProgress('Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РїСЂРѕС„С–Р»СЋ Р·Р°РїСѓСЃРєСѓ...', Math.round((currentStep / totalSteps) * 100));
             const localSource = getLocalClientSource(CLIENT_PROFILE_PATH);
             if (fs.existsSync(localSource)) {
                 fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
@@ -356,11 +356,11 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             if (!isManagedFileValid(modLocalPath, mod)) {
                 const localSource = getLocalClientSource(mod.path);
                 if (fs.existsSync(localSource)) {
-                    updateProgress(`Копіювання моду: ${mod.name}...`, Math.round((currentStep / totalSteps) * 100));
+                    updateProgress(`РљРѕРїС–СЋРІР°РЅРЅСЏ РјРѕРґСѓ: ${mod.name}...`, Math.round((currentStep / totalSteps) * 100));
                     fs.mkdirSync(path.dirname(modLocalPath), { recursive: true });
                     fs.copyFileSync(localSource, modLocalPath);
                 } else {
-                    updateProgress(`Завантаження моду: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
+                    updateProgress(`Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РјРѕРґСѓ: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
                     await downloadFile(`${SERVER_URL}/client/${mod.path}`, modLocalPath, (received, total) => {
                         const filePercent = Math.round((received / total) * 100);
                         const kbReceived = Math.round(received / 1024);
@@ -369,7 +369,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
                         event.reply('update-progress', {
                             status: 'downloading',
                             progress: subProgress,
-                            message: `Завантаження моду: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
+                            message: `Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РјРѕРґСѓ: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
                         });
                     });
                 }
@@ -377,7 +377,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             currentStep++;
         }
 
-        updateProgress('Клієнт успішно оновлено!', 100);
+        updateProgress('РљР»С–С”РЅС‚ СѓСЃРїС–С€РЅРѕ РѕРЅРѕРІР»РµРЅРѕ!', 100);
         event.reply('update-status', { updateRequired: false, success: true });
     } catch (err) {
         console.error('Update failed:', err);
@@ -389,7 +389,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
 ipcMain.on('select-directory', (event) => {
     dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
-        title: 'Виберіть папку для встановлення Oasis RP'
+        title: 'Р’РёР±РµСЂС–С‚СЊ РїР°РїРєСѓ РґР»СЏ РІСЃС‚Р°РЅРѕРІР»РµРЅРЅСЏ Oasis RP'
     }).then(result => {
         if (!result.canceled && result.filePaths.length > 0) {
             const selectedPath = result.filePaths[0];
@@ -436,7 +436,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         event.reply('launch-status', {
             status: 'downloading',
             progress: percent,
-            message: `Завантаження ресурсів: ${e.type} (${e.task}/${e.total})`
+            message: `Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ СЂРµСЃСѓСЂСЃС–РІ: ${e.type} (${e.task}/${e.total})`
         });
     });
 
@@ -444,7 +444,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         event.reply('launch-status', {
             status: 'downloading',
             progress: 90,
-            message: `Скачування бібліотек: ${e.type}...`
+            message: `РЎРєР°С‡СѓРІР°РЅРЅСЏ Р±С–Р±Р»С–РѕС‚РµРє: ${e.type}...`
         });
     });
 
@@ -540,7 +540,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         event.reply('launch-status', {
             status: 'success',
             progress: 100,
-            message: 'Гру запущено! Приємної гри.'
+            message: 'Р“СЂСѓ Р·Р°РїСѓС‰РµРЅРѕ! РџСЂРёС”РјРЅРѕС— РіСЂРё.'
         });
 
         setTimeout(() => {
@@ -554,7 +554,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         event.reply('launch-status', {
             status: 'error',
             progress: 0,
-            message: `Помилка запуску: ${err.message}`
+            message: `РџРѕРјРёР»РєР° Р·Р°РїСѓСЃРєСѓ: ${err.message}`
         });
     }
 });

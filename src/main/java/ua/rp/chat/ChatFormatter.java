@@ -88,6 +88,44 @@ public class ChatFormatter {
     private static final TextColor S10_DO = TextColor.color(0x80DEEA);
     private static final TextColor S10_MUTED = TextColor.color(0xB0BEC5);
 
+    public static Component formatJoin(String name, int style) {
+        TextComponent.Builder builder = Component.text();
+        switch (style) {
+            case 2 -> builder.append(Component.text("✦ ", S2_MUTED))
+                    .append(Component.text(name, S2_NAME))
+                    .append(Component.text(" з'являється у сцені.", S2_ACTION));
+            case 3 -> builder.append(Component.text("◇ ", S3_ACCENT))
+                    .append(Component.text(name, S3_NAME))
+                    .append(Component.text(" повернувся до північного вітру.", S3_MUTED));
+            case 4 -> builder.append(Component.text("✿ ", S4_NAME))
+                    .append(Component.text(name, S4_NAME))
+                    .append(Component.text(" прокидається під тихий шелест.", S4_MUTED));
+            case 5 -> builder.append(Component.text(">> ", S5_ACCENT))
+                    .append(Component.text(name, S5_NAME))
+                    .append(Component.text(" синхронізувався із містом.", S5_ACTION));
+            case 6 -> builder.append(Component.text("[", S6_MUTED))
+                    .append(Component.text(name, S6_NAME))
+                    .append(Component.text("] входить у кадр.", S6_ACTION));
+            case 7 -> builder.append(Component.text("• ", S7_MUTED))
+                    .append(Component.text(name, S7_NAME))
+                    .append(Component.text(" повертається на вечірню вулицю.", S7_ACTION));
+            case 8 -> builder.append(Component.text("🍃 ", S8_ACCENT))
+                    .append(Component.text(name, S8_NAME))
+                    .append(Component.text(" прокинувся серед шелесту листя.", S8_ACTION));
+            case 9 -> builder.append(Component.text("❖ ", S9_ACCENT))
+                    .append(Component.text(name, S9_NAME))
+                    .append(Component.text(" з'являється без зайвих слів.", S9_MUTED));
+            case 10 -> builder.append(Component.text("✦ ", S10_ACCENT))
+                    .append(Component.text(name, S10_NAME))
+                    .append(Component.text(" проявився на межі сну.", S10_MUTED));
+            case 1 -> builder.append(Component.text("• ", S1_MUTED))
+                    .append(Component.text(name, S1_NAME))
+                    .append(Component.text(" повільно прокидається у світі.", S1_ACTION));
+            default -> builder.append(Component.text(name + " прокидається у світі.", NamedTextColor.GRAY));
+        }
+        return builder.build();
+    }
+
     // Success / Failure Colors
     private static final TextColor COLOR_SUCCESS = TextColor.color(0x99C3A2); // Soft Olive green
     private static final TextColor COLOR_FAIL = TextColor.color(0xE3A899);    // Soft Terracotta red

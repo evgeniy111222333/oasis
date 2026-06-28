@@ -24,3 +24,11 @@ web:
   port: 25580
   # Base URL shown to players in game (e.g. "http://yourserverip:25580")
   url: "http://localhost:25580"
+
+# ==========================================
+#             Auth Session Settings
+# ==========================================
+auth:
+  # Legacy behavior: skip the auth window when the player's IP matches the last login.
+  # Keep disabled for RP servers; "remember me" should only prefill the form.
+  auto-login-by-ip: false

@@ -65,17 +65,19 @@ public class AuthManager {
     public void handleJoin(Player player) {
         UUID uuid = player.getUniqueId();
 
-        // Check for IP-session auto-login
+        // Optional legacy IP-session auto-login. Disabled by default because
+        // "remember me" should prefill the auth form, not skip authentication.
         String currentIp = getPlayerIp(player);
-        if (database.isRegistered(uuid)) {
+        if (plugin.getConfig().getBoolean("auth.auto-login-by-ip", false) && database.isRegistered(uuid)) {
             String lastIp = database.getLastIp(uuid);
-            if (lastIp != null && lastIp.equals(currentIp)) {
+                if (lastIp != null && lastIp.equals(currentIp)) {
                 // Auto-login: same IP session
                 plugin.getLogger().info("Auto-login for " + player.getName() + " (IP session match)");
                 database.updateLogin(uuid, currentIp);
                 
                 String rpName = database.getRpName(uuid);
                 applyRpIdentity(player, rpName);
+                broadcastRoleplayJoin(player, rpName);
                 sendAutoLoginTitle(player);
                 return;
             }
@@ -145,7 +147,7 @@ public class AuthManager {
             if (!appearanceResult.success()) {
                 plugin.getLogger().warning("Appearance upload failed for " + player.getName() + ": " + appearanceResult.message());
             }
-            database.updateLogin(uuid, getPlayerIp(player));
+            database.updateLogin(uuid, null);
             
             // Apply name tag and chat styles
             new BukkitRunnable() {
@@ -153,6 +155,7 @@ public class AuthManager {
                 public void run() {
                     applyRpIdentity(player, rpName);
                     completeAuth(player);
+                    broadcastRoleplayJoin(player, rpName);
                 }
             }.runTask(plugin); // Run on main server thread!
             return true;
@@ -164,6 +167,10 @@ public class AuthManager {
      * Web Login Handler.
      */
     public boolean webLogin(UUID uuid, String loginName, String password) {
+        return webLogin(uuid, loginName, password, false);
+    }
+
+    public boolean webLogin(UUID uuid, String loginName, String password, boolean rememberDevice) {
         Player player = plugin.getServer().getPlayer(uuid);
         if (player == null || !pendingAuth.contains(uuid)) {
             return false;
@@ -180,7 +187,7 @@ public class AuthManager {
         }
 
         if (PasswordHasher.verify(password, storedHash)) {
-            database.updateLogin(uuid, getPlayerIp(player));
+            database.updateLogin(uuid, rememberDevice ? getPlayerIp(player) : null);
             
             String rpName = database.getRpName(uuid);
             // Apply name tag and chat styles on main thread
@@ -189,6 +196,7 @@ public class AuthManager {
                 public void run() {
                     applyRpIdentity(player, rpName);
                     completeAuth(player);
+                    broadcastRoleplayJoin(player, rpName);
                 }
             }.runTask(plugin);
             return true;
@@ -293,6 +301,15 @@ public class AuthManager {
                 sendWelcomeTitle(player);
             }
         }.runTaskLater(plugin, 2L);
+    }
+
+    private void broadcastRoleplayJoin(Player player, String rpName) {
+        if (player == null) {
+            return;
+        }
+        String name = rpName != null && !rpName.isBlank() ? rpName : player.getName();
+        int style = plugin.getActiveStyle();
+        plugin.getServer().broadcast(ua.rp.chat.ChatFormatter.formatJoin(name, style));
     }
 
     public void openAuthOverlay(Player player, String token) {
