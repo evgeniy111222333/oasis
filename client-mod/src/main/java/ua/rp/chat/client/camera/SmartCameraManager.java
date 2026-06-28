@@ -171,18 +171,28 @@ public class SmartCameraManager {
     }
 
     public Vec3 getCameraOffset(double yaw, double pitch) {
-        return Vec3.ZERO;
-    }
-
-    public Vec3 getEyeOffset(double yaw, double pitch) {
         if (!enabled) {
             return Vec3.ZERO;
         }
+        // Forward offset виносить обличчя попереду шиї, тулуб менше видно в кадрі.
+        // Невеликий down-offset імітує положення очей у черепі, не на маківці.
         double yawRad = Math.toRadians(yaw);
         double pitchDown = clamp(pitch, 0.0, 90.0);
-        double inspect = smoothStep(62.0, 88.0, pitchDown);
-        double forwardAmount = 0.115 + inspect * 0.035;
-        return new Vec3(-Math.sin(yawRad) * forwardAmount, 0.0, Math.cos(yawRad) * forwardAmount);
+        double inspect = smoothStep(20.0, 80.0, pitchDown);
+        double forwardAmount = 0.20 + inspect * 0.05;
+        double downAmount = 0.02 + inspect * 0.03;
+        return new Vec3(
+                -Math.sin(yawRad) * forwardAmount,
+                -downAmount,
+                Math.cos(yawRad) * forwardAmount
+        );
+    }
+
+    public Vec3 getEyeOffset(double yaw, double pitch) {
+        // Eye offset == camera offset => курсор (raycast з Camera.getPosition)
+        // автоматично співпадає зі зором гравця. Моби теж "бачать" гравця
+        // у новій позиції обличчя, а не старій позиції шиї.
+        return getCameraOffset(yaw, pitch);
     }
 
     public void applyFirstPersonBodyPose(PlayerModel model) {
@@ -208,6 +218,9 @@ public class SmartCameraManager {
     }
 
     private void syncWearableLayers(PlayerModel model) {
+        // head/hat синхронізуємо також — раніше це пропускалось,
+        // через що кастомні зміни head призводили до "летючої" шапки.
+        copyPose(model.head, model.hat);
         copyPose(model.rightArm, model.rightSleeve);
         copyPose(model.leftArm, model.leftSleeve);
         copyPose(model.rightLeg, model.rightPants);

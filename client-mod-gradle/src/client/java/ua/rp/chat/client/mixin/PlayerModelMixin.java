@@ -50,34 +50,51 @@ public class PlayerModelMixin {
         }
 
         float moving = oasis$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
-        float calm = state.isCrouching ? 0.45f : 1.0f - moving;
-        float breath = (float) Math.sin(state.ageInTicks * 0.06981317f); // 90 ticks, about 13 breaths/min.
+        // НЕ повне згасання — реальні люди дихають i при ходьбі.
+        // minCalm 0.30 гарантує видиму амплітуду дихання під час руху.
+        float calmBase = state.isCrouching ? 0.55f : 1.0f;
+        float calm = calmBase * Math.max(0.30f, 1.0f - moving * 0.6f);
+
+        // --- ДИХАННЯ ---
+        // ~13 дихань/хв при 20 TPS. Амплітуди підібрані так, щоб рух було
+        // видно неозброєним оком (кути ~2-3° замість колишніх 0.3-0.5°).
+        // ВАЖЛИВО: НЕ модифікуємо body.y — це рвало тулуб від голови.
+        float breath = (float) Math.sin(state.ageInTicks * 0.06981317f);
         float breathLift = breath * calm;
+        model.body.xRot += breathLift * 0.045f;
+        model.leftArm.xRot += breathLift * 0.055f;
+        model.rightArm.xRot += breathLift * 0.055f;
+        model.leftArm.zRot += breathLift * 0.025f;
+        model.rightArm.zRot -= breathLift * 0.025f;
 
-        model.body.xRot += breathLift * 0.006f;
-        model.body.y -= breathLift * 0.025f;
-        model.leftArm.xRot += breathLift * 0.008f;
-        model.rightArm.xRot += breathLift * 0.008f;
-        model.leftArm.zRot += breathLift * 0.004f;
-        model.rightArm.zRot -= breathLift * 0.004f;
-
-        float idleShift = (float) Math.sin(state.ageInTicks * 0.01396263f) * calm; // About one weight shift every 22.5s.
+        // Легкий ваго-перенос (вес тела переносится с ноги на ногу).
+        float idleShift = (float) Math.sin(state.ageInTicks * 0.01396263f) * calm;
         model.body.zRot += idleShift * 0.010f;
         model.leftArm.zRot += idleShift * 0.004f;
         model.rightArm.zRot += idleShift * 0.004f;
 
-        float lookDown = oasis$smoothStep(58.0f, 86.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
+        // --- НАХИЛ ПРИ ПОГЛЯДІ ВНИЗ ---
+        // Поріг знижено з 58°→86° до 25°→65°: нахил починається раніше,
+        // відчувається природніше (дивлюся на землю — тулуб нахиляється).
+        // ВАЖЛИВО: НЕ зсуваємо body.y/body.z — це рвало модель.
+        // Тільки оберт body.xRot (плечі й шия залишаються нерухомими
+        // при оберті навколо X — точка кріплення голови (0,0,0) не змінюється).
+        float lookDown = oasis$smoothStep(25.0f, 65.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
         float lean = lookDown * (state.isCrouching ? 0.5f : 1.0f);
-        model.body.xRot += lean * 0.18f;
-        model.body.y += lean * 0.18f;
-        model.body.z -= lean * 0.18f;
-        model.leftArm.xRot -= lean * 0.20f;
-        model.rightArm.xRot -= lean * 0.20f;
+        float torsoLeanDelta = lean * 0.22f;
+        model.body.xRot += torsoLeanDelta;
+        model.leftArm.xRot -= lean * 0.24f;
+        model.rightArm.xRot -= lean * 0.24f;
+        // Невеликий поворот плечей (в положенні "огляд" — тіло трохи розвертається).
         model.leftArm.yRot += lean * 0.04f;
         model.rightArm.yRot -= lean * 0.04f;
-        model.leftArm.z -= lean * 0.12f;
-        model.rightArm.z -= lean * 0.12f;
 
+        // Голова наслідує 30% нахилу тулуба — шия гнеться, реалістично.
+        // У першій особі head.visible=false, не впливає на вид гравця,
+        // але інші гравці бачать, що голова не відірвана від тіла.
+        model.head.xRot += torsoLeanDelta * 0.30f;
+
+        // --- ПОВОРОТ ТУЛУБА ЗА ПОГЛЯДОМ ---
         float lookSide = oasis$clamp(oasis$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
         float upperTurn = lookSide * (0.025f + calm * 0.025f);
         model.body.yRot += upperTurn;
