@@ -5,10 +5,12 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import ua.rp.chat.client.camera.OasisHudOverlay;
 import ua.rp.chat.client.camera.SmartCameraManager;
+import ua.rp.chat.client.vitals.VitalsClientState;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -24,6 +26,7 @@ public class OasisAuthMod implements ClientModInitializer {
     public static final Logger LOGGER = LogManager.getLogger("OasisAuth");
     private static final String LOCAL_SESSION_ENDPOINT = "http://localhost:25580/api/client-session?username=";
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
+    private static boolean bodyStatusKeyDown = false;
     private static int sessionPollTicks = 0;
     private static String lastOpenedUrl = "";
 
@@ -47,8 +50,21 @@ public class OasisAuthMod implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SmartCameraManager.getInstance().clientTick(client);
+            VitalsClientState.clientTick(client);
+            handleBodyStatusKey(client);
             pollAuthSession(client);
         });
+    }
+
+    private void handleBodyStatusKey(Minecraft client) {
+        if (client == null || client.getWindow() == null) {
+            return;
+        }
+        boolean down = GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_B) == GLFW.GLFW_PRESS;
+        if (down && !bodyStatusKeyDown && client.player != null && client.level != null && client.screen == null) {
+            client.setScreen(new BodyStatusScreen(VitalsClientState.bodyStatusUrl()));
+        }
+        bodyStatusKeyDown = down;
     }
 
     private void pollAuthSession(Minecraft client) {

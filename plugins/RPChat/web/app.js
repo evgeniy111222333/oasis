@@ -4,6 +4,7 @@ let mcUsername = "";
 let mcUuid = "";
 let appearanceData = "";
 let sessionRecoveryTried = false;
+const savedCredentialsKey = "oasisAuth.savedCredentials.v1";
 
 document.addEventListener("DOMContentLoaded", () => {
     const params = new URLSearchParams(window.location.search);
@@ -22,6 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("registerForm").addEventListener("submit", handleRegisterSubmit);
     document.getElementById("recoveryForm").addEventListener("submit", handleRecoverySubmit);
     document.getElementById("appearanceFile").addEventListener("change", handleAppearanceSelect);
+    restoreSavedCredentials();
 
     if (!authToken) {
         recoverAuthSession("Восстанавливаем сессию авторизации...");
@@ -55,6 +57,7 @@ async function fetchStatus() {
                 const loginInput = document.getElementById("loginName");
                 loginInput.value = data.loginName;
                 loginInput.readOnly = true;
+                restoreSavedCredentials(data.loginName);
             }
         } else {
             switchTab("register");
@@ -217,8 +220,43 @@ async function handleLoginSubmit(event) {
         password,
         rememberMe: document.getElementById("rememberMe").checked
     }, errorBox, (result) => {
+        persistSavedCredentials(loginName, password);
         showSuccess("Вход подтвержден", `С возвращением, ${result.rpName || loginName}.`);
     });
+}
+
+function restoreSavedCredentials(expectedLogin = "") {
+    try {
+        const saved = JSON.parse(localStorage.getItem(savedCredentialsKey) || "{}");
+        const rememberInput = document.getElementById("rememberMe");
+        const loginInput = document.getElementById("loginName");
+        const passwordInput = document.getElementById("loginPassword");
+        if (!rememberInput || !loginInput || !passwordInput || !saved.remember) {
+            return;
+        }
+        if (saved.loginName && (!expectedLogin || saved.loginName.toLowerCase() === expectedLogin.toLowerCase())) {
+            if (!loginInput.value) {
+                loginInput.value = saved.loginName;
+            }
+            passwordInput.value = saved.password || "";
+            rememberInput.checked = true;
+        }
+    } catch (error) {
+        localStorage.removeItem(savedCredentialsKey);
+    }
+}
+
+function persistSavedCredentials(loginName, password) {
+    const rememberInput = document.getElementById("rememberMe");
+    if (!rememberInput || !rememberInput.checked) {
+        localStorage.removeItem(savedCredentialsKey);
+        return;
+    }
+    localStorage.setItem(savedCredentialsKey, JSON.stringify({
+        remember: true,
+        loginName,
+        password
+    }));
 }
 
 async function handleRegisterSubmit(event) {

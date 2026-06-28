@@ -44,6 +44,7 @@ public class SmartCameraManager {
     private float lastPitch = Float.NaN;
     private boolean wasUsingRanged = false;
     private int armorStepCooldown = 0;
+    private int breathSoundCooldown = 0;
     private boolean renderingFirstPersonPlayer = false;
     private boolean enabled = true;
 
@@ -81,8 +82,7 @@ public class SmartCameraManager {
     public boolean isCameraMotionActive() {
         Minecraft client = Minecraft.getInstance();
         return isFirstPersonBodyEnabled()
-                && client != null
-                && client.screen == null;
+                && client != null;
     }
 
     public boolean isActiveFor(Player player) {
@@ -94,6 +94,10 @@ public class SmartCameraManager {
         return isCameraMotionActive() && player == client.player;
     }
 
+    public boolean shouldApplyFirstPersonBodyPose() {
+        return isFirstPersonBodyEnabled() && renderingFirstPersonPlayer;
+    }
+
     public void clientTick(Minecraft client) {
         if (client == null || client.player == null || client.level == null) {
             resetTransientState();
@@ -103,11 +107,15 @@ public class SmartCameraManager {
         LocalPlayer player = client.player;
         if (!isCameraMotionActiveFor(player)) {
             armorStepCooldown = Math.max(0, armorStepCooldown - 1);
+            breathSoundCooldown = Math.max(0, breathSoundCooldown - 1);
             return;
         }
 
         if (armorStepCooldown > 0) {
             armorStepCooldown--;
+        }
+        if (breathSoundCooldown > 0) {
+            breathSoundCooldown--;
         }
 
         Vec3 velocity = player.getDeltaMovement();
@@ -119,6 +127,7 @@ public class SmartCameraManager {
             armorStepCooldown = player.isSprinting() ? 9 : 13;
         }
 
+        updateBreathSound(player);
         updateActionImpulses(player);
     }
 
@@ -171,18 +180,28 @@ public class SmartCameraManager {
     }
 
     public Vec3 getCameraOffset(double yaw, double pitch) {
-        return Vec3.ZERO;
-    }
-
-    public Vec3 getEyeOffset(double yaw, double pitch) {
         if (!enabled) {
             return Vec3.ZERO;
         }
+        // Forward offset виносить обличчя попереду шиї, тулуб менше видно в кадрі.
+        // Невеликий down-offset імітує положення очей у черепі, не на маківці.
         double yawRad = Math.toRadians(yaw);
         double pitchDown = clamp(pitch, 0.0, 90.0);
-        double inspect = smoothStep(62.0, 88.0, pitchDown);
-        double forwardAmount = 0.115 + inspect * 0.035;
-        return new Vec3(-Math.sin(yawRad) * forwardAmount, 0.0, Math.cos(yawRad) * forwardAmount);
+        double inspect = smoothStep(20.0, 80.0, pitchDown);
+        double forwardAmount = 0.20 + inspect * 0.05;
+        double downAmount = 0.02 + inspect * 0.03;
+        return new Vec3(
+                -Math.sin(yawRad) * forwardAmount,
+                -downAmount,
+                Math.cos(yawRad) * forwardAmount
+        );
+    }
+
+    public Vec3 getEyeOffset(double yaw, double pitch) {
+        // Eye offset == camera offset => курсор (raycast з Camera.getPosition)
+        // автоматично співпадає зі зором гравця. Моби теж "бачать" гравця
+        // у новій позиції обличчя, а не старій позиції шиї.
+        return getCameraOffset(yaw, pitch);
     }
 
     public void applyFirstPersonBodyPose(PlayerModel model) {
@@ -196,7 +215,6 @@ public class SmartCameraManager {
         model.hat.visible = false;
 
         model.body.visible = true;
-        model.jacket.visible = true;
     }
 
     public boolean shouldCullTorso() {
@@ -208,23 +226,21 @@ public class SmartCameraManager {
     }
 
     private void syncWearableLayers(PlayerModel model) {
-        copyPose(model.rightArm, model.rightSleeve);
-        copyPose(model.leftArm, model.leftSleeve);
-        copyPose(model.rightLeg, model.rightPants);
-        copyPose(model.leftLeg, model.leftPants);
-        copyPose(model.body, model.jacket);
+        // Wearable layers are children of body parts. Keep their local transform neutral
+        // and let the parent part carry all motion to avoid double-applied rotations.
+        resetWearableLocalPose(model.hat);
+        resetWearableLocalPose(model.rightSleeve);
+        resetWearableLocalPose(model.leftSleeve);
+        resetWearableLocalPose(model.rightPants);
+        resetWearableLocalPose(model.leftPants);
+        resetWearableLocalPose(model.jacket);
     }
 
-    private void copyPose(net.minecraft.client.model.geom.ModelPart from, net.minecraft.client.model.geom.ModelPart to) {
-        if (from == null || to == null) {
+    private void resetWearableLocalPose(net.minecraft.client.model.geom.ModelPart part) {
+        if (part == null) {
             return;
         }
-        to.x = from.x;
-        to.y = from.y;
-        to.z = from.z;
-        to.xRot = from.xRot;
-        to.yRot = from.yRot;
-        to.zRot = from.zRot;
+        part.loadPose(part.getInitialPose());
     }
 
     public boolean shouldRenderHelmetVisor() {
@@ -244,6 +260,16 @@ public class SmartCameraManager {
         return clampFloat(0.12f + client.player.getArmorValue() * 0.012f, 0.14f, 0.32f);
     }
 
+    public float getStaminaVignetteAlpha() {
+        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        if (stamina >= 0.35f) {
+            return 0.0f;
+        }
+        float danger = (0.35f - stamina) / 0.35f;
+        float pulse = (float) (0.70 + Math.sin(System.currentTimeMillis() / 145.0) * 0.30);
+        return clampFloat((0.10f + danger * 0.42f) * pulse, 0.0f, 0.58f);
+    }
+
     public double getStabilizedY(Player player, double rawY, float partialTick) {
         return rawY;
     }
@@ -259,6 +285,18 @@ public class SmartCameraManager {
         while (delta < -180.0f) delta += 360.0f;
         lastYawDelta = delta;
         lastYaw = player.getYRot();
+    }
+
+    private void updateBreathSound(LocalPlayer player) {
+        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        if (stamina > 0.55f || breathSoundCooldown > 0 || player.isSpectator()) {
+            return;
+        }
+        float fatigue = 1.0f - stamina;
+        float volume = clampFloat(0.10f + fatigue * 0.36f, 0.10f, 0.44f);
+        float pitch = clampFloat(0.72f + fatigue * 0.26f, 0.72f, 1.03f);
+        player.playSound(SoundEvents.PLAYER_BREATH, volume, pitch);
+        breathSoundCooldown = stamina < 0.18f ? 24 : 42;
     }
 
     private float getYawDelta(Player player) {

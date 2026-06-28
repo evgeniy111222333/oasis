@@ -36,7 +36,7 @@ public class PlayerModelMixin {
     private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
         oasis$applyStableRoleplayPose(model, state);
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
+        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
         Player player = oasis$getRenderedPlayer(state);
@@ -50,34 +50,77 @@ public class PlayerModelMixin {
         }
 
         float moving = oasis$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
-        float calm = state.isCrouching ? 0.45f : 1.0f - moving;
-        float breath = (float) Math.sin(state.ageInTicks * 0.06981317f); // 90 ticks, about 13 breaths/min.
-        float breathLift = breath * calm;
+        ItemStack main = state.getMainHandItemStack();
+        String heldItem = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
+        boolean heavyItem = heldItem.contains("axe") || heldItem.contains("mace") || heldItem.contains("hammer") || heldItem.contains("great") || heldItem.contains("halberd");
+        boolean aiming = state.isUsingItem && (heldItem.contains("bow") || heldItem.contains("crossbow") || heldItem.contains("trident") || heldItem.contains("spear"));
+        // НЕ повне згасання — реальні люди дихають i при ходьбі.
+        // minCalm 0.30 гарантує видиму амплітуду дихання під час руху.
+        float calmBase = state.isCrouching ? 0.62f : 1.0f;
+        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        float fatigue = 1.0f - stamina;
+        float motionDamp = 1.0f - moving * 0.55f;
+        if (heavyItem) {
+            motionDamp *= 0.86f;
+        }
+        if (aiming) {
+            motionDamp *= 0.55f;
+        }
+        float calm = calmBase * oasis$clamp(motionDamp, 0.28f, 1.0f);
 
-        model.body.xRot += breathLift * 0.006f;
-        model.body.y -= breathLift * 0.025f;
-        model.leftArm.xRot += breathLift * 0.008f;
-        model.rightArm.xRot += breathLift * 0.008f;
-        model.leftArm.zRot += breathLift * 0.004f;
-        model.rightArm.zRot -= breathLift * 0.004f;
+        // --- ДИХАННЯ ---
+        // ~13 дихань/хв при 20 TPS. Амплітуди підібрані так, щоб рух було
+        // видно неозброєним оком (кути ~2-3° замість колишніх 0.3-0.5°).
+        // ВАЖЛИВО: НЕ модифікуємо body.y — це рвало тулуб від голови.
+        float breathRate = 0.0114f + moving * 0.0038f + oasis$clamp(state.speedValue, 0.0f, 0.35f) * 0.0030f + fatigue * 0.017f;
+        float breath = oasis$breathCurve(state.ageInTicks * breathRate);
+        float inhale = breath * calm;
+        float exhale = (1.0f - breath) * calm;
+        float micro = ((float) Math.sin(state.ageInTicks * 0.173f + 0.7f) * 0.10f
+                + (float) Math.sin(state.ageInTicks * 0.041f + 1.9f) * 0.07f) * calm;
+        float breathLift = (inhale - exhale * 0.18f + micro * 0.12f) * (1.0f + fatigue * 1.15f);
+        model.body.xRot += breathLift * (0.010f + fatigue * 0.010f);
+        model.leftArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
+        model.rightArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
+        model.leftArm.zRot += breathLift * (0.012f + fatigue * 0.012f);
+        model.rightArm.zRot -= breathLift * (0.012f + fatigue * 0.012f);
+        model.leftArm.yRot -= inhale * (0.006f + fatigue * 0.009f);
+        model.rightArm.yRot += inhale * (0.006f + fatigue * 0.009f);
+        if (fatigue > 0.55f && moving < 0.25f) {
+            float exhausted = (fatigue - 0.55f) / 0.45f;
+            model.body.xRot += exhausted * 0.035f;
+            model.leftArm.xRot += exhausted * 0.080f;
+            model.rightArm.xRot += exhausted * 0.080f;
+        }
 
-        float idleShift = (float) Math.sin(state.ageInTicks * 0.01396263f) * calm; // About one weight shift every 22.5s.
-        model.body.zRot += idleShift * 0.010f;
-        model.leftArm.zRot += idleShift * 0.004f;
-        model.rightArm.zRot += idleShift * 0.004f;
+        // Легкий ваго-перенос (вес тела переносится с ноги на ногу).
+        float idleShift = (float) Math.sin(state.ageInTicks * 0.0105f + Math.sin(state.ageInTicks * 0.003f) * 0.4f) * calm * (1.0f - moving * 0.35f);
+        model.body.zRot += idleShift * 0.005f;
+        model.leftArm.zRot += idleShift * 0.003f;
+        model.rightArm.zRot += idleShift * 0.003f;
 
-        float lookDown = oasis$smoothStep(58.0f, 86.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
+        // --- НАХИЛ ПРИ ПОГЛЯДІ ВНИЗ ---
+        // Поріг знижено з 58°→86° до 25°→65°: нахил починається раніше,
+        // відчувається природніше (дивлюся на землю — тулуб нахиляється).
+        // ВАЖЛИВО: НЕ зсуваємо body.y/body.z — це рвало модель.
+        // Тільки оберт body.xRot (плечі й шия залишаються нерухомими
+        // при оберті навколо X — точка кріплення голови (0,0,0) не змінюється).
+        float lookDown = oasis$smoothStep(25.0f, 65.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
         float lean = lookDown * (state.isCrouching ? 0.5f : 1.0f);
-        model.body.xRot += lean * 0.18f;
-        model.body.y += lean * 0.18f;
-        model.body.z -= lean * 0.18f;
-        model.leftArm.xRot -= lean * 0.20f;
-        model.rightArm.xRot -= lean * 0.20f;
+        float torsoLeanDelta = lean * 0.060f;
+        model.body.xRot += torsoLeanDelta;
+        model.leftArm.xRot -= lean * 0.24f;
+        model.rightArm.xRot -= lean * 0.24f;
+        // Невеликий поворот плечей (в положенні "огляд" — тіло трохи розвертається).
         model.leftArm.yRot += lean * 0.04f;
         model.rightArm.yRot -= lean * 0.04f;
-        model.leftArm.z -= lean * 0.12f;
-        model.rightArm.z -= lean * 0.12f;
 
+        // Голова наслідує 30% нахилу тулуба — шия гнеться, реалістично.
+        // У першій особі head.visible=false, не впливає на вид гравця,
+        // але інші гравці бачать, що голова не відірвана від тіла.
+        model.head.xRot += torsoLeanDelta * 0.30f;
+
+        // --- ПОВОРОТ ТУЛУБА ЗА ПОГЛЯДОМ ---
         float lookSide = oasis$clamp(oasis$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
         float upperTurn = lookSide * (0.025f + calm * 0.025f);
         model.body.yRot += upperTurn;
@@ -205,7 +248,7 @@ public class PlayerModelMixin {
         arm.addOrReplaceChild("oasis_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
 
         CubeDeformation sleeve = deformation.extend(0.25f);
-        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 12.0f, 4, sleeve), PartPose.offset(x, 2.0f, 0.0f));
+        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
         sleeveRoot.addOrReplaceChild("oasis_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
         sleeveRoot.addOrReplaceChild("oasis_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.offset(0.0f, 3.8f, 0.0f));
     }
@@ -218,7 +261,7 @@ public class PlayerModelMixin {
         shin.addOrReplaceChild("oasis_foot", CubeListBuilder.create().texOffs(texX, texY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, deformation), PartPose.ZERO);
 
         CubeDeformation pants = deformation.extend(0.25f);
-        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 12.0f, 4, pants), PartPose.offset(x, 12.0f, 0.0f));
+        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
         pantsRoot.addOrReplaceChild("oasis_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, pants), PartPose.ZERO);
         PartDefinition pantsShin = pantsRoot.addOrReplaceChild("oasis_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, pants), PartPose.offset(0.0f, 5.9f, 0.0f));
         pantsShin.addOrReplaceChild("oasis_foot_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, pants), PartPose.ZERO);
@@ -240,6 +283,18 @@ public class PlayerModelMixin {
     private float oasis$smoothStep(float edge0, float edge1, float value) {
         float x = oasis$clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
         return x * x * (3.0f - 2.0f * x);
+    }
+
+    @Unique
+    private float oasis$breathCurve(float cycles) {
+        float phase = cycles - (float) Math.floor(cycles);
+        if (phase < 0.34f) {
+            return oasis$smoothStep(0.0f, 0.34f, phase);
+        }
+        if (phase < 0.88f) {
+            return 1.0f - oasis$smoothStep(0.34f, 0.88f, phase);
+        }
+        return 0.0f;
     }
 
     @Unique
@@ -369,24 +424,20 @@ public class PlayerModelMixin {
 
     @Unique
     private void oasis$syncWearableLayers(PlayerModel model) {
-        oasis$copyPose(model.rightArm, model.rightSleeve);
-        oasis$copyPose(model.leftArm, model.leftSleeve);
-        oasis$copyPose(model.rightLeg, model.rightPants);
-        oasis$copyPose(model.leftLeg, model.leftPants);
-        oasis$copyPose(model.body, model.jacket);
+        oasis$resetWearableLocalPose(model.hat);
+        oasis$resetWearableLocalPose(model.rightSleeve);
+        oasis$resetWearableLocalPose(model.leftSleeve);
+        oasis$resetWearableLocalPose(model.rightPants);
+        oasis$resetWearableLocalPose(model.leftPants);
+        oasis$resetWearableLocalPose(model.jacket);
     }
 
     @Unique
-    private void oasis$copyPose(ModelPart from, ModelPart to) {
-        if (from == null || to == null) {
+    private void oasis$resetWearableLocalPose(ModelPart part) {
+        if (part == null) {
             return;
         }
-        to.x = from.x;
-        to.y = from.y;
-        to.z = from.z;
-        to.xRot = from.xRot;
-        to.yRot = from.yRot;
-        to.zRot = from.zRot;
+        part.loadPose(part.getInitialPose());
     }
 
     @Unique

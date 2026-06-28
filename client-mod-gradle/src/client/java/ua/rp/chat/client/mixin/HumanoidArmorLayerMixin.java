@@ -23,7 +23,7 @@ public class HumanoidArmorLayerMixin {
     private void oasis$skipLocalHeadArmor(PoseStack poseStack, SubmitNodeCollector collector, ItemStack stack, EquipmentSlot slot, int light, HumanoidRenderState state, CallbackInfo ci) {
         if (slot == EquipmentSlot.HEAD
                 && oasis$isLocalFirstPersonState(state)
-                && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
+                && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             ci.cancel();
         }
     }

@@ -33,11 +33,7 @@ public class AuthListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
-        // Suppress join message during auth
-        Player player = event.getPlayer();
-        if (authManager.isPendingAuth(player.getUniqueId())) {
-            event.joinMessage(null);
-        }
+        event.joinMessage(null);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

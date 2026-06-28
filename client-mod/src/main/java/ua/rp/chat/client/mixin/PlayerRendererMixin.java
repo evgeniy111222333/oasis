@@ -35,10 +35,11 @@ public class PlayerRendererMixin {
 
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At("HEAD"))
     private void oasis$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
+        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
             if (renderer.getModel() instanceof PlayerModel model) {
                 oasis$captureVisibility(model);
+                SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
             }
         }
     }

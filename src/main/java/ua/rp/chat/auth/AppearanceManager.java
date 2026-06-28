@@ -1,8 +1,10 @@
 package ua.rp.chat.auth;
 
 import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -60,9 +62,10 @@ public class AppearanceManager {
                 return SaveResult.error("Размер образа должен быть 64x64 или 64x32.");
             }
 
-            String hash = sha1(bytes);
+            byte[] storedBytes = normalizeAppearanceBytes(image, bytes);
+            String hash = sha1(storedBytes);
             File target = getAppearanceFile(uuid);
-            Files.write(target.toPath(), bytes);
+            Files.write(target.toPath(), storedBytes);
             if (!database.updateAppearance(uuid, normalizedModel, hash)) {
                 return SaveResult.error("Не удалось привязать облик к персонажу.");
             }
@@ -118,6 +121,24 @@ public class AppearanceManager {
 
     private static boolean isValidAppearanceSize(int width, int height) {
         return width == 64 && (height == 64 || height == 32);
+    }
+
+    private static byte[] normalizeAppearanceBytes(BufferedImage image, byte[] originalBytes) throws IOException {
+        if (image.getWidth() == 64 && image.getHeight() == 64) {
+            return originalBytes;
+        }
+
+        BufferedImage normalized = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = normalized.createGraphics();
+        try {
+            graphics.drawImage(image, 0, 0, null);
+        } finally {
+            graphics.dispose();
+        }
+
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(normalized, "png", output);
+        return output.toByteArray();
     }
 
     private static byte[] decodeDataUrl(String dataUrl) {
