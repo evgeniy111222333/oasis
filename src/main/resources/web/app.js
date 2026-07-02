@@ -104,16 +104,32 @@ function hydratePlayerCard(appearanceUrl = "") {
     document.getElementById("playerName").textContent = mcUsername;
     document.getElementById("playerMode").textContent = isRegisteredUser ? "Облик найден" : "Новый персонаж";
     document.getElementById("playerSeal").textContent = getInitials(mcUsername);
-    setSkinPreview(appearanceUrl || `https://minotar.net/armor/body/${encodeURIComponent(mcUsername)}/320.png`);
+    setSkinPreview(appearanceUrl || `https://minotar.net/skin/${encodeURIComponent(mcUsername)}`);
 }
 
 function setSkinPreview(src) {
-    const skinImage = document.getElementById("skinImage");
-    skinImage.src = src;
-    skinImage.onerror = () => {
-        skinImage.onerror = null;
-        skinImage.src = "https://minotar.net/armor/body/Steve/320.png";
+    const skinModel = document.getElementById("skinModel");
+    if (!skinModel || !src) {
+        return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+        skinModel.style.setProperty("--skin-url", toCssUrl(src));
+        skinModel.classList.remove("skin-model-empty");
     };
+    image.onerror = () => {
+        if (src.includes("/Steve")) {
+            skinModel.classList.add("skin-model-empty");
+            return;
+        }
+        setSkinPreview("https://minotar.net/skin/Steve");
+    };
+    image.src = src;
+}
+
+function toCssUrl(src) {
+    return `url("${String(src).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
 }
 
 function getInitials(username) {

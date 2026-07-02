@@ -46,6 +46,7 @@ public class SmartCameraManager {
     private int armorStepCooldown = 0;
     private int breathSoundCooldown = 0;
     private boolean renderingFirstPersonPlayer = false;
+    private boolean submittingFirstPersonPlayer = false;
     private boolean enabled = true;
 
     private SmartCameraManager() {}
@@ -64,6 +65,17 @@ public class SmartCameraManager {
 
     public void setRenderingFirstPersonPlayer(boolean state) {
         this.renderingFirstPersonPlayer = state;
+        if (!state) {
+            this.submittingFirstPersonPlayer = false;
+        }
+    }
+
+    public boolean isWorldFirstPersonBodyRender() {
+        return isFirstPersonBodyEnabled() && renderingFirstPersonPlayer;
+    }
+
+    public void setSubmittingFirstPersonPlayer(boolean state) {
+        this.submittingFirstPersonPlayer = state;
     }
 
     public boolean isActive() {
@@ -95,7 +107,7 @@ public class SmartCameraManager {
     }
 
     public boolean shouldApplyFirstPersonBodyPose() {
-        return isFirstPersonBodyEnabled() && renderingFirstPersonPlayer;
+        return isFirstPersonBodyEnabled() && (renderingFirstPersonPlayer || submittingFirstPersonPlayer);
     }
 
     public void clientTick(Minecraft client) {
@@ -190,11 +202,19 @@ public class SmartCameraManager {
         double inspect = smoothStep(20.0, 80.0, pitchDown);
         double forwardAmount = 0.20 + inspect * 0.05;
         double downAmount = 0.02 + inspect * 0.03;
-        return new Vec3(
-                -Math.sin(yawRad) * forwardAmount,
-                -downAmount,
-                Math.cos(yawRad) * forwardAmount
-        );
+        double x = -Math.sin(yawRad) * forwardAmount;
+        double y = -downAmount;
+        double z = Math.cos(yawRad) * forwardAmount;
+        float danger = getStaminaDanger01();
+        if (danger > 0.0f) {
+            double pulse = Math.sin(idlePhase * 8.5) * 0.004 + Math.sin(idlePhase * 3.1) * 0.008;
+            double lateral = pulse * danger;
+            double vertical = -Math.abs(Math.sin(idlePhase * 4.2)) * 0.006 * danger;
+            x += Math.cos(yawRad) * lateral;
+            y += vertical;
+            z += Math.sin(yawRad) * lateral;
+        }
+        return new Vec3(x, y, z);
     }
 
     public Vec3 getEyeOffset(double yaw, double pitch) {
@@ -213,6 +233,8 @@ public class SmartCameraManager {
         LocalPlayer player = client.player;
         model.head.visible = false;
         model.hat.visible = false;
+        model.head.skipDraw = true;
+        model.hat.skipDraw = true;
 
         model.body.visible = true;
     }
@@ -261,13 +283,32 @@ public class SmartCameraManager {
     }
 
     public float getStaminaVignetteAlpha() {
-        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
-        if (stamina >= 0.35f) {
+        float danger = getStaminaDanger01();
+        if (danger <= 0.0f) {
             return 0.0f;
         }
-        float danger = (0.35f - stamina) / 0.35f;
-        float pulse = (float) (0.70 + Math.sin(System.currentTimeMillis() / 145.0) * 0.30);
-        return clampFloat((0.10f + danger * 0.42f) * pulse, 0.0f, 0.58f);
+        float pulse = getExhaustionPulse();
+        return clampFloat((0.07f + danger * 0.43f) * pulse, 0.0f, 0.60f);
+    }
+
+    public float getStaminaDanger01() {
+        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        float breathDebt = ua.rp.chat.client.vitals.VitalsClientState.getBreathDebt() / 100.0f;
+        float fatigue = ua.rp.chat.client.vitals.VitalsClientState.getFatigue() / 100.0f;
+        float bloodLoss = 1.0f - ua.rp.chat.client.vitals.VitalsClientState.getBlood01();
+        float pain = ua.rp.chat.client.vitals.VitalsClientState.getPain() / 100.0f;
+        float bleeding = ua.rp.chat.client.vitals.VitalsClientState.getBleeding() / 100.0f;
+        if (ua.rp.chat.client.vitals.VitalsClientState.isUnconscious()) {
+            return 1.0f;
+        }
+        float lowStamina = stamina >= 0.42f ? 0.0f : (0.42f - stamina) / 0.42f;
+        float injuryDanger = Math.max(bloodLoss * 0.82f, Math.max(pain * 0.68f, bleeding * 0.52f));
+        return clampFloat(Math.max(Math.max(lowStamina, injuryDanger), Math.max(breathDebt * 0.58f, fatigue * 0.46f)), 0.0f, 1.0f);
+    }
+
+    public float getExhaustionPulse() {
+        return clampFloat((float) (0.74 + Math.sin(System.currentTimeMillis() / 180.0) * 0.18
+                + Math.sin(System.currentTimeMillis() / 470.0) * 0.08), 0.58f, 1.0f);
     }
 
     public double getStabilizedY(Player player, double rawY, float partialTick) {
@@ -289,14 +330,19 @@ public class SmartCameraManager {
 
     private void updateBreathSound(LocalPlayer player) {
         float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
-        if (stamina > 0.55f || breathSoundCooldown > 0 || player.isSpectator()) {
+        float breathDebt = ua.rp.chat.client.vitals.VitalsClientState.getBreathDebt() / 100.0f;
+        float pain = ua.rp.chat.client.vitals.VitalsClientState.getPain() / 100.0f;
+        float bloodLoss = 1.0f - ua.rp.chat.client.vitals.VitalsClientState.getBlood01();
+        if ((stamina > 0.72f && breathDebt < 0.22f && pain < 0.28f && bloodLoss < 0.25f)
+                || breathSoundCooldown > 0 || player.isSpectator()) {
             return;
         }
-        float fatigue = 1.0f - stamina;
-        float volume = clampFloat(0.10f + fatigue * 0.36f, 0.10f, 0.44f);
-        float pitch = clampFloat(0.72f + fatigue * 0.26f, 0.72f, 1.03f);
+        float fatigue = Math.max(Math.max(1.0f - stamina, breathDebt * 0.82f), Math.max(pain * 0.55f, bloodLoss * 0.65f));
+        float pulse = getExhaustionPulse();
+        float volume = clampFloat(0.045f + fatigue * 0.26f + breathDebt * 0.12f + pain * 0.08f, 0.05f, 0.44f) * pulse;
+        float pitch = clampFloat(0.58f + stamina * 0.30f - breathDebt * 0.08f - bloodLoss * 0.06f, 0.50f, 0.92f);
         player.playSound(SoundEvents.PLAYER_BREATH, volume, pitch);
-        breathSoundCooldown = stamina < 0.18f ? 24 : 42;
+        breathSoundCooldown = stamina < 0.12f || breathDebt > 0.72f || pain > 0.72f || bloodLoss > 0.55f ? 18 : stamina < 0.35f ? 28 : 46;
     }
 
     private float getYawDelta(Player player) {

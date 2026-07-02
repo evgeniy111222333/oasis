@@ -81,7 +81,6 @@ public class AuthScreen extends Screen {
             }
         }
 
-        extractBackground(graphics, mouseX, mouseY, delta);
         graphics.fill(0, 0, width, height, 0xF012100F);
         graphics.centeredText(font, "OASIS ROLEPLAY", width / 2, height / 2 - 38, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 - 12, 0xFFB0A8A0);
@@ -199,8 +198,9 @@ public class AuthScreen extends Screen {
     }
 
     private void updateExitButtonBounds() {
-        exitX = 28;
-        exitY = Math.max(52, height - exitHeight - 86);
+        int padding = 30;
+        exitX = width - exitWidth - padding;
+        exitY = height - exitHeight - padding;
     }
 
     private boolean isExitButtonHovered(double mouseX, double mouseY) {

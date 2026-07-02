@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ua.rp.chat.vitals.StaminaManager;
@@ -14,6 +15,9 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +33,16 @@ public class AuthWebServer {
     private final StaminaManager staminaManager;
     private HttpServer server;
     private final Gson gson = new Gson();
+
+    private static final class ApiJsonResult {
+        private final int statusCode;
+        private final JsonObject json;
+
+        private ApiJsonResult(int statusCode, JsonObject json) {
+            this.statusCode = statusCode;
+            this.json = json;
+        }
+    }
 
     public AuthWebServer(JavaPlugin plugin, AuthManager authManager, StaminaManager staminaManager) {
         this.plugin = plugin;
@@ -49,6 +63,8 @@ public class AuthWebServer {
             server.createContext("/body", new StaticFileHandler("body.html", "text/html; charset=utf-8"));
             server.createContext("/body.css", new StaticFileHandler("body.css", "text/css; charset=utf-8"));
             server.createContext("/body.js", new StaticFileHandler("body.js", "application/javascript; charset=utf-8"));
+            server.createContext("/assets", new WebAssetHandler());
+            server.createContext("/bg_village.jpg", new StaticFileHandler("bg_village.jpg", "image/jpeg"));
             
             // Route API endpoints
             server.createContext("/api/status", new ApiStatusHandler());
@@ -60,6 +76,7 @@ public class AuthWebServer {
             server.createContext("/api/appearance/texture", new ApiAppearanceTextureHandler());
             server.createContext("/api/server-status", new ApiServerStatusHandler());
             server.createContext("/api/vitals", new ApiVitalsHandler());
+            server.createContext("/api/vitals/treat", new ApiVitalsTreatHandler());
             server.createContext("/api/required-mods", new ApiRequiredModsHandler());
             server.createContext("/client", new ClientDownloadHandler());
 
@@ -92,6 +109,10 @@ public class AuthWebServer {
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
+            exchange.getResponseHeaders().set("Pragma", "no-cache");
+            exchange.getResponseHeaders().set("Expires", "0");
+            
             File webDir = new File(plugin.getDataFolder(), "web");
             File file = new File(webDir, filename);
 
@@ -106,6 +127,46 @@ public class AuthWebServer {
             }
 
             sendResponse(exchange, 200, contentType, bytes);
+        }
+    }
+
+    private class WebAssetHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendResponse(exchange, 405, "text/plain", "Method Not Allowed");
+                return;
+            }
+            exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
+            exchange.getResponseHeaders().set("Pragma", "no-cache");
+            exchange.getResponseHeaders().set("Expires", "0");
+
+            String path = exchange.getRequestURI().getPath();
+            String relPath = path.startsWith("/assets/") ? path.substring("/assets/".length()) : "";
+            if (relPath.isBlank() || relPath.contains("..") || relPath.contains("\\") || relPath.startsWith("/")) {
+                sendResponse(exchange, 400, "text/plain", "Bad Request");
+                return;
+            }
+
+            File webDir = new File(plugin.getDataFolder(), "web");
+            File assetsDir = new File(webDir, "assets");
+            File file = new File(assetsDir, relPath);
+            String rootPath = assetsDir.getCanonicalPath() + File.separator;
+            String filePath = file.getCanonicalPath();
+            if (!filePath.startsWith(rootPath) || !file.exists() || file.isDirectory()) {
+                sendResponse(exchange, 404, "text/plain", "404 Not Found");
+                return;
+            }
+
+            byte[] bytes = new byte[(int) file.length()];
+            try (FileInputStream fis = new FileInputStream(file)) {
+                int readBytes = fis.read(bytes);
+                if (readBytes < bytes.length) {
+                    plugin.getLogger().warning("Could not read entire web asset: " + file.getName());
+                }
+            }
+
+            sendResponse(exchange, 200, contentTypeFor(file.getName()), bytes);
         }
     }
 
@@ -413,6 +474,22 @@ public class AuthWebServer {
         return false;
     }
 
+    private ApiJsonResult callOnMainThread(Callable<ApiJsonResult> task) throws Exception {
+        if (Bukkit.isPrimaryThread()) {
+            return task.call();
+        }
+
+        CompletableFuture<ApiJsonResult> future = new CompletableFuture<>();
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            try {
+                future.complete(task.call());
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+        return future.get(3, TimeUnit.SECONDS);
+    }
+
     private void sendResponse(HttpExchange exchange, int statusCode, String contentType, String content) throws IOException {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         sendResponse(exchange, statusCode, contentType, bytes);
@@ -430,6 +507,29 @@ public class AuthWebServer {
 
     private void sendJsonResponse(HttpExchange exchange, int statusCode, JsonObject json) throws IOException {
         sendResponse(exchange, statusCode, "application/json; charset=utf-8", gson.toJson(json));
+    }
+
+    private String contentTypeFor(String filename) {
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".js")) {
+            return "application/javascript; charset=utf-8";
+        }
+        if (lower.endsWith(".css")) {
+            return "text/css; charset=utf-8";
+        }
+        if (lower.endsWith(".svg")) {
+            return "image/svg+xml";
+        }
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".woff2")) {
+            return "font/woff2";
+        }
+        return "application/octet-stream";
     }
 
     private JsonObject createErrorJson(String message) {
@@ -515,13 +615,69 @@ public class AuthWebServer {
                 return;
             }
 
-            Player player = plugin.getServer().getPlayerExact(username);
-            if (player == null) {
-                sendJsonResponse(exchange, 404, createErrorJson("Player is offline"));
+            try {
+                ApiJsonResult result = callOnMainThread(() -> {
+                    Player player = plugin.getServer().getPlayerExact(username);
+                    if (player == null) {
+                        return new ApiJsonResult(404, createErrorJson("Player is offline"));
+                    }
+
+                    JsonObject responseJson = staminaManager.toJson(player);
+                    String rpName = authManager.getRpName(player.getUniqueId());
+                    responseJson.addProperty("rpName", rpName != null && !rpName.isBlank() ? rpName : player.getName());
+                    return new ApiJsonResult(200, responseJson);
+                });
+                sendJsonResponse(exchange, result.statusCode, result.json);
+            } catch (Exception e) {
+                sendJsonResponse(exchange, 500, createErrorJson("Vitals request failed: " + e.getMessage()));
+            }
+        }
+    }
+
+    /**
+     * POST /api/vitals/treat
+     */
+    private class ApiVitalsTreatHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
             }
 
-            sendJsonResponse(exchange, 200, staminaManager.toJson(player));
+            try {
+                String body = readRequestBody(exchange);
+                JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+                String username = json.has("username") && !json.get("username").isJsonNull()
+                        ? json.get("username").getAsString()
+                        : "";
+                String partId = json.has("partId") && !json.get("partId").isJsonNull()
+                        ? json.get("partId").getAsString()
+                        : "";
+                String action = json.has("action") && !json.get("action").isJsonNull()
+                        ? json.get("action").getAsString()
+                        : "";
+
+                if (username.isBlank() || partId.isBlank() || action.isBlank()) {
+                    sendJsonResponse(exchange, 400, createErrorJson("Missing treatment parameters."));
+                    return;
+                }
+
+                ApiJsonResult result = callOnMainThread(() -> {
+                    Player player = plugin.getServer().getPlayerExact(username);
+                    if (player == null) {
+                        return new ApiJsonResult(404, createErrorJson("Player is offline"));
+                    }
+
+                    JsonObject responseJson = staminaManager.startTreatment(player, partId, action);
+                    int status = responseJson.has("success") && responseJson.get("success").getAsBoolean() ? 200 : 400;
+                    return new ApiJsonResult(status, responseJson);
+                });
+                sendJsonResponse(exchange, result.statusCode, result.json);
+            } catch (Exception e) {
+                sendJsonResponse(exchange, 400, createErrorJson("Treatment failed: " + e.getMessage()));
+            }
         }
     }
 
@@ -595,7 +751,7 @@ public class AuthWebServer {
         try {
             file.getParentFile().mkdirs();
             String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"5b2d97ac0fd240a310fb7602f85ffd123bf94e7f\", \"size\": 73339 },\n" +
+                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"ab98ce6f21bc13d10a91235a75e336b439c25e75\", \"size\": 538505 },\n" +
                     "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
                     "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
                     "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +

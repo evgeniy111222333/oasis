@@ -15,16 +15,19 @@ import net.minecraft.util.Util;
 import java.net.URI;
 
 public class BodyStatusScreen extends Screen {
+    private static MCEFBrowser sharedBrowser;
+    private static String sharedUrl;
+
     private final String url;
     private MCEFBrowser browser;
-    private String fallbackStatus = "Opening body status...";
+    private String fallbackStatus = "Открываем состояние персонажа...";
     private int panelX;
     private int panelY;
     private int panelWidth;
     private int panelHeight;
 
     public BodyStatusScreen(String url) {
-        super(Component.literal("Oasis Body Status"));
+        super(Component.literal("Oasis: состояние персонажа"));
         this.url = url;
     }
 
@@ -35,16 +38,21 @@ public class BodyStatusScreen extends Screen {
             if (!MCEF.isInitialized()) {
                 MCEF.initialize();
             }
-            if (browser == null) {
-                browser = MCEF.createBrowser(url, true);
+            if (sharedBrowser == null) {
+                sharedBrowser = MCEF.createBrowser(url, true);
+                sharedUrl = url;
+            } else if (!url.equals(sharedUrl)) {
+                sharedBrowser.loadURL(url);
+                sharedUrl = url;
             }
+            browser = sharedBrowser;
             resizeBrowser();
             if (browser != null) {
                 browser.setFocus(true);
             }
         } catch (Throwable t) {
             browser = null;
-            fallbackStatus = "Embedded status panel is unavailable. Opening in your browser.";
+            fallbackStatus = "Встроенная панель состояния недоступна. Открываем в браузере.";
             OasisAuthMod.LOGGER.warn("MCEF body status failed, using external fallback.", t);
             openExternalFallback();
         }
@@ -52,9 +60,7 @@ public class BodyStatusScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-        extractBackground(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
-        graphics.fill(0, 0, width, height, 0x88000000);
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
             if (texture != null) {
@@ -63,7 +69,7 @@ public class BodyStatusScreen extends Screen {
             }
         }
         graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
-        graphics.centeredText(font, "OASIS BODY STATUS", width / 2, height / 2 - 12, 0xFFE3C099);
+        graphics.centeredText(font, "OASIS: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
     }
 
@@ -142,7 +148,7 @@ public class BodyStatusScreen extends Screen {
     @Override
     public void onClose() {
         if (browser != null) {
-            browser.close();
+            browser.setFocus(false);
             browser = null;
         }
         if (minecraft != null) {
@@ -165,8 +171,8 @@ public class BodyStatusScreen extends Screen {
     }
 
     private void updatePanelBounds() {
-        panelWidth = Math.min(640, Math.max(420, width - 80));
-        panelHeight = Math.min(390, Math.max(300, height - 72));
+        panelWidth = Math.min(980, Math.max(680, width - 48));
+        panelHeight = Math.min(620, Math.max(460, height - 48));
         panelX = (width - panelWidth) / 2;
         panelY = (height - panelHeight) / 2;
     }
@@ -187,7 +193,7 @@ public class BodyStatusScreen extends Screen {
         try {
             Util.getPlatform().openUri(new URI(url));
         } catch (Exception e) {
-            fallbackStatus = "Could not open body status.";
+            fallbackStatus = "Не удалось открыть состояние персонажа.";
             OasisAuthMod.LOGGER.warn("Failed to open body status URL.", e);
         }
     }

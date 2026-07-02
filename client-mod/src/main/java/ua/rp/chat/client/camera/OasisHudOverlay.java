@@ -41,6 +41,7 @@ public final class OasisHudOverlay implements HudElement {
         }
 
         float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        float danger = manager.getStaminaDanger01();
         int barWidth = Math.max(72, width / 8);
         int barX = width - barWidth - 18;
         int barY = height - 28;
@@ -50,15 +51,8 @@ public final class OasisHudOverlay implements HudElement {
         graphics.fill(barX + 1, barY + 1, barX + 1 + fill, barY + 4, color);
         graphics.text(net.minecraft.client.Minecraft.getInstance().font, "STAM", barX, barY - 10, 0x99D8D1C8);
 
-        int vignetteAlpha = Math.round(manager.getStaminaVignetteAlpha() * 255.0f);
-        if (vignetteAlpha > 0) {
-            int c = vignetteAlpha << 24;
-            int side = Math.max(28, width / 10);
-            int top = Math.max(18, height / 12);
-            graphics.fill(0, 0, width, top, c);
-            graphics.fill(0, height - top, width, height, c);
-            graphics.fill(0, 0, side, height, c);
-            graphics.fill(width - side, 0, width, height, c);
+        if (danger > 0.0f || ua.rp.chat.client.vitals.VitalsClientState.isUnconscious()) {
+            MedicalScreenEffects.render(graphics, width, height);
         }
     }
 }

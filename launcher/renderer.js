@@ -82,7 +82,7 @@ btnPlay.addEventListener('click', () => {
     const username = usernameInput.value.trim();
 
     if (!username) {
-        alert('Будь ласка, введіть ваш нікнейм!');
+        alert('Пожалуйста, введите ваш никнейм!');
         return;
     }
 
@@ -91,7 +91,7 @@ btnPlay.addEventListener('click', () => {
     progressContainer.style.display = 'flex';
     progressBarFill.style.width = '0%';
     progressPercent.innerText = '0%';
-    progressMessage.innerText = 'Ініціалізація завантажувача...';
+    progressMessage.innerText = 'Инициализация загрузчика...';
 
     // Send launch request with parameters to Electron main process
     ipcRenderer.send('launch-game', {
@@ -120,7 +120,7 @@ ipcRenderer.on('launch-status', (event, data) => {
     if (data.status === 'success') {
         // Game launched successfully
         btnPlay.disabled = true;
-        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-gamepad"></i> В ГРІ</span>';
+        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-gamepad"></i> В ИГРЕ</span>';
         btnPlay.classList.add('in-game-style');
         
         setTimeout(() => {
@@ -128,7 +128,7 @@ ipcRenderer.on('launch-status', (event, data) => {
         }, 1500);
     } else if (data.status === 'error') {
         btnPlay.disabled = false;
-        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> Р“Р РђРўР</span>';
+        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ИГРАТЬ</span>';
         btnPlay.classList.remove('in-game-style');
         progressContainer.style.display = 'flex';
     }
@@ -137,7 +137,7 @@ ipcRenderer.on('launch-status', (event, data) => {
 // Restore play button once the game window is closed
 ipcRenderer.on('game-closed', () => {
     btnPlay.disabled = false;
-    btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ГРАТИ</span>';
+    btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ИГРАТЬ</span>';
     btnPlay.classList.remove('in-game-style');
 });
 
@@ -189,23 +189,23 @@ ipcRenderer.on('update-status', (event, data) => {
     if (data.updateRequired) {
         updateModal.style.display = 'flex';
         btnPlay.disabled = true;
-        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-cloud-arrow-down"></i> ПОТРІБНЕ ОНОВЛЕННЯ</span>';
+        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-cloud-arrow-down"></i> ТРЕБУЕТСЯ ОБНОВЛЕНИЕ</span>';
         btnPlay.style.background = 'linear-gradient(135deg, #c49c72 0%, #a37c56 100%)';
         btnPlay.style.color = '#ffffff';
         
         if (data.error) {
             isUpdating = false;
             btnStartUpdate.disabled = false;
-            btnStartUpdate.innerHTML = '<i class="fa-solid fa-rotate-right"></i> ПОВТОРИТИ ОНОВЛЕННЯ';
+            btnStartUpdate.innerHTML = '<i class="fa-solid fa-rotate-right"></i> ПОВТОРИТЬ ОБНОВЛЕНИЕ';
             btnStartUpdate.style.opacity = '';
             btnStartUpdate.style.cursor = '';
-            modalProgressMessage.innerText = `Помилка: ${data.error}`;
+            modalProgressMessage.innerText = `Ошибка: ${data.error}`;
             modalProgressMessage.style.color = '#E3A899';
         }
     } else {
         updateModal.style.display = 'none';
         btnPlay.disabled = false;
-        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ГРАТИ</span>';
+        btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ИГРАТЬ</span>';
         btnPlay.style.background = '';
         btnPlay.style.color = '';
         
@@ -231,7 +231,7 @@ btnStartUpdate.addEventListener('click', () => {
     isUpdating = true;
     
     btnStartUpdate.disabled = true;
-    btnStartUpdate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ЗАВАНТАЖЕННЯ...';
+    btnStartUpdate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ЗАГРУЗКА...';
     btnStartUpdate.style.opacity = '0.6';
     btnStartUpdate.style.cursor = 'not-allowed';
     

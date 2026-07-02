@@ -199,8 +199,9 @@ public class AuthScreen extends Screen {
     }
 
     private void updateExitButtonBounds() {
-        exitX = 28;
-        exitY = Math.max(52, height - exitHeight - 86);
+        int padding = 30;
+        exitX = width - exitWidth - padding;
+        exitY = height - exitHeight - padding;
     }
 
     private boolean isExitButtonHovered(double mouseX, double mouseY) {

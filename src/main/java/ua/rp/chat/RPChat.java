@@ -90,7 +90,16 @@ public class RPChat extends JavaPlugin {
             webFolder.mkdirs();
         }
 
-        String[] files = {"index.html", "style.css", "app.js", "body.html", "body.css", "body.js"};
+        String[] files = {
+                "index.html",
+                "style.css",
+                "app.js",
+                "body.html",
+                "body.css",
+                "body.js",
+                "assets/body-ui.css",
+                "assets/body-ui.js"
+        };
         for (String filename : files) {
             java.io.File outFile = new java.io.File(webFolder, filename);
             if (!outFile.exists()) {
@@ -101,6 +110,9 @@ public class RPChat extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (staminaManager != null) {
+            staminaManager.shutdown();
+        }
         if (authWebServer != null) {
             authWebServer.stop();
         }
