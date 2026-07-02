@@ -40,6 +40,12 @@ public final class OasisArmAnimationController {
             return;
         }
 
+        if (!firstPersonBody) {
+            ArmPose inactivePose = new ArmPose();
+            diagnostics.capture(client, model, state, player, runtime, inactivePose, false, false, false);
+            return;
+        }
+
         ArmPose pose = buildPose(state, player, firstPersonBody);
         applyPose(model, pose);
 

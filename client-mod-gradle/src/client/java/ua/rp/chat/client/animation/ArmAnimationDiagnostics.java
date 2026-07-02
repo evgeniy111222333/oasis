@@ -44,16 +44,18 @@ public final class ArmAnimationDiagnostics {
         float rangeScore = rangeScore(model);
         float jitterScore = clamp01(1.0f - smoothedJitter / 22.0f);
         float continuityScore = clamp01(1.0f - frameDelta / 32.0f);
-        float geometryScore = rightForearmPresent && leftForearmPresent ? 1.0f : 0.72f;
+        float geometryScore = !firstPersonBody || (rightForearmPresent && leftForearmPresent) ? 1.0f : 0.72f;
         float qualityScore = clamp01(rangeScore * 0.38f + jitterScore * 0.27f + continuityScore * 0.20f + geometryScore * 0.15f);
 
         String warning = "ok";
-        if (rangeScore < 0.68f) {
+        if (!firstPersonBody) {
+            warning = "not_first_person_body";
+        } else if (rangeScore < 0.68f) {
             warning = "angle_range";
         } else if (smoothedJitter > 14.0f) {
             warning = "jitter";
         } else if (!rightForearmPresent || !leftForearmPresent) {
-            warning = "segmented_forearms_missing";
+            warning = "vanilla_arm_model";
         }
 
         lastSnapshot = new Snapshot(now, client.getUser().getName(), player.getUUID().toString(), firstPersonBody,
