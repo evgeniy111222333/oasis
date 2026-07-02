@@ -6,6 +6,7 @@ import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import ua.rp.chat.client.animation.OasisArmAnimationController;
 import ua.rp.chat.client.appearance.OasisAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
 
@@ -73,6 +74,9 @@ public final class OasisPoseDebugExporter {
         prop(json, "skinPath", skin == null ? "" : skin.path()).append(",\n");
         prop(json, "skinHash", skin == null ? "" : skin.hash()).append(",\n");
         prop(json, "skinModel", skin == null ? "" : skin.model()).append(",\n");
+        json.append("  \"armAnimation\": ");
+        appendIndentedJson(json, OasisArmAnimationController.getInstance().lastDiagnosticsJson(), "  ");
+        json.append(",\n");
         json.append("  \"parts\": {\n");
         part(json, "head", model.head).append(",\n");
         part(json, "hat", model.hat).append(",\n");
@@ -89,6 +93,20 @@ public final class OasisPoseDebugExporter {
         json.append("  }\n");
         json.append("}\n");
         return json.toString();
+    }
+
+    private static void appendIndentedJson(StringBuilder json, String raw, String indent) {
+        if (raw == null || raw.isBlank()) {
+            json.append("{}");
+            return;
+        }
+        String[] lines = raw.stripTrailing().split("\\R");
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                json.append('\n').append(indent);
+            }
+            json.append(lines[i]);
+        }
     }
 
     private static StringBuilder part(StringBuilder json, String name, ModelPart part) {

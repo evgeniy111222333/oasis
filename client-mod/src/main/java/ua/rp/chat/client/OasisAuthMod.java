@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import ua.rp.chat.client.animation.OasisArmAnimationController;
 import ua.rp.chat.client.camera.OasisHudOverlay;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.vitals.VitalsClientState;
@@ -50,6 +51,7 @@ public class OasisAuthMod implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SmartCameraManager.getInstance().clientTick(client);
+            OasisArmAnimationController.getInstance().clientTick(client);
             VitalsClientState.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);

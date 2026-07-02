@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import ua.rp.chat.client.animation.OasisArmAnimationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.OasisPoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
@@ -36,10 +37,16 @@ public class PlayerModelMixin {
     private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
         oasis$applyStableRoleplayPose(model, state);
+        Player player = oasis$getRenderedPlayer(state);
         if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
-        Player player = oasis$getRenderedPlayer(state);
+        OasisArmAnimationController.getInstance().apply(
+                model,
+                state,
+                player,
+                oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()
+        );
         OasisPoseDebugExporter.capture(model, state, player, oasis$isLocalFirstPersonState(state));
     }
 
