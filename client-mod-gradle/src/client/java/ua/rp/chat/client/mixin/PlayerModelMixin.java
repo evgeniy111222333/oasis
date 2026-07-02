@@ -30,9 +30,8 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 public class PlayerModelMixin {
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
     private static void oasis$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
-        PartDefinition root = cir.getReturnValue().getRoot();
-        oasis$replaceArm(root, "right_arm", "right_sleeve", -5.0f, true, slim, 40, 16, 40, 32, deformation);
-        oasis$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
+        // Disabled: replacing vanilla arm mesh globally breaks the third-person player model.
+        // Segmented arms must be implemented as a first-person-only render path instead.
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
@@ -433,27 +432,20 @@ public class PlayerModelMixin {
 
     @Unique
     private void oasis$syncWearableLayers(PlayerModel model) {
-        oasis$copyPartPose(model.head, model.hat);
-        oasis$copyPartPose(model.body, model.jacket);
-        oasis$copyPartPose(model.rightArm, model.rightSleeve);
-        oasis$copyPartPose(model.leftArm, model.leftSleeve);
-        oasis$copyPartPose(model.rightLeg, model.rightPants);
-        oasis$copyPartPose(model.leftLeg, model.leftPants);
+        oasis$resetWearableLocalPose(model.hat);
+        oasis$resetWearableLocalPose(model.rightSleeve);
+        oasis$resetWearableLocalPose(model.leftSleeve);
+        oasis$resetWearableLocalPose(model.rightPants);
+        oasis$resetWearableLocalPose(model.leftPants);
+        oasis$resetWearableLocalPose(model.jacket);
     }
 
     @Unique
-    private void oasis$copyPartPose(ModelPart source, ModelPart target) {
-        if (source == null || target == null) {
+    private void oasis$resetWearableLocalPose(ModelPart part) {
+        if (part == null) {
             return;
         }
-        target.x = source.x;
-        target.y = source.y;
-        target.z = source.z;
-        target.xRot = source.xRot;
-        target.yRot = source.yRot;
-        target.zRot = source.zRot;
-        target.visible = source.visible;
-        target.skipDraw = source.skipDraw;
+        part.loadPose(part.getInitialPose());
     }
 
     @Unique
