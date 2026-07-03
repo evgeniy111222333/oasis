@@ -2,6 +2,11 @@ package ua.rp.chat.client.mixin;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.PartPose;
+import net.minecraft.client.model.geom.builders.CubeDeformation;
+import net.minecraft.client.model.geom.builders.CubeListBuilder;
+import net.minecraft.client.model.geom.builders.MeshDefinition;
+import net.minecraft.client.model.geom.builders.PartDefinition;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
@@ -15,18 +20,31 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.animation.OasisArmAnimationController;
+import ua.rp.chat.client.animation.OasisLegAnimationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.OasisPoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
+    @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
+    private static void oasis$addKneeCartilage(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
+        PartDefinition root = cir.getReturnValue().getRoot();
+        oasis$addKneeCartilage(root, "right_leg", deformation, 0, 20, false);
+        oasis$addKneeCartilage(root, "left_leg", deformation, 16, 52, false);
+        oasis$addKneeCartilage(root, "right_pants", deformation.extend(0.26f), 0, 36, true);
+        oasis$addKneeCartilage(root, "left_pants", deformation.extend(0.26f), 0, 52, true);
+    }
+
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
     private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
         oasis$applyStableRoleplayPose(model, state);
         Player player = oasis$getRenderedPlayer(state);
+        boolean localPlayer = oasis$isLocalFirstPersonState(state);
+        OasisLegAnimationController.getInstance().apply(model, state, player, localPlayer);
         if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
@@ -37,6 +55,22 @@ public class PlayerModelMixin {
                 oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()
         );
         OasisPoseDebugExporter.capture(model, state, player, oasis$isLocalFirstPersonState(state));
+    }
+
+    @Unique
+    private static void oasis$addKneeCartilage(PartDefinition root, String legName, CubeDeformation deformation, int texX, int texY, boolean overlay) {
+        try {
+            PartDefinition leg = root.getChild(legName);
+            float inflate = overlay ? 0.05f : 0.0f;
+            leg.addOrReplaceChild(
+                    "oasis_knee_cartilage",
+                    CubeListBuilder.create()
+                            .texOffs(texX, texY)
+                            .addBox(-2.04f - inflate, -0.34f, -2.05f - inflate, 4.08f + inflate * 2.0f, 0.68f, 4.10f + inflate * 2.0f, deformation),
+                    PartPose.offset(0.0f, 5.72f, -0.02f)
+            );
+        } catch (RuntimeException ignored) {
+        }
     }
 
     @Unique

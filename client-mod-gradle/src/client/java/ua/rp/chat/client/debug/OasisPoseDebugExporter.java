@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.client.animation.OasisArmAnimationController;
+import ua.rp.chat.client.animation.OasisLegAnimationController;
 import ua.rp.chat.client.appearance.OasisAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
 
@@ -76,6 +77,9 @@ public final class OasisPoseDebugExporter {
         prop(json, "skinModel", skin == null ? "" : skin.model()).append(",\n");
         json.append("  \"armAnimation\": ");
         appendIndentedJson(json, OasisArmAnimationController.getInstance().lastDiagnosticsJson(), "  ");
+        json.append(",\n");
+        json.append("  \"legAnimation\": ");
+        appendIndentedJson(json, OasisLegAnimationController.getInstance().lastDiagnosticsJson(), "  ");
         json.append(",\n");
         json.append("  \"parts\": {\n");
         part(json, "head", model.head).append(",\n");
