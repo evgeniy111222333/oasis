@@ -4,6 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const childProcess = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
 
 let mainWindow;
@@ -16,6 +17,8 @@ const DEFAULT_GAME_SERVER_HOST = process.env.OASIS_GAME_SERVER_HOST || 'localhos
 const DEFAULT_GAME_SERVER_PORT = Number(process.env.OASIS_GAME_SERVER_PORT || 25565);
 const REMOTE_CLIENT_BASE_URL = process.env.OASIS_CLIENT_BASE_URL || 'https://raw.githubusercontent.com/evgeniy111222333/oasis/dev/plugins/RPChat/client';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
+const JAVA_RUNTIME_MAJOR = 25;
+const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
 
 const REQUIRED_MODS = [
     { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '251f4181c05fdf59da4b2fd23ece6cc54990321e', size: 538649 },
@@ -156,6 +159,68 @@ function getLocalClientSource(relativePath) {
 
 function fileSha1(filePath) {
     return crypto.createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function parseJavaMajor(versionOutput) {
+    const match = String(versionOutput || '').match(/(?:openjdk|java)\s+version\s+"([^"]+)"/i)
+        || String(versionOutput || '').match(/version\s+"([^"]+)"/i);
+    if (!match) {
+        return null;
+    }
+
+    const version = match[1];
+    if (version.startsWith('1.')) {
+        return Number(version.split('.')[1]);
+    }
+    return Number(version.split('.')[0]);
+}
+
+function checkJavaExecutable(javaPath) {
+    return new Promise((resolve, reject) => {
+        childProcess.execFile(javaPath, ['-version'], { timeout: 5000 }, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+
+            const output = `${stdout || ''}\n${stderr || ''}`;
+            const major = parseJavaMajor(output);
+            if (!major) {
+                reject(new Error('Cannot detect Java version'));
+                return;
+            }
+
+            if (major < JAVA_RUNTIME_MAJOR) {
+                reject(new Error(`Installed Java version is ${major}, required ${JAVA_RUNTIME_MAJOR}+`));
+                return;
+            }
+
+            resolve({ javaPath, major, output });
+        });
+    });
+}
+
+async function resolveJavaExecutable() {
+    const config = readConfig();
+    const candidates = [
+        config.javaPath,
+        'java'
+    ].filter(Boolean);
+    const errors = [];
+
+    for (const candidate of candidates) {
+        try {
+            return await checkJavaExecutable(candidate);
+        } catch (error) {
+            errors.push(`${candidate}: ${error.message}`);
+        }
+    }
+
+    throw new Error(
+        `Не найдена подходящая Java. Для Oasis нужен Java ${JAVA_RUNTIME_MAJOR} или новее.\n` +
+        `Скачайте и установите Temurin/OpenJDK ${JAVA_RUNTIME_MAJOR} с официальной страницы: ${JAVA_DOWNLOAD_PAGE}\n` +
+        `После установки перезапустите лаунчер. Детали проверки: ${errors.join(' | ') || 'java не найдена в PATH'}`
+    );
 }
 
 function isManagedFileValid(filePath, descriptor) {
@@ -595,6 +660,14 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
     });
 
     try {
+        event.reply('launch-status', {
+            status: 'downloading',
+            progress: 3,
+            message: `Проверка Java ${JAVA_RUNTIME_MAJOR}+...`
+        });
+        const javaInfo = await resolveJavaExecutable();
+        logLauncher(`Using Java ${javaInfo.major} at ${javaInfo.javaPath}`);
+
         // Quick fallback verification (just in case they deleted files since last check)
         const versionJsonPath = getClientProfilePath(activeGamePath);
 
@@ -638,7 +711,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             clientPackage: null,
             authorization: authSession,
             root: activeGamePath,
-            javaPath: 'javaw', // Launch using javaw to prevent CMD window from opening
+            javaPath: javaInfo.javaPath,
             server: {
                 host: gameHost,
                 port: gamePort
