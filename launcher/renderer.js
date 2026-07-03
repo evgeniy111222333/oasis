@@ -18,7 +18,6 @@ const gamePathInput = document.getElementById('gamePathInput');
 const fullscreenInput = document.getElementById('fullscreenInput');
 
 let currentGamePath = '';
-let isGameRunningUi = false;
 
 function setServerStatus({ online, text, players = '-- / --' }) {
     const statusDot = document.querySelector('.status-dot');
@@ -43,13 +42,6 @@ ipcRenderer.on('config-data', (event, data) => {
     fullscreenInput.checked = data.fullscreen || false;
     ipcRenderer.send('check-updates', { gamePath: currentGamePath });
 });
-
-function requestUpdateCheck() {
-    if (!currentGamePath || isUpdating || isGameRunningUi) {
-        return;
-    }
-    ipcRenderer.send('check-updates', { gamePath: currentGamePath });
-}
 
 // Settings toggle
 btnSettings.addEventListener('click', () => {
@@ -127,7 +119,6 @@ ipcRenderer.on('launch-status', (event, data) => {
 
     if (data.status === 'success') {
         // Game launched successfully
-        isGameRunningUi = true;
         btnPlay.disabled = true;
         btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-gamepad"></i> В ИГРЕ</span>';
         btnPlay.classList.add('in-game-style');
@@ -145,11 +136,9 @@ ipcRenderer.on('launch-status', (event, data) => {
 
 // Restore play button once the game window is closed
 ipcRenderer.on('game-closed', () => {
-    isGameRunningUi = false;
     btnPlay.disabled = false;
     btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-play"></i> ИГРАТЬ</span>';
     btnPlay.classList.remove('in-game-style');
-    requestUpdateCheck();
 });
 
 // Dynamic server status & online query from plugin API.
@@ -184,7 +173,6 @@ async function updateServerStatus() {
 // Poll server status every 4 seconds
 setInterval(updateServerStatus, 4000);
 updateServerStatus(); // initial check
-setInterval(requestUpdateCheck, 12000);
 
 // Update modal UI elements
 const updateModal = document.getElementById('updateModal');

@@ -21,8 +21,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import ua.rp.chat.client.animation.OasisArmAnimationController;
-import ua.rp.chat.client.animation.OasisLegAnimationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.OasisPoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
@@ -30,51 +28,19 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
-    private static void oasis$addKneeCartilage(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
-        PartDefinition root = cir.getReturnValue().getRoot();
-        oasis$addKneeCartilage(root, "right_leg", deformation, 0, 20, false);
-        oasis$addKneeCartilage(root, "left_leg", deformation, 16, 52, false);
-        oasis$addKneeCartilage(root, "right_pants", deformation.extend(0.22f), 0, 36, true);
-        oasis$addKneeCartilage(root, "left_pants", deformation.extend(0.22f), 0, 52, true);
+    private static void oasis$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
+        // Custom segmented limbs are disabled until the model layer pipeline is rebuilt safely.
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
     private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
         oasis$applyStableRoleplayPose(model, state);
-        Player player = oasis$getRenderedPlayer(state);
-        boolean localPlayer = oasis$isLocalFirstPersonState(state);
-        OasisLegAnimationController.getInstance().apply(model, state, player, localPlayer);
         if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
-        OasisArmAnimationController.getInstance().apply(
-                model,
-                state,
-                player,
-                oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()
-        );
+        Player player = oasis$getRenderedPlayer(state);
         OasisPoseDebugExporter.capture(model, state, player, oasis$isLocalFirstPersonState(state));
-    }
-
-    @Unique
-    private static void oasis$addKneeCartilage(PartDefinition root, String legName, CubeDeformation deformation, int texX, int texY, boolean overlay) {
-        try {
-            PartDefinition leg = root.getChild(legName);
-            float inflate = overlay ? 0.0f : 0.0f;
-            float width = overlay ? 4.00f : 4.04f;
-            float depth = overlay ? 4.00f : 4.04f;
-            float height = overlay ? 0.46f : 0.58f;
-            leg.addOrReplaceChild(
-                    "oasis_knee_cartilage",
-                    CubeListBuilder.create()
-                            .texOffs(texX, texY)
-                            .addBox(-width * 0.5f - inflate, -height * 0.5f, -depth * 0.5f - inflate,
-                                    width + inflate * 2.0f, height, depth + inflate * 2.0f, deformation),
-                    PartPose.offset(0.0f, 5.76f, -0.02f)
-            );
-        } catch (RuntimeException ignored) {
-        }
     }
 
     @Unique
@@ -271,6 +237,34 @@ public class PlayerModelMixin {
         oasis$applyWeaponStance(model, state, moving);
         oasis$applyWeatherPosture(model, player, calm);
         oasis$applyArticulatedLimbs(model, state, moving, calm, lean);
+    }
+
+    @Unique
+    private static void oasis$replaceArm(PartDefinition root, String armName, String sleeveName, float x, boolean right, boolean slim, int texX, int texY, int sleeveTexX, int sleeveTexY, CubeDeformation deformation) {
+        int width = slim ? 3 : 4;
+        float minX = right ? (slim ? -2.0f : -3.0f) : -1.0f;
+        PartDefinition arm = root.addOrReplaceChild(armName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
+        arm.addOrReplaceChild("oasis_upper_arm", CubeListBuilder.create().texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation), PartPose.ZERO);
+        arm.addOrReplaceChild("oasis_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
+
+        CubeDeformation sleeve = deformation.extend(0.25f);
+        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
+        sleeveRoot.addOrReplaceChild("oasis_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
+        sleeveRoot.addOrReplaceChild("oasis_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.offset(0.0f, 3.8f, 0.0f));
+    }
+
+    @Unique
+    private static void oasis$replaceLeg(PartDefinition root, String legName, String pantsName, float x, int texX, int texY, int pantsTexX, int pantsTexY, CubeDeformation deformation) {
+        PartDefinition leg = root.addOrReplaceChild(legName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
+        leg.addOrReplaceChild("oasis_thigh", CubeListBuilder.create().texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, deformation), PartPose.ZERO);
+        PartDefinition shin = leg.addOrReplaceChild("oasis_shin", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, deformation), PartPose.offset(0.0f, 5.9f, 0.0f));
+        shin.addOrReplaceChild("oasis_foot", CubeListBuilder.create().texOffs(texX, texY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, deformation), PartPose.ZERO);
+
+        CubeDeformation pants = deformation.extend(0.25f);
+        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
+        pantsRoot.addOrReplaceChild("oasis_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, pants), PartPose.ZERO);
+        PartDefinition pantsShin = pantsRoot.addOrReplaceChild("oasis_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, pants), PartPose.offset(0.0f, 5.9f, 0.0f));
+        pantsShin.addOrReplaceChild("oasis_foot_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, pants), PartPose.ZERO);
     }
 
     @Unique

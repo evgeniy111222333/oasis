@@ -751,7 +751,7 @@ public class AuthWebServer {
         try {
             file.getParentFile().mkdirs();
             String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"b82c116c05a2f8f21386d0442a78b0c2f9af9775\", \"size\": 576025 },\n" +
+                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"ab98ce6f21bc13d10a91235a75e336b439c25e75\", \"size\": 538505 },\n" +
                     "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
                     "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
                     "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +

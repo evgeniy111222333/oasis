@@ -14,7 +14,7 @@ const SERVER_URL = 'http://localhost:25580';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 
 const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: 'b82c116c05a2f8f21386d0442a78b0c2f9af9775', size: 576025 },
+    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: 'ab98ce6f21bc13d10a91235a75e336b439c25e75', size: 538505 },
     { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
     { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
     { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
@@ -103,28 +103,20 @@ function fileSha1(filePath) {
 }
 
 function isManagedFileValid(filePath, descriptor) {
-    return getManagedFileIssue(filePath, descriptor) === null;
-}
-
-function getManagedFileIssue(filePath, descriptor) {
     if (!fs.existsSync(filePath)) {
-        return `missing file: ${filePath}`;
+        return false;
     }
 
     const stat = fs.statSync(filePath);
     if (descriptor.size && stat.size !== descriptor.size) {
-        return `size mismatch for ${descriptor.name}: local=${stat.size}, required=${descriptor.size}`;
+        return false;
     }
 
-    if (descriptor.sha1) {
-        const localSha = fileSha1(filePath);
-        const requiredSha = descriptor.sha1.toLowerCase();
-        if (localSha !== requiredSha) {
-            return `sha1 mismatch for ${descriptor.name}: local=${localSha}, required=${requiredSha}`;
-        }
+    if (descriptor.sha1 && fileSha1(filePath) !== descriptor.sha1.toLowerCase()) {
+        return false;
     }
 
-    return null;
+    return true;
 }
 
 function isClientProfileValid(profilePath) {
@@ -185,11 +177,10 @@ function logLauncher(message) {
 
 function fetchRequiredModsFromServer() {
     return new Promise((resolve) => {
-        const url = `${SERVER_URL}/api/required-mods?ts=${Date.now()}`;
+        const url = `${SERVER_URL}/api/required-mods`;
         http.get(url, (response) => {
             if (response.statusCode !== 200) {
                 console.warn(`Server mods API returned status: ${response.statusCode}. Using fallback local mods.`);
-                logLauncher(`Required mods API returned HTTP ${response.statusCode}; using fallback manifest.`);
                 resolve(REQUIRED_MODS);
                 return;
             }
@@ -199,23 +190,18 @@ function fetchRequiredModsFromServer() {
                 try {
                     const list = JSON.parse(data);
                     if (Array.isArray(list)) {
-                        const firstMod = list[0] || {};
-                        logLauncher(`Fetched required mods: count=${list.length}, first=${firstMod.name || 'n/a'}, sha1=${firstMod.sha1 || 'n/a'}, size=${firstMod.size || 'n/a'}`);
                         resolve(list);
                     } else {
                         console.warn('Server returned non-array mods list. Using fallback local mods.');
-                        logLauncher('Required mods API returned non-array JSON; using fallback manifest.');
                         resolve(REQUIRED_MODS);
                     }
                 } catch (e) {
                     console.warn('Failed to parse server mods list JSON. Using fallback local mods:', e);
-                    logLauncher(`Failed to parse required mods JSON; using fallback manifest: ${e.message}`);
                     resolve(REQUIRED_MODS);
                 }
             });
         }).on('error', (err) => {
             console.warn('Failed to fetch required mods from server. Using fallback local mods:', err.message);
-            logLauncher(`Failed to fetch required mods; using fallback manifest: ${err.message}`);
             resolve(REQUIRED_MODS);
         });
     });
@@ -312,31 +298,25 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
 
     const requiredMods = await fetchRequiredModsFromServer();
-    logLauncher(`Checking updates in ${activeGamePath}`);
 
     if (!isClientProfileValid(getClientProfilePath(activeGamePath))) {
-        logLauncher(`Update required: invalid or missing client profile at ${getClientProfilePath(activeGamePath)}`);
         event.reply('update-status', { updateRequired: true });
         return;
     }
 
     if (hasObsoleteManagedMods(activeGamePath, requiredMods)) {
-        logLauncher('Update required: obsolete managed mod detected.');
         event.reply('update-status', { updateRequired: true });
         return;
     }
 
     for (const mod of requiredMods) {
         const modLocalPath = path.join(activeGamePath, mod.path);
-        const issue = getManagedFileIssue(modLocalPath, mod);
-        if (issue) {
-            logLauncher(`Update required: ${issue}`);
+        if (!isManagedFileValid(modLocalPath, mod)) {
             event.reply('update-status', { updateRequired: true });
             return;
         }
     }
 
-    logLauncher('Update check passed: client files match manifest.');
     event.reply('update-status', { updateRequired: false });
 });
 
@@ -373,15 +353,12 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         // 2. Download or repair managed mods
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
-            const issue = getManagedFileIssue(modLocalPath, mod);
-            if (issue) {
-                logLauncher(`Repairing mod ${mod.name}: ${issue}`);
+            if (!isManagedFileValid(modLocalPath, mod)) {
                 const localSource = getLocalClientSource(mod.path);
                 if (fs.existsSync(localSource)) {
                     updateProgress(`Копирование мода: ${mod.name}...`, Math.round((currentStep / totalSteps) * 100));
                     fs.mkdirSync(path.dirname(modLocalPath), { recursive: true });
                     fs.copyFileSync(localSource, modLocalPath);
-                    logLauncher(`Copied ${mod.name} from local source ${localSource}`);
                 } else {
                     updateProgress(`Загрузка мода: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
                     await downloadFile(`${SERVER_URL}/client/${mod.path}`, modLocalPath, (received, total) => {
@@ -395,11 +372,6 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
                             message: `Загрузка мода: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
                         });
                     });
-                    logLauncher(`Downloaded ${mod.name} from server.`);
-                }
-                const postIssue = getManagedFileIssue(modLocalPath, mod);
-                if (postIssue) {
-                    throw new Error(`Verification failed after updating ${mod.name}: ${postIssue}`);
                 }
             }
             currentStep++;
@@ -501,19 +473,13 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         removeObsoleteManagedMods(activeGamePath, requiredMods);
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
-            const issue = getManagedFileIssue(modLocalPath, mod);
-            if (issue) {
-                logLauncher(`Launch preflight repairing ${mod.name}: ${issue}`);
+            if (!isManagedFileValid(modLocalPath, mod)) {
                 const localSource = getLocalClientSource(mod.path);
                 if (fs.existsSync(localSource)) {
                     fs.mkdirSync(path.dirname(modLocalPath), { recursive: true });
                     fs.copyFileSync(localSource, modLocalPath);
                 } else {
                     await downloadFile(`${SERVER_URL}/client/${mod.path}`, modLocalPath);
-                }
-                const postIssue = getManagedFileIssue(modLocalPath, mod);
-                if (postIssue) {
-                    throw new Error(`Launch preflight verification failed for ${mod.name}: ${postIssue}`);
                 }
             }
         }
