@@ -34,8 +34,8 @@ public class PlayerModelMixin {
         PartDefinition root = cir.getReturnValue().getRoot();
         oasis$addKneeCartilage(root, "right_leg", deformation, 0, 20, false);
         oasis$addKneeCartilage(root, "left_leg", deformation, 16, 52, false);
-        oasis$addKneeCartilage(root, "right_pants", deformation.extend(0.26f), 0, 36, true);
-        oasis$addKneeCartilage(root, "left_pants", deformation.extend(0.26f), 0, 52, true);
+        oasis$addKneeCartilage(root, "right_pants", deformation.extend(0.22f), 0, 36, true);
+        oasis$addKneeCartilage(root, "left_pants", deformation.extend(0.22f), 0, 52, true);
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
@@ -61,13 +61,17 @@ public class PlayerModelMixin {
     private static void oasis$addKneeCartilage(PartDefinition root, String legName, CubeDeformation deformation, int texX, int texY, boolean overlay) {
         try {
             PartDefinition leg = root.getChild(legName);
-            float inflate = overlay ? 0.05f : 0.0f;
+            float inflate = overlay ? 0.0f : 0.0f;
+            float width = overlay ? 4.00f : 4.04f;
+            float depth = overlay ? 4.00f : 4.04f;
+            float height = overlay ? 0.46f : 0.58f;
             leg.addOrReplaceChild(
                     "oasis_knee_cartilage",
                     CubeListBuilder.create()
                             .texOffs(texX, texY)
-                            .addBox(-2.04f - inflate, -0.34f, -2.05f - inflate, 4.08f + inflate * 2.0f, 0.68f, 4.10f + inflate * 2.0f, deformation),
-                    PartPose.offset(0.0f, 5.72f, -0.02f)
+                            .addBox(-width * 0.5f - inflate, -height * 0.5f, -depth * 0.5f - inflate,
+                                    width + inflate * 2.0f, height, depth + inflate * 2.0f, deformation),
+                    PartPose.offset(0.0f, 5.76f, -0.02f)
             );
         } catch (RuntimeException ignored) {
         }

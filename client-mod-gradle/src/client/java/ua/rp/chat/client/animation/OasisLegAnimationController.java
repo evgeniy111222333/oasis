@@ -55,8 +55,11 @@ public final class OasisLegAnimationController {
         float pain = clamp01(VitalsClientState.getPain() / 100.0f);
         float weakness = clamp01(Math.max(fatigue * 0.55f, Math.max(bloodLoss * 0.70f, pain * 0.45f)));
 
-        applyIdleLife(pose, idle, weakness);
+        float airborne = "airborne".equals(runtime.movementMode()) ? 1.0f : 0.0f;
+
+        applyIdleLife(pose, idle * (1.0f - airborne), weakness);
         applyMovementStance(pose, speed, crouch);
+        applyAirbornePose(pose, airborne, weakness);
         applyLandingCompression(pose, landing, weakness);
 
         return pose;
@@ -72,19 +75,19 @@ public final class OasisLegAnimationController {
         float micro = (float) Math.sin(runtime.idlePhase() * PI2 * 3.0f + 0.6f);
         float life = idle * (1.0f + weakness * 0.65f);
 
-        float knee = rad(2.8f + weakness * 3.2f) * life;
-        float alternating = shift * rad(1.5f) * life;
+        float knee = rad(5.8f + weakness * 4.6f) * life;
+        float alternating = shift * rad(3.6f) * life;
 
-        pose.bodyY += (0.018f + weakness * 0.020f) * (0.5f + slow * 0.5f) * life;
-        pose.bodyZRot += shift * rad(0.42f) * life;
-        pose.rightLegX += -0.025f * life + shift * 0.018f * life;
-        pose.leftLegX += 0.025f * life + shift * 0.018f * life;
-        pose.rightLegXRot += knee + alternating + micro * rad(0.35f) * life;
-        pose.leftLegXRot += knee - alternating - micro * rad(0.30f) * life;
-        pose.rightLegZRot -= rad(0.75f) * life + shift * rad(0.32f) * life;
-        pose.leftLegZRot += rad(0.75f) * life - shift * rad(0.32f) * life;
-        pose.rightKneeXRot += knee * 1.15f + Math.max(0.0f, shift) * rad(1.0f) * life;
-        pose.leftKneeXRot += knee * 1.15f + Math.max(0.0f, -shift) * rad(1.0f) * life;
+        pose.bodyY += (0.026f + weakness * 0.026f) * (0.5f + slow * 0.5f) * life;
+        pose.bodyZRot += shift * rad(0.85f) * life;
+        pose.rightLegX += -0.035f * life + shift * 0.026f * life;
+        pose.leftLegX += 0.035f * life + shift * 0.026f * life;
+        pose.rightLegXRot += knee + alternating + micro * rad(0.75f) * life;
+        pose.leftLegXRot += knee - alternating - micro * rad(0.65f) * life;
+        pose.rightLegZRot -= rad(1.35f) * life + shift * rad(0.65f) * life;
+        pose.leftLegZRot += rad(1.35f) * life - shift * rad(0.65f) * life;
+        pose.rightKneeXRot += knee * 1.45f + Math.max(0.0f, shift) * rad(2.5f) * life;
+        pose.leftKneeXRot += knee * 1.45f + Math.max(0.0f, -shift) * rad(2.5f) * life;
     }
 
     private void applyMovementStance(LegPose pose, float speed, float crouch) {
@@ -107,6 +110,30 @@ public final class OasisLegAnimationController {
             pose.rightKneeXRot += rad(8.0f) * crouch;
             pose.leftKneeXRot += rad(8.0f) * crouch;
         }
+    }
+
+    private void applyAirbornePose(LegPose pose, float airborne, float weakness) {
+        if (airborne <= 0.01f) {
+            return;
+        }
+
+        float airtime = clamp01(runtime.airborneTicks() / 11.0f);
+        float brace = airborne * (0.45f + airtime * 0.55f) * (1.0f + weakness * 0.22f);
+        float phase = runtime.weightShiftPhase() * PI2;
+        float drift = (float) Math.sin(phase) * brace;
+
+        pose.bodyY += 0.045f * brace;
+        pose.bodyXRot += rad(2.4f) * brace;
+        pose.rightLegX += -0.025f * brace;
+        pose.leftLegX += 0.025f * brace;
+        pose.rightLegXRot -= rad(11.0f) * brace;
+        pose.leftLegXRot -= rad(8.0f) * brace;
+        pose.rightLegYRot += drift * rad(2.0f);
+        pose.leftLegYRot -= drift * rad(2.0f);
+        pose.rightLegZRot -= rad(2.5f) * brace + drift * rad(0.9f);
+        pose.leftLegZRot += rad(2.5f) * brace - drift * rad(0.9f);
+        pose.rightKneeXRot += rad(18.0f) * brace + Math.max(0.0f, drift) * rad(4.0f);
+        pose.leftKneeXRot += rad(15.0f) * brace + Math.max(0.0f, -drift) * rad(4.0f);
     }
 
     private void applyLandingCompression(LegPose pose, float landing, float weakness) {
@@ -142,16 +169,16 @@ public final class OasisLegAnimationController {
         model.leftLeg.yRot += pose.leftLegYRot;
         model.leftLeg.zRot += pose.leftLegZRot;
 
-        applyChildXRot(model.rightLeg, "oasis_knee_cartilage", pose.rightKneeXRot);
-        applyChildXRot(model.leftLeg, "oasis_knee_cartilage", pose.leftKneeXRot);
+        setChildXRot(model.rightLeg, "oasis_knee_cartilage", pose.rightKneeXRot);
+        setChildXRot(model.leftLeg, "oasis_knee_cartilage", pose.leftKneeXRot);
         syncPants(model);
     }
 
     private void syncPants(PlayerModel model) {
         copyPartPose(model.rightLeg, model.rightPants);
         copyPartPose(model.leftLeg, model.leftPants);
-        applyChildXRot(model.rightPants, "oasis_knee_cartilage", readChildXRot(model.rightLeg, "oasis_knee_cartilage"));
-        applyChildXRot(model.leftPants, "oasis_knee_cartilage", readChildXRot(model.leftLeg, "oasis_knee_cartilage"));
+        copyChildPose(model.rightLeg, model.rightPants, "oasis_knee_cartilage");
+        copyChildPose(model.leftLeg, model.leftPants, "oasis_knee_cartilage");
     }
 
     private void copyPartPose(ModelPart source, ModelPart target) {
@@ -168,9 +195,16 @@ public final class OasisLegAnimationController {
         target.skipDraw = source.skipDraw;
     }
 
-    private void applyChildXRot(ModelPart parent, String child, float xRot) {
+    private void copyChildPose(ModelPart sourceParent, ModelPart targetParent, String childName) {
         try {
-            parent.getChild(child).xRot += xRot;
+            copyPartPose(sourceParent.getChild(childName), targetParent.getChild(childName));
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void setChildXRot(ModelPart parent, String child, float xRot) {
+        try {
+            parent.getChild(child).xRot = xRot;
         } catch (RuntimeException ignored) {
         }
     }

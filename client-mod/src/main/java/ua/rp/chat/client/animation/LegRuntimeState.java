@@ -18,6 +18,7 @@ public final class LegRuntimeState {
     private float landingVelocity;
     private float fallMemory;
     private int stillTicks;
+    private int airborneTicks;
     private String movementMode = "idle";
 
     public void update(Minecraft client) {
@@ -53,9 +54,12 @@ public final class LegRuntimeState {
         if (!player.onGround()) {
             movementMode = "airborne";
             stillTicks = 0;
+            airborneTicks++;
             fallMemory = Math.max(fallMemory, (float) player.fallDistance);
             return;
         }
+
+        airborneTicks = 0;
 
         if (player.isCrouching()) {
             movementMode = speed01 > 0.08f ? "crouch_walk" : "crouch_idle";
@@ -108,6 +112,7 @@ public final class LegRuntimeState {
         landingVelocity = 0.0f;
         fallMemory = 0.0f;
         stillTicks = 0;
+        airborneTicks = 0;
         movementMode = "idle";
         wasOnGround = true;
     }
@@ -138,6 +143,10 @@ public final class LegRuntimeState {
 
     public int stillTicks() {
         return stillTicks;
+    }
+
+    public int airborneTicks() {
+        return airborneTicks;
     }
 
     public String movementMode() {

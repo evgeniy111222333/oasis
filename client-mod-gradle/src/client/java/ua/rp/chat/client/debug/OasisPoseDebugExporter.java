@@ -135,7 +135,8 @@ public final class OasisPoseDebugExporter {
         child(json, "oasis_thigh", part).append(",");
         child(json, "oasis_shin", part).append(",");
         child(json, "oasis_thigh_pants", part).append(",");
-        child(json, "oasis_shin_pants", part);
+        child(json, "oasis_shin_pants", part).append(",");
+        child(json, "oasis_knee_cartilage", part);
         json.append("}}");
         return json;
     }
