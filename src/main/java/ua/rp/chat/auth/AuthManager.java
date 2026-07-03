@@ -312,6 +312,15 @@ public class AuthManager {
         plugin.getServer().broadcast(ua.rp.chat.ChatFormatter.formatJoin(name, style));
     }
 
+    public void broadcastRoleplayQuit(Player player) {
+        if (player == null || pendingAuth.contains(player.getUniqueId())) {
+            return;
+        }
+        String rpName = database.getRpName(player.getUniqueId());
+        String name = rpName != null && !rpName.isBlank() ? rpName : player.getName();
+        plugin.getServer().broadcast(ua.rp.chat.ChatFormatter.formatQuit(name, plugin.getActiveStyle()));
+    }
+
     public void openAuthOverlay(Player player, String token) {
         String finalLink = getAuthUrl(token, player.getName());
         sendAuthPayload(player, finalLink);

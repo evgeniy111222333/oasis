@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const { Client, Authenticator } = require('minecraft-launcher-core');
 
@@ -10,7 +11,10 @@ let isGameRunning = false;
 
 const CLIENT_VERSION = '26.1.2';
 const CLIENT_PROFILE_PATH = path.join('versions', CLIENT_VERSION, `${CLIENT_VERSION}.json`);
-const SERVER_URL = 'http://localhost:25580';
+const DEFAULT_API_URL = process.env.OASIS_API_URL || 'http://localhost:25580';
+const DEFAULT_GAME_SERVER_HOST = process.env.OASIS_GAME_SERVER_HOST || 'localhost';
+const DEFAULT_GAME_SERVER_PORT = Number(process.env.OASIS_GAME_SERVER_PORT || 25565);
+const REMOTE_CLIENT_BASE_URL = process.env.OASIS_CLIENT_BASE_URL || 'https://raw.githubusercontent.com/evgeniy111222333/oasis/dev/plugins/RPChat/client';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 
 const REQUIRED_MODS = [
@@ -39,7 +43,15 @@ const MANAGED_MOD_FILENAMES = [
     'continuity-3.0.1-beta.2+26.1.jar'
 ];
 
-function downloadFile(url, dest, onProgress) {
+function getTransport(url) {
+    return url.startsWith('https:') ? https : http;
+}
+
+function joinUrl(baseUrl, relativePath) {
+    return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
+}
+
+function downloadFile(url, dest, onProgress, redirectDepth = 0) {
     return new Promise((resolve, reject) => {
         const dir = path.dirname(dest);
         if (!fs.existsSync(dir)) {
@@ -50,7 +62,16 @@ function downloadFile(url, dest, onProgress) {
         let receivedBytes = 0;
         let totalBytes = 0;
 
-        const request = http.get(url, (response) => {
+        const request = getTransport(url).get(url, (response) => {
+            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectDepth < 4) {
+                response.resume();
+                file.close();
+                fs.unlink(dest, () => {});
+                const redirectUrl = new URL(response.headers.location, url).toString();
+                downloadFile(redirectUrl, dest, onProgress, redirectDepth + 1).then(resolve).catch(reject);
+                return;
+            }
+
             if (response.statusCode !== 200) {
                 response.resume();
                 file.close();
@@ -87,6 +108,41 @@ function downloadFile(url, dest, onProgress) {
             fs.unlink(dest, () => {});
             reject(err);
         });
+    });
+}
+
+function requestJson(url, timeoutMs = 3500, redirectDepth = 0) {
+    return new Promise((resolve, reject) => {
+        const request = getTransport(url).get(url, (response) => {
+            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectDepth < 4) {
+                response.resume();
+                const redirectUrl = new URL(response.headers.location, url).toString();
+                requestJson(redirectUrl, timeoutMs, redirectDepth + 1).then(resolve).catch(reject);
+                return;
+            }
+
+            if (response.statusCode !== 200) {
+                response.resume();
+                reject(new Error(`HTTP ${response.statusCode}`));
+                return;
+            }
+
+            let data = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        });
+
+        request.setTimeout(timeoutMs, () => {
+            request.destroy(new Error('Request timed out'));
+        });
+        request.on('error', reject);
     });
 }
 
@@ -175,36 +231,109 @@ function logLauncher(message) {
     }
 }
 
-function fetchRequiredModsFromServer() {
-    return new Promise((resolve) => {
-        const url = `${SERVER_URL}/api/required-mods`;
-        http.get(url, (response) => {
-            if (response.statusCode !== 200) {
-                console.warn(`Server mods API returned status: ${response.statusCode}. Using fallback local mods.`);
-                resolve(REQUIRED_MODS);
+function normalizeApiUrl(url) {
+    return String(url || DEFAULT_API_URL).trim().replace(/\/+$/, '') || DEFAULT_API_URL;
+}
+
+function getServerSettings(config = readConfig()) {
+    return {
+        gameHost: String(config.serverHost || DEFAULT_GAME_SERVER_HOST).trim() || DEFAULT_GAME_SERVER_HOST,
+        gamePort: Number(config.serverPort || DEFAULT_GAME_SERVER_PORT) || DEFAULT_GAME_SERVER_PORT,
+        apiUrl: normalizeApiUrl(config.apiUrl)
+    };
+}
+
+async function fetchRequiredModsFromSources(apiUrl) {
+    const manifestUrl = `${joinUrl(REMOTE_CLIENT_BASE_URL, 'mods.json')}?ts=${Date.now()}`;
+    try {
+        const remoteList = await requestJson(manifestUrl, 5000);
+        if (Array.isArray(remoteList)) {
+            logLauncher(`Loaded client manifest from ${manifestUrl}`);
+            return remoteList;
+        }
+    } catch (error) {
+        logLauncher(`Remote client manifest unavailable: ${error.message}`);
+    }
+
+    try {
+        const apiList = await requestJson(`${normalizeApiUrl(apiUrl)}/api/required-mods?ts=${Date.now()}`, 2500);
+        if (Array.isArray(apiList)) {
+            logLauncher(`Loaded client manifest from server API ${apiUrl}`);
+            return apiList;
+        }
+    } catch (error) {
+        logLauncher(`Server client manifest unavailable: ${error.message}`);
+    }
+
+    logLauncher('Using embedded client manifest fallback.');
+    return REQUIRED_MODS;
+}
+
+async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
+    const candidates = [
+        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath),
+        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`)
+    ];
+    let lastError;
+
+    for (const url of candidates) {
+        try {
+            await downloadFile(url, dest, onProgress);
+            logLauncher(`Downloaded ${relativePath} from ${url}`);
+            return;
+        } catch (error) {
+            lastError = error;
+            logLauncher(`Failed to download ${relativePath} from ${url}: ${error.message}`);
+        }
+    }
+
+    const localSource = getLocalClientSource(relativePath);
+    if (fs.existsSync(localSource)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(localSource, dest);
+        logLauncher(`Copied ${relativePath} from local development source.`);
+        return;
+    }
+
+    throw lastError || new Error(`No source available for ${relativePath}`);
+}
+
+async function repairManagedMod(mod, dest, apiUrl, onProgress) {
+    const candidates = [];
+    if (mod.url) {
+        candidates.push(mod.url);
+    }
+    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
+    candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
+
+    let lastError;
+    for (const url of candidates) {
+        try {
+            await downloadFile(url, dest, onProgress);
+            if (isManagedFileValid(dest, mod)) {
+                logLauncher(`Downloaded ${mod.name} from ${url}`);
                 return;
             }
-            let data = '';
-            response.on('data', (chunk) => { data += chunk; });
-            response.on('end', () => {
-                try {
-                    const list = JSON.parse(data);
-                    if (Array.isArray(list)) {
-                        resolve(list);
-                    } else {
-                        console.warn('Server returned non-array mods list. Using fallback local mods.');
-                        resolve(REQUIRED_MODS);
-                    }
-                } catch (e) {
-                    console.warn('Failed to parse server mods list JSON. Using fallback local mods:', e);
-                    resolve(REQUIRED_MODS);
-                }
-            });
-        }).on('error', (err) => {
-            console.warn('Failed to fetch required mods from server. Using fallback local mods:', err.message);
-            resolve(REQUIRED_MODS);
-        });
-    });
+            lastError = new Error(`${mod.name} checksum mismatch after download`);
+            fs.unlink(dest, () => {});
+        } catch (error) {
+            lastError = error;
+            logLauncher(`Failed to download ${mod.name} from ${url}: ${error.message}`);
+        }
+    }
+
+    const localSource = getLocalClientSource(mod.path);
+    if (fs.existsSync(localSource)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(localSource, dest);
+        if (isManagedFileValid(dest, mod)) {
+            logLauncher(`Copied ${mod.name} from local development source.`);
+            return;
+        }
+        fs.unlink(dest, () => {});
+    }
+
+    throw lastError || new Error(`No valid source available for ${mod.name}`);
 }
 
 function readConfig() {
@@ -278,12 +407,14 @@ ipcMain.on('get-config', (event) => {
     const defaultPath = fs.existsSync('D:\\oasis') ? 'D:\\oasis' : path.join(app.getPath('appData'), '.oasis-rp');
     const gamePath = config.gamePath || defaultPath;
     const fullscreen = config.fullscreen || false;
-    if (!config.gamePath || config.fullscreen === undefined) {
-        config.gamePath = gamePath;
-        config.fullscreen = fullscreen;
-        saveConfig(config);
-    }
-    event.reply('config-data', { gamePath, fullscreen });
+    const serverSettings = getServerSettings(config);
+    config.gamePath = gamePath;
+    config.fullscreen = fullscreen;
+    config.serverHost = serverSettings.gameHost;
+    config.serverPort = serverSettings.gamePort;
+    config.apiUrl = serverSettings.apiUrl;
+    saveConfig(config);
+    event.reply('config-data', { gamePath, fullscreen, ...serverSettings });
 });
 
 // Save fullscreen toggle state
@@ -293,11 +424,31 @@ ipcMain.on('save-fullscreen', (event, val) => {
     saveConfig(config);
 });
 
+ipcMain.on('save-server-settings', (event, settings) => {
+    const config = readConfig();
+    config.serverHost = String(settings.serverHost || DEFAULT_GAME_SERVER_HOST).trim() || DEFAULT_GAME_SERVER_HOST;
+    config.serverPort = Number(settings.serverPort || DEFAULT_GAME_SERVER_PORT) || DEFAULT_GAME_SERVER_PORT;
+    config.apiUrl = normalizeApiUrl(settings.apiUrl);
+    saveConfig(config);
+    event.reply('config-data', { gamePath: config.gamePath, fullscreen: config.fullscreen || false, ...getServerSettings(config) });
+});
+
+ipcMain.on('get-server-status', async (event) => {
+    const { apiUrl } = getServerSettings();
+    try {
+        const data = await requestJson(`${apiUrl}/api/server-status?ts=${Date.now()}`, 1400);
+        event.reply('server-status-data', data);
+    } catch (error) {
+        event.reply('server-status-data', { success: false, status: 'offline', error: error.message });
+    }
+});
+
 // Verification and update handlers
 ipcMain.on('check-updates', async (event, { gamePath }) => {
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
+    const { apiUrl } = getServerSettings();
 
-    const requiredMods = await fetchRequiredModsFromServer();
+    const requiredMods = await fetchRequiredModsFromSources(apiUrl);
 
     if (!isClientProfileValid(getClientProfilePath(activeGamePath))) {
         event.reply('update-status', { updateRequired: true });
@@ -322,10 +473,11 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
 
 ipcMain.on('trigger-update', async (event, { gamePath }) => {
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
+    const { apiUrl } = getServerSettings();
     
     try {
-        // Fetch dynamic mods list from server
-        const requiredMods = await fetchRequiredModsFromServer();
+        // Fetch dynamic mods list from remote manifest first, then server API.
+        const requiredMods = await fetchRequiredModsFromSources(apiUrl);
         
         let totalSteps = 1 + requiredMods.length;
         let currentStep = 0;
@@ -340,13 +492,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         const versionJsonPath = getClientProfilePath(activeGamePath);
         if (!isClientProfileValid(versionJsonPath)) {
             updateProgress('Загрузка профиля запуска...', Math.round((currentStep / totalSteps) * 100));
-            const localSource = getLocalClientSource(CLIENT_PROFILE_PATH);
-            if (fs.existsSync(localSource)) {
-                fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
-                fs.copyFileSync(localSource, versionJsonPath);
-            } else {
-                await downloadFile(`${SERVER_URL}/client/${CLIENT_PROFILE_PATH.replace(/\\/g, '/')}`, versionJsonPath);
-            }
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, apiUrl);
         }
         currentStep++;
 
@@ -354,25 +500,18 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
-                const localSource = getLocalClientSource(mod.path);
-                if (fs.existsSync(localSource)) {
-                    updateProgress(`Копирование мода: ${mod.name}...`, Math.round((currentStep / totalSteps) * 100));
-                    fs.mkdirSync(path.dirname(modLocalPath), { recursive: true });
-                    fs.copyFileSync(localSource, modLocalPath);
-                } else {
-                    updateProgress(`Загрузка мода: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
-                    await downloadFile(`${SERVER_URL}/client/${mod.path}`, modLocalPath, (received, total) => {
-                        const filePercent = Math.round((received / total) * 100);
-                        const kbReceived = Math.round(received / 1024);
-                        const kbTotal = Math.round(total / 1024);
-                        const subProgress = Math.round(((currentStep + (received / total)) / totalSteps) * 100);
-                        event.reply('update-progress', {
-                            status: 'downloading',
-                            progress: subProgress,
-                            message: `Загрузка мода: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
-                        });
+                updateProgress(`Загрузка мода: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
+                await repairManagedMod(mod, modLocalPath, apiUrl, (received, total) => {
+                    const filePercent = Math.round((received / total) * 100);
+                    const kbReceived = Math.round(received / 1024);
+                    const kbTotal = Math.round(total / 1024);
+                    const subProgress = Math.round(((currentStep + (received / total)) / totalSteps) * 100);
+                    event.reply('update-progress', {
+                        status: 'downloading',
+                        progress: subProgress,
+                        message: `Загрузка мода: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
                     });
-                }
+                });
             }
             currentStep++;
         }
@@ -417,6 +556,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
     
     // Default fallback path
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
+    const { gameHost, gamePort, apiUrl } = getServerSettings();
 
     if (!fs.existsSync(activeGamePath)) {
         fs.mkdirSync(activeGamePath, { recursive: true });
@@ -459,28 +599,16 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         const versionJsonPath = getClientProfilePath(activeGamePath);
 
         if (!isClientProfileValid(versionJsonPath)) {
-            const localSource = getLocalClientSource(CLIENT_PROFILE_PATH);
-            if (fs.existsSync(localSource)) {
-                fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
-                fs.copyFileSync(localSource, versionJsonPath);
-            } else {
-                await downloadFile(`${SERVER_URL}/client/${CLIENT_PROFILE_PATH.replace(/\\/g, '/')}`, versionJsonPath);
-            }
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, apiUrl);
         }
 
         // Quick mod check
-        const requiredMods = await fetchRequiredModsFromServer();
+        const requiredMods = await fetchRequiredModsFromSources(apiUrl);
         removeObsoleteManagedMods(activeGamePath, requiredMods);
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
-                const localSource = getLocalClientSource(mod.path);
-                if (fs.existsSync(localSource)) {
-                    fs.mkdirSync(path.dirname(modLocalPath), { recursive: true });
-                    fs.copyFileSync(localSource, modLocalPath);
-                } else {
-                    await downloadFile(`${SERVER_URL}/client/${mod.path}`, modLocalPath);
-                }
+                await repairManagedMod(mod, modLocalPath, apiUrl);
             }
         }
 
@@ -512,8 +640,8 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             root: activeGamePath,
             javaPath: 'javaw', // Launch using javaw to prevent CMD window from opening
             server: {
-                host: "localhost",
-                port: 25565
+                host: gameHost,
+                port: gamePort
             },
             window: {
                 fullscreen: fullscreen

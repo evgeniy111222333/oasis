@@ -16,8 +16,12 @@ const settingsModal = document.getElementById('settingsModal');
 const btnBrowseFolder = document.getElementById('btnBrowseFolder');
 const gamePathInput = document.getElementById('gamePathInput');
 const fullscreenInput = document.getElementById('fullscreenInput');
+const serverHostInput = document.getElementById('serverHostInput');
+const serverPortInput = document.getElementById('serverPortInput');
+const apiUrlInput = document.getElementById('apiUrlInput');
 
 let currentGamePath = '';
+let serverSettingsSaveTimer = null;
 
 function setServerStatus({ online, text, players = '-- / --' }) {
     const statusDot = document.querySelector('.status-dot');
@@ -40,7 +44,11 @@ ipcRenderer.on('config-data', (event, data) => {
     currentGamePath = data.gamePath;
     gamePathInput.value = currentGamePath;
     fullscreenInput.checked = data.fullscreen || false;
+    serverHostInput.value = data.gameHost || data.serverHost || 'localhost';
+    serverPortInput.value = data.gamePort || data.serverPort || 25565;
+    apiUrlInput.value = data.apiUrl || 'http://localhost:25580';
     ipcRenderer.send('check-updates', { gamePath: currentGamePath });
+    updateServerStatus();
 });
 
 // Settings toggle
@@ -67,6 +75,22 @@ ipcRenderer.on('selected-directory', (event, path) => {
 fullscreenInput.addEventListener('change', () => {
     ipcRenderer.send('save-fullscreen', fullscreenInput.checked);
 });
+
+function scheduleServerSettingsSave() {
+    clearTimeout(serverSettingsSaveTimer);
+    serverSettingsSaveTimer = setTimeout(() => {
+        ipcRenderer.send('save-server-settings', {
+            serverHost: serverHostInput.value.trim(),
+            serverPort: Number(serverPortInput.value) || 25565,
+            apiUrl: apiUrlInput.value.trim()
+        });
+        updateServerStatus();
+    }, 300);
+}
+
+serverHostInput.addEventListener('input', scheduleServerSettingsSave);
+serverPortInput.addEventListener('input', scheduleServerSettingsSave);
+apiUrlInput.addEventListener('input', scheduleServerSettingsSave);
 
 // Window controls
 btnMinimize.addEventListener('click', () => {
@@ -142,33 +166,21 @@ ipcRenderer.on('game-closed', () => {
 });
 
 // Dynamic server status & online query from plugin API.
-async function updateServerStatus() {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1400);
-    try {
-        const response = await fetch(`http://localhost:25580/api/server-status?ts=${Date.now()}`, {
-            cache: 'no-store',
-            signal: controller.signal
+function updateServerStatus() {
+    ipcRenderer.send('get-server-status');
+}
+
+ipcRenderer.on('server-status-data', (event, data) => {
+    if (data.success && data.status === 'online') {
+        setServerStatus({
+            online: true,
+            text: 'Сервер работает',
+            players: `${data.onlinePlayers} / ${data.maxPlayers}`
         });
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.success && data.status === 'online') {
-            setServerStatus({
-                online: true,
-                text: 'Сервер работает',
-                players: `${data.onlinePlayers} / ${data.maxPlayers}`
-            });
-        } else {
-            setServerStatus({ online: false, text: 'Сервер не отвечает' });
-        }
-    } catch (error) {
-        clearTimeout(timeoutId);
+    } else {
         setServerStatus({ online: false, text: 'Сервер выключен' });
     }
-}
+});
 
 // Poll server status every 4 seconds
 setInterval(updateServerStatus, 4000);

@@ -48,5 +48,5 @@ target/
 .DS_Store
 tools/
 node_modules/
-
+launcher/dist/
 

@@ -432,6 +432,31 @@ body {
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
 }
 
+.modal-body {
+    max-height: 430px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: rgba(227, 192, 153, 0.25);
+    border-radius: 3px;
+}
+
+.server-settings-group {
+    margin-top: 15px;
+}
+
+.server-settings-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 92px;
+    gap: 10px;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;

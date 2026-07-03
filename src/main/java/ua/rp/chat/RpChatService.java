@@ -1,22 +1,29 @@
 package ua.rp.chat;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
+import org.bukkit.Color;
 import org.bukkit.Location;
-import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RpChatService {
     private static final TextColor NAME = TextColor.color(0xE3C099);
     private static final TextColor MUTED = TextColor.color(0x9A9289);
-    private static final TextColor SYSTEM = TextColor.color(0xB0A8A0);
-    private static final TextColor WARNING = TextColor.color(0xD8A08F);
+    private static final int BUBBLE_LIFETIME_TICKS = 86;
+    private static final int BUBBLE_FADE_IN_TICKS = 8;
+    private static final int BUBBLE_FADE_OUT_TICKS = 18;
 
     private final RPChat plugin;
+    private final Map<UUID, TextDisplay> activeBubbles = new ConcurrentHashMap<>();
 
     public RpChatService(RPChat plugin) {
         this.plugin = plugin;
@@ -32,10 +39,12 @@ public class RpChatService {
 
     public void sendSpeech(Player sender, RpChatChannel channel, String message) {
         deliver(sender, channel, message, formatSpeech(rpName(sender), channel, message), true);
+        showSpeechBubble(sender, channel, message);
     }
 
     public void sendAction(Player sender, String action) {
         deliver(sender, RpChatChannel.ACTION, action, formatAction(rpName(sender), action), true);
+        showSpeechBubble(sender, RpChatChannel.ACTION, "*" + action + "*");
     }
 
     public void sendDescription(Player sender, String description) {
@@ -59,6 +68,7 @@ public class RpChatService {
                 .append(Component.text(", " + action, RpChatChannel.ACTION.messageColor()))
                 .build();
         deliver(sender, RpChatChannel.SPEAK, speech + " * " + action, message, true);
+        showSpeechBubble(sender, RpChatChannel.SPEAK, speech);
     }
 
     public void sendOoc(Player sender, String message) {
@@ -95,9 +105,88 @@ public class RpChatService {
         }
 
         plugin.getServer().getConsoleSender().sendMessage(consoleMessage(sender, channel, rawMessage, heard));
-        if (notifyIfAlone && heard == 0) {
-            sender.sendMessage(Component.text("Рядом никто этого не услышал.", SYSTEM));
+    }
+
+    private void showSpeechBubble(Player sender, RpChatChannel channel, String rawMessage) {
+        if (sender == null || !sender.isOnline() || rawMessage == null || rawMessage.isBlank()) {
+            return;
         }
+
+        TextDisplay previous = activeBubbles.remove(sender.getUniqueId());
+        if (previous != null && previous.isValid()) {
+            previous.remove();
+        }
+
+        String text = bubbleText(channel, rawMessage);
+        Location start = sender.getLocation().add(0.0, 2.72, 0.0);
+        TextDisplay display = sender.getWorld().spawn(start, TextDisplay.class, td -> {
+            td.text(Component.text(text, channel.messageColor()));
+            td.setBillboard(Display.Billboard.CENTER);
+            td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+            td.setShadowed(true);
+            td.setSeeThrough(false);
+            td.setGravity(false);
+            td.setPersistent(false);
+            td.setLineWidth(170);
+            td.setTextOpacity((byte) 0);
+        });
+        activeBubbles.put(sender.getUniqueId(), display);
+
+        new BukkitRunnable() {
+            private int age;
+
+            @Override
+            public void run() {
+                if (!sender.isOnline() || !display.isValid() || activeBubbles.get(sender.getUniqueId()) != display) {
+                    removeBubble(sender.getUniqueId(), display);
+                    cancel();
+                    return;
+                }
+
+                float floatUp = Math.min(0.22f, age * 0.0035f);
+                display.teleport(sender.getLocation().add(0.0, 2.72 + floatUp, 0.0));
+                display.setTextOpacity((byte) opacityFor(age));
+
+                age += 2;
+                if (age > BUBBLE_LIFETIME_TICKS) {
+                    removeBubble(sender.getUniqueId(), display);
+                    cancel();
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 2L);
+    }
+
+    private void removeBubble(UUID uuid, TextDisplay display) {
+        activeBubbles.remove(uuid, display);
+        if (display != null && display.isValid()) {
+            display.remove();
+        }
+    }
+
+    private int opacityFor(int age) {
+        if (age < BUBBLE_FADE_IN_TICKS) {
+            return Math.max(30, Math.round(235.0f * age / BUBBLE_FADE_IN_TICKS));
+        }
+        int fadeStart = BUBBLE_LIFETIME_TICKS - BUBBLE_FADE_OUT_TICKS;
+        if (age > fadeStart) {
+            float left = Math.max(0.0f, (BUBBLE_LIFETIME_TICKS - age) / (float) BUBBLE_FADE_OUT_TICKS);
+            return Math.round(235.0f * left);
+        }
+        return 235;
+    }
+
+    private String bubbleText(RpChatChannel channel, String rawMessage) {
+        String text = rawMessage.trim().replaceAll("\\s+", " ");
+        if (text.length() > 84) {
+            text = text.substring(0, 81).trim() + "...";
+        }
+        return switch (channel) {
+            case WHISPER -> "«" + text + "»";
+            case SHOUT -> "«" + text.toUpperCase(Locale.ROOT) + "!»";
+            case ACTION -> text;
+            case OOC -> "[OOC] " + text;
+            default -> "«" + text + "»";
+        };
     }
 
     private Delivery deliveryFor(Player sender, Player receiver, RpChatChannel channel) {

@@ -30,7 +30,14 @@ public class ChatFormatter {
     public static Component formatJoin(String name, int style) {
         return Component.text()
                 .append(Component.text(name, NAME))
-                .append(Component.text(" входит в мир.", ACTION))
+                .append(Component.text(" появляется у дороги.", ACTION))
+                .build();
+    }
+
+    public static Component formatQuit(String name, int style) {
+        return Component.text()
+                .append(Component.text(name, NAME))
+                .append(Component.text(" скрывается за дальним трактом.", ACTION))
                 .build();
     }
 

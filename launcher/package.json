@@ -2,12 +2,53 @@
   "name": "oasis-launcher",
   "version": "1.0.0",
   "description": "Oasis RolePlay Desktop Launcher",
+  "author": "Oasis RolePlay",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "ua.oasis.roleplay.launcher",
+    "productName": "Oasis RolePlay Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "style.css",
+      "launcher_logo.png",
+      "launcher_logo.ico",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "launcher_logo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
-    "electron": "^31.0.0",
     "minecraft-launcher-core": "^3.18.2"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
   }
 }
