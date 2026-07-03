@@ -20,7 +20,7 @@ public class AuthScreen extends Screen {
 
     private final String authUrl;
     private MCEFBrowser browser;
-    private String fallbackStatus = "Initializing Oasis authorization...";
+    private String fallbackStatus = "Подготовка авторизации Oasis...";
     private int ticksOpen;
     private int exitX;
     private int exitY;
@@ -28,7 +28,7 @@ public class AuthScreen extends Screen {
     private int exitHeight = 24;
 
     protected AuthScreen(String authUrl) {
-        super(Component.literal("Oasis Auth"));
+        super(Component.literal("Авторизация Oasis"));
         this.authUrl = authUrl;
     }
 
@@ -51,7 +51,7 @@ public class AuthScreen extends Screen {
             }
         } catch (Throwable t) {
             browser = null;
-            fallbackStatus = "Embedded browser is unavailable. Opening authorization in your default browser.";
+            fallbackStatus = "Встроенный браузер недоступен. Открываем вход во внешнем браузере.";
             OasisAuthMod.LOGGER.warn("MCEF auth browser failed, using external browser fallback.", t);
             openExternalFallback();
         }
@@ -84,7 +84,7 @@ public class AuthScreen extends Screen {
         graphics.fill(0, 0, width, height, 0xF012100F);
         graphics.centeredText(font, "OASIS ROLEPLAY", width / 2, height / 2 - 38, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 - 12, 0xFFB0A8A0);
-        graphics.centeredText(font, "Waiting for authorization window...", width / 2, height / 2 + 12, 0xFFA5C3C4);
+        graphics.centeredText(font, "Ожидание окна авторизации...", width / 2, height / 2 + 12, 0xFFA5C3C4);
         drawExitButton(graphics, mouseX, mouseY);
     }
 
@@ -243,7 +243,7 @@ public class AuthScreen extends Screen {
         try {
             Util.getPlatform().openUri(new URI(authUrl));
         } catch (Exception e) {
-            fallbackStatus = "Could not open browser automatically. Use the authorization link in chat.";
+            fallbackStatus = "Не удалось открыть браузер автоматически. Используйте ссылку авторизации в чате.";
             OasisAuthMod.LOGGER.warn("Failed to open auth URL in external browser.", e);
         }
     }

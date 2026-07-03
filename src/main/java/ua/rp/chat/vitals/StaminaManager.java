@@ -176,6 +176,7 @@ public class StaminaManager implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onDeath(PlayerDeathEvent event) {
+        event.deathMessage(null);
         resetVitalsAfterDeath(event.getEntity(), false);
     }
 

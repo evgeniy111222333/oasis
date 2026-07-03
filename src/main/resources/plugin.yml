@@ -29,6 +29,21 @@ commands:
   b:
     description: Local Out-Of-Character chat.
     usage: /b <message>
+  say:
+    description: Normal local speech.
+    usage: /say <message>
+  w:
+    description: Local whisper.
+    usage: /w <message>
+  whisper:
+    description: Local whisper.
+    usage: /whisper <message>
+  s:
+    description: Local shout.
+    usage: /s <message>
+  shout:
+    description: Local shout.
+    usage: /shout <message>
   rpreload:
     description: Hot-reloads a server plugin from disk.
     usage: /rpreload [plugin_name]

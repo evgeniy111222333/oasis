@@ -7,17 +7,9 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-/**
- * Handles /login, /register, and /l commands.
- */
 public class AuthCommands implements CommandExecutor {
-
-    private static final TextColor SAND_GOLD = TextColor.color(0xE3C099);
-    private static final TextColor PEBBLE_GRAY = TextColor.color(0xB0A8A0);
-    private static final TextColor SOFT_GREEN = TextColor.color(0x99C3A2);
     private static final TextColor TERRACOTTA = TextColor.color(0xE3A899);
-    private static final TextColor WARM_DUST = TextColor.color(0xAFA69E);
-    private static final TextColor SEAFOAM = TextColor.color(0xA5C3C4);
+    private static final TextColor PEBBLE_GRAY = TextColor.color(0xB0A8A0);
 
     private final AuthManager authManager;
 
@@ -28,66 +20,44 @@ public class AuthCommands implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Component.text("Цю команду може виконувати тільки гравець.", TERRACOTTA));
+            sender.sendMessage(Component.text("Эту команду может выполнить только игрок.", TERRACOTTA));
             return true;
         }
 
-        String command = label.toLowerCase();
-
-        return switch (command) {
-            case "login", "l" -> handleLogin(player, args);
-            case "register" -> handleRegister(player, args);
+        return switch (label.toLowerCase()) {
+            case "login", "l" -> handleLogin(player);
+            case "register" -> handleRegister(player);
             default -> false;
         };
     }
 
-    private boolean handleLogin(Player player, String[] args) {
+    private boolean handleLogin(Player player) {
         if (!authManager.isPendingAuth(player.getUniqueId())) {
-            player.sendMessage(Component.text("Ви вже авторизовані.", PEBBLE_GRAY));
+            player.sendMessage(Component.text("Вы уже авторизованы.", PEBBLE_GRAY));
             return true;
         }
-
-        // Find the player's active web token
-        String token = null;
-        for (java.util.Map.Entry<String, java.util.UUID> entry : authManager.getTokenToUuid().entrySet()) {
-            if (entry.getValue().equals(player.getUniqueId())) {
-                token = entry.getKey();
-                break;
-            }
-        }
-
-        if (token == null) {
-            token = java.util.UUID.randomUUID().toString().substring(0, 8);
-            authManager.getTokenToUuid().put(token, player.getUniqueId());
-        }
-
-        player.sendMessage(Component.text("Будь ласка, використовуйте візуальний інтерфейс для входу.", TERRACOTTA));
-        authManager.openAuthOverlay(player, token);
+        authManager.openAuthOverlay(player, activeOrNewToken(player));
+        player.sendMessage(Component.text("Открываем визуальное окно входа.", TERRACOTTA));
         return true;
     }
 
-    private boolean handleRegister(Player player, String[] args) {
+    private boolean handleRegister(Player player) {
         if (!authManager.isPendingAuth(player.getUniqueId())) {
-            player.sendMessage(Component.text("Ви вже авторизовані.", PEBBLE_GRAY));
+            player.sendMessage(Component.text("Вы уже авторизованы.", PEBBLE_GRAY));
             return true;
         }
-
-        // Find or generate active web token
-        String token = null;
-        for (java.util.Map.Entry<String, java.util.UUID> entry : authManager.getTokenToUuid().entrySet()) {
-            if (entry.getValue().equals(player.getUniqueId())) {
-                token = entry.getKey();
-                break;
-            }
-        }
-
-        if (token == null) {
-            token = java.util.UUID.randomUUID().toString().substring(0, 8);
-            authManager.getTokenToUuid().put(token, player.getUniqueId());
-        }
-
-        player.sendMessage(Component.text("Будь ласка, використовуйте візуальний інтерфейс для реєстрації.", TERRACOTTA));
-        authManager.openAuthOverlay(player, token);
+        authManager.openAuthOverlay(player, activeOrNewToken(player));
+        player.sendMessage(Component.text("Открываем визуальное окно регистрации.", TERRACOTTA));
         return true;
+    }
+
+    private String activeOrNewToken(Player player) {
+        String token = authManager.getActiveToken(player.getUniqueId());
+        if (token != null) {
+            return token;
+        }
+        token = java.util.UUID.randomUUID().toString().substring(0, 8);
+        authManager.getTokenToUuid().put(token, player.getUniqueId());
+        return token;
     }
 }

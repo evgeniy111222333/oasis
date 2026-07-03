@@ -14,6 +14,7 @@ public class RPChat extends JavaPlugin {
     private AuthGuiManager authGuiManager;
     private AppearanceManager appearanceManager;
     private StaminaManager staminaManager;
+    private RpChatService rpChatService;
 
     @Override
     public void onEnable() {
@@ -39,6 +40,7 @@ public class RPChat extends JavaPlugin {
         }
 
         authManager = new AuthManager(this, authDatabase, appearanceManager);
+        rpChatService = new RpChatService(this);
         staminaManager = new StaminaManager(this);
         staminaManager.start();
         
@@ -76,6 +78,11 @@ public class RPChat extends JavaPlugin {
         getCommand("try").setExecutor(commands);
         getCommand("todo").setExecutor(commands);
         getCommand("b").setExecutor(commands);
+        getCommand("w").setExecutor(commands);
+        getCommand("whisper").setExecutor(commands);
+        getCommand("s").setExecutor(commands);
+        getCommand("shout").setExecutor(commands);
+        getCommand("say").setExecutor(commands);
         getCommand("rpreload").setExecutor(commands);
         getCommand("rpcrun").setExecutor(commands);
         getCommand("rpdemo").setExecutor(commands);
@@ -148,5 +155,9 @@ public class RPChat extends JavaPlugin {
 
     public StaminaManager getStaminaManager() {
         return staminaManager;
+    }
+
+    public RpChatService getRpChatService() {
+        return rpChatService;
     }
 }
