@@ -24,7 +24,6 @@ public class OasisAuthMod implements ClientModInitializer {
 
     public static final String MOD_ID = "oasisauth";
     public static final Logger LOGGER = LogManager.getLogger("OasisAuth");
-    private static final String LOCAL_SESSION_ENDPOINT = "http://localhost:25580/api/client-session?username=";
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static boolean bodyStatusKeyDown = false;
     private static int sessionPollTicks = 0;
@@ -85,7 +84,8 @@ public class OasisAuthMod implements ClientModInitializer {
         sessionPollTicks = 0;
 
         String username = client.getUser().getName();
-        String sessionUrl = LOCAL_SESSION_ENDPOINT + URLEncoder.encode(username, StandardCharsets.UTF_8);
+        String sessionUrl = OasisApiClient.resolve("/api/client-session?username=")
+                + URLEncoder.encode(username, StandardCharsets.UTF_8);
         SESSION_CHECK_IN_FLIGHT.set(true);
 
         CompletableFuture.supplyAsync(() -> fetchAuthUrl(sessionUrl))
@@ -106,6 +106,7 @@ public class OasisAuthMod implements ClientModInitializer {
         if (client.screen instanceof AuthScreen || authUrl == null || authUrl.isBlank()) {
             return;
         }
+        OasisApiClient.rememberFromUrl(authUrl);
         lastOpenedUrl = authUrl;
         client.setScreen(new AuthScreen(authUrl));
     }

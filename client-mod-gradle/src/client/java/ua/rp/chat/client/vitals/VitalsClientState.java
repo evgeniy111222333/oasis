@@ -1,6 +1,7 @@
 package ua.rp.chat.client.vitals;
 
 import net.minecraft.client.Minecraft;
+import ua.rp.chat.client.OasisApiClient;
 import ua.rp.chat.client.OasisAuthMod;
 
 import java.io.IOException;
@@ -12,7 +13,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class VitalsClientState {
-    private static final String BASE_URL = "http://localhost:25580";
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean(false);
     private static int pollTicks;
     private static volatile float stamina = 100.0f;
@@ -49,7 +49,9 @@ public final class VitalsClientState {
         }
         pollTicks = 0;
         String username = client.getUser().getName();
-        String url = BASE_URL + "/api/vitals?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "&ts=" + System.currentTimeMillis();
+        String url = OasisApiClient.resolve("/api/vitals?username="
+                + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                + "&ts=" + System.currentTimeMillis());
         IN_FLIGHT.set(true);
         CompletableFuture.supplyAsync(() -> get(url))
                 .whenComplete((body, error) -> {
@@ -74,7 +76,7 @@ public final class VitalsClientState {
     public static String bodyStatusUrl() {
         Minecraft client = Minecraft.getInstance();
         String username = client != null && client.getUser() != null ? client.getUser().getName() : "";
-        return BASE_URL + "/body?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8);
+        return OasisApiClient.resolve("/body?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8));
     }
 
     public static float getStamina01() {

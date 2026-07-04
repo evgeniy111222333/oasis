@@ -32,3 +32,20 @@ auth:
   # Legacy behavior: skip the auth window when the player's IP matches the last login.
   # Keep disabled for RP servers; "remember me" should only prefill the form.
   auto-login-by-ip: false
+
+# ==========================================
+#             Appearance Storage
+# ==========================================
+appearance:
+  storage:
+    # local = keep skins only on the game server.
+    # r2 = upload immutable skin PNGs to Cloudflare R2 and serve them by public URL.
+    provider: "r2"
+    r2:
+      bucket: "oasis-skins"
+      endpoint: "https://711db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
+      public-url: "https://pub-518224ecc86d45649eeb86d59dd2ad7e.r2.dev"
+      region: "auto"
+      required: false
+      access-key-id: "${OASIS_R2_ACCESS_KEY_ID}"
+      secret-access-key: "${OASIS_R2_SECRET_ACCESS_KEY}"

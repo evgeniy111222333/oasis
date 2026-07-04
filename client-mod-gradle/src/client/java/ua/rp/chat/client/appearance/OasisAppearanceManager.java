@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
+import ua.rp.chat.client.OasisApiClient;
 import ua.rp.chat.client.OasisAuthMod;
 
 import java.io.ByteArrayInputStream;
@@ -22,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class OasisAppearanceManager {
-    private static final String BASE_URL = "http://localhost:25580";
     private static final Map<UUID, Entry> CACHE = new ConcurrentHashMap<>();
     private static long lastSweepMs = 0L;
 
@@ -69,7 +69,7 @@ public final class OasisAppearanceManager {
     }
 
     private static AppearanceProfile fetchProfile(UUID uuid) {
-        String body = get(BASE_URL + "/api/appearance/profile?uuid=" + uuid);
+        String body = get(OasisApiClient.resolve("/api/appearance/profile?uuid=" + uuid));
         if (body == null || body.isBlank()) {
             return null;
         }
@@ -85,7 +85,7 @@ public final class OasisAppearanceManager {
     }
 
     private static void fetchAndRegisterTexture(Minecraft client, UUID uuid, AppearanceProfile profile, Entry entry) {
-        CompletableFuture.supplyAsync(() -> getBytes(BASE_URL + profile.textureUrl))
+        CompletableFuture.supplyAsync(() -> getBytes(OasisApiClient.resolve(profile.textureUrl)))
                 .whenComplete((bytes, throwable) -> {
                     if (throwable != null || bytes == null || bytes.length == 0) {
                         OasisAuthMod.LOGGER.debug("Appearance texture request failed for " + uuid, throwable);

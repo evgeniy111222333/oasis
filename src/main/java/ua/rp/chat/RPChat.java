@@ -31,7 +31,8 @@ public class RPChat extends JavaPlugin {
         try {
             authDatabase = new AuthDatabase(getDataFolder(), getLogger());
             authDatabase.connect();
-            appearanceManager = new AppearanceManager(getDataFolder(), authDatabase, getLogger());
+            R2AppearanceStorage appearanceStorage = R2AppearanceStorage.fromConfig(getConfig(), getLogger());
+            appearanceManager = new AppearanceManager(getDataFolder(), authDatabase, getLogger(), appearanceStorage);
         } catch (SQLException e) {
             getLogger().severe("Failed to initialize AuthDatabase! Disabling plugin.");
             e.printStackTrace();

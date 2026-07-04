@@ -56,6 +56,8 @@ public class AuthDatabase {
                     last_login INTEGER,
                     appearance_model TEXT,
                     appearance_hash TEXT,
+                    appearance_url TEXT,
+                    appearance_storage_key TEXT,
                     appearance_updated_at INTEGER,
                     registered_at INTEGER NOT NULL
                 )
@@ -82,6 +84,12 @@ public class AuthDatabase {
             } catch (SQLException ignored) {}
             try {
                 stmt.execute("ALTER TABLE players ADD COLUMN appearance_hash TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE players ADD COLUMN appearance_url TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE players ADD COLUMN appearance_storage_key TEXT");
             } catch (SQLException ignored) {}
             try {
                 stmt.execute("ALTER TABLE players ADD COLUMN appearance_updated_at INTEGER");
@@ -141,17 +149,19 @@ public class AuthDatabase {
 
     public AppearanceProfile getAppearanceProfile(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT appearance_model, appearance_hash, appearance_updated_at FROM players WHERE uuid = ?")) {
+                "SELECT appearance_model, appearance_hash, appearance_url, appearance_storage_key, appearance_updated_at FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 String model = rs.getString("appearance_model");
                 String hash = rs.getString("appearance_hash");
+                String url = rs.getString("appearance_url");
+                String storageKey = rs.getString("appearance_storage_key");
                 long updatedAt = rs.getLong("appearance_updated_at");
                 if (model == null || hash == null || updatedAt <= 0) {
                     return null;
                 }
-                return new AppearanceProfile(model, hash, updatedAt);
+                return new AppearanceProfile(model, hash, url, storageKey, updatedAt);
             }
         } catch (SQLException e) {
             logger.severe("AuthDB: Failed to get appearance profile for " + uuid + ": " + e.getMessage());
@@ -160,12 +170,18 @@ public class AuthDatabase {
     }
 
     public boolean updateAppearance(UUID uuid, String model, String hash) {
+        return updateAppearance(uuid, model, hash, null, null);
+    }
+
+    public boolean updateAppearance(UUID uuid, String model, String hash, String url, String storageKey) {
         try (PreparedStatement ps = connection.prepareStatement(
-                "UPDATE players SET appearance_model = ?, appearance_hash = ?, appearance_updated_at = ? WHERE uuid = ?")) {
+                "UPDATE players SET appearance_model = ?, appearance_hash = ?, appearance_url = ?, appearance_storage_key = ?, appearance_updated_at = ? WHERE uuid = ?")) {
             ps.setString(1, model);
             ps.setString(2, hash);
-            ps.setLong(3, System.currentTimeMillis());
-            ps.setString(4, uuid.toString());
+            ps.setString(3, blankToNull(url));
+            ps.setString(4, blankToNull(storageKey));
+            ps.setLong(5, System.currentTimeMillis());
+            ps.setString(6, uuid.toString());
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.severe("AuthDB: Failed to update appearance for " + uuid + ": " + e.getMessage());
@@ -282,5 +298,9 @@ public class AuthDatabase {
         }
     }
 
-    public record AppearanceProfile(String model, String hash, long updatedAt) {}
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    public record AppearanceProfile(String model, String hash, String url, String storageKey, long updatedAt) {}
 }

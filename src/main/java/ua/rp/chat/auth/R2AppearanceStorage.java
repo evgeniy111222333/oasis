@@ -1,0 +1,249 @@
+package ua.rp.chat.auth;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.logging.Logger;
+
+public final class R2AppearanceStorage {
+    private static final DateTimeFormatter AMZ_DATE = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            .withLocale(Locale.ROOT)
+            .withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter DATE_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd")
+            .withLocale(Locale.ROOT)
+            .withZone(ZoneOffset.UTC);
+
+    private final HttpClient httpClient;
+    private final Logger logger;
+    private final boolean enabled;
+    private final boolean required;
+    private final String bucket;
+    private final String endpoint;
+    private final String publicBaseUrl;
+    private final String accessKeyId;
+    private final String secretAccessKey;
+    private final String region;
+
+    private R2AppearanceStorage(
+            Logger logger,
+            boolean enabled,
+            boolean required,
+            String bucket,
+            String endpoint,
+            String publicBaseUrl,
+            String accessKeyId,
+            String secretAccessKey,
+            String region
+    ) {
+        this.httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        this.logger = logger;
+        this.enabled = enabled;
+        this.required = required;
+        this.bucket = trimSlashes(bucket);
+        this.endpoint = trimTrailingSlash(endpoint);
+        this.publicBaseUrl = trimTrailingSlash(publicBaseUrl);
+        this.accessKeyId = accessKeyId;
+        this.secretAccessKey = secretAccessKey;
+        this.region = region == null || region.isBlank() ? "auto" : region.trim();
+    }
+
+    public static R2AppearanceStorage fromConfig(FileConfiguration config, Logger logger) {
+        ConfigurationSection section = config.getConfigurationSection("appearance.storage.r2");
+        String provider = config.getString("appearance.storage.provider", "local");
+        boolean enabled = "r2".equalsIgnoreCase(provider) && section != null;
+        if (!enabled) {
+            return disabled(logger);
+        }
+
+        String bucket = section.getString("bucket", "");
+        String endpoint = section.getString("endpoint", "");
+        String publicBaseUrl = section.getString("public-url", "");
+        String accessKeyId = resolveSecret(section.getString("access-key-id", ""));
+        String secretAccessKey = resolveSecret(section.getString("secret-access-key", ""));
+        boolean required = section.getBoolean("required", false);
+        String region = section.getString("region", "auto");
+
+        if (bucket.isBlank() || endpoint.isBlank() || publicBaseUrl.isBlank()
+                || accessKeyId.isBlank() || secretAccessKey.isBlank()) {
+            logger.warning("R2 appearance storage is selected but not fully configured. Falling back to local storage.");
+            return disabled(logger);
+        }
+
+        logger.info("Appearance storage: Cloudflare R2 bucket " + bucket + " via " + publicBaseUrl);
+        return new R2AppearanceStorage(logger, true, required, bucket, endpoint, publicBaseUrl,
+                accessKeyId, secretAccessKey, region);
+    }
+
+    private static R2AppearanceStorage disabled(Logger logger) {
+        return new R2AppearanceStorage(logger, false, false, "", "", "", "", "", "auto");
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public boolean isRequired() {
+        return required;
+    }
+
+    public UploadResult uploadSkin(UUID uuid, String hash, byte[] pngBytes) throws IOException, InterruptedException {
+        if (!enabled) {
+            throw new IllegalStateException("R2 storage is disabled.");
+        }
+
+        String key = "skins/" + uuid + "/" + hash + ".png";
+        String url = endpoint + "/" + urlEncodePath(bucket) + "/" + urlEncodePath(key);
+        URI uri = URI.create(url);
+        String host = uri.getHost();
+        String canonicalUri = "/" + urlEncodePath(bucket) + "/" + urlEncodePath(key);
+        String payloadHash = sha256Hex(pngBytes);
+        Instant now = Instant.now();
+        String amzDate = AMZ_DATE.format(now);
+        String dateStamp = DATE_STAMP.format(now);
+        String credentialScope = dateStamp + "/" + region + "/s3/aws4_request";
+        String signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date";
+
+        String canonicalHeaders = ""
+                + "content-type:image/png\n"
+                + "host:" + host + "\n"
+                + "x-amz-content-sha256:" + payloadHash + "\n"
+                + "x-amz-date:" + amzDate + "\n";
+
+        String canonicalRequest = ""
+                + "PUT\n"
+                + canonicalUri + "\n"
+                + "\n"
+                + canonicalHeaders + "\n"
+                + signedHeaders + "\n"
+                + payloadHash;
+
+        String stringToSign = ""
+                + "AWS4-HMAC-SHA256\n"
+                + amzDate + "\n"
+                + credentialScope + "\n"
+                + sha256Hex(canonicalRequest.getBytes(StandardCharsets.UTF_8));
+
+        byte[] signingKey = signingKey(secretAccessKey, dateStamp, region, "s3");
+        String signature = hex(hmac(signingKey, stringToSign));
+        String authorization = "AWS4-HMAC-SHA256 Credential=" + accessKeyId + "/" + credentialScope
+                + ", SignedHeaders=" + signedHeaders
+                + ", Signature=" + signature;
+
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofByteArray(pngBytes))
+                .header("Authorization", authorization)
+                .header("Content-Type", "image/png")
+                .header("x-amz-content-sha256", payloadHash)
+                .header("x-amz-date", amzDate)
+                .timeout(java.time.Duration.ofSeconds(8))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        int code = response.statusCode();
+        if (code < 200 || code >= 300) {
+            String body = response.body() == null ? "" : response.body();
+            logger.warning("R2 upload failed for " + key + ": HTTP " + code + " " + body);
+            throw new IOException("R2 upload failed with HTTP " + code);
+        }
+
+        return new UploadResult(key, publicUrl(key));
+    }
+
+    public String publicUrl(String key) {
+        return publicBaseUrl + "/" + urlEncodePath(key);
+    }
+
+    private static String resolveSecret(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.startsWith("${") && trimmed.endsWith("}") && trimmed.length() > 3) {
+            String envName = trimmed.substring(2, trimmed.length() - 1);
+            String envValue = System.getenv(envName);
+            return envValue == null ? "" : envValue.trim();
+        }
+        return trimmed;
+    }
+
+    private static String urlEncodePath(String path) {
+        String[] parts = path.split("/");
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                result.append('/');
+            }
+            result.append(URLEncoder.encode(parts[i], StandardCharsets.UTF_8).replace("+", "%20"));
+        }
+        return result.toString();
+    }
+
+    private static String trimTrailingSlash(String value) {
+        if (value == null) {
+            return "";
+        }
+        String result = value.trim();
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
+    }
+
+    private static String trimSlashes(String value) {
+        String result = trimTrailingSlash(value);
+        while (result.startsWith("/")) {
+            result = result.substring(1);
+        }
+        return result;
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static byte[] signingKey(String secret, String dateStamp, String region, String service) {
+        byte[] dateKey = hmac(("AWS4" + secret).getBytes(StandardCharsets.UTF_8), dateStamp);
+        byte[] dateRegionKey = hmac(dateKey, region);
+        byte[] dateRegionServiceKey = hmac(dateRegionKey, service);
+        return hmac(dateRegionServiceKey, "aws4_request");
+    }
+
+    private static byte[] hmac(byte[] key, String data) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String hex(byte[] bytes) {
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    public record UploadResult(String key, String publicUrl) {
+    }
+}
