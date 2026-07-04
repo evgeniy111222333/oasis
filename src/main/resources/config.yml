@@ -22,8 +22,8 @@ active-style: 1
 web:
   # Port for the embedded HTTP server (Must be open on firewall)
   port: 25580
-  # Base URL shown to players in game (e.g. "http://yourserverip:25580")
-  url: "http://localhost:25580"
+  # Base URL sent to client auth overlay. Use the LAN/public address players can reach.
+  url: "http://192.168.0.241:25580"
 
 # ==========================================
 #             Auth Session Settings

@@ -363,14 +363,20 @@ public class AuthManager {
     }
 
     public String getAuthUrl(String token) {
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
-        return webUrl + "/auth?token=" + token + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token + "&ts=" + System.currentTimeMillis();
     }
 
     public String getAuthUrl(String token, String username) {
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
         String encodedName = java.net.URLEncoder.encode(username == null ? "" : username, java.nio.charset.StandardCharsets.UTF_8);
-        return webUrl + "/auth?token=" + token + "&username=" + encodedName + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token + "&username=" + encodedName + "&ts=" + System.currentTimeMillis();
+    }
+
+    private String advertisedWebUrl() {
+        String webUrl = plugin.getConfig().getString("web.url", "http://192.168.0.241:25580");
+        if (webUrl == null || webUrl.isBlank()) {
+            webUrl = "http://192.168.0.241:25580";
+        }
+        return webUrl.replaceAll("/+$", "");
     }
 
     public String getActiveToken(UUID uuid) {
@@ -399,8 +405,7 @@ public class AuthManager {
             player.sendMessage(Component.empty());
         }
 
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
-        String finalLink = webUrl + "/auth?token=" + token;
+        String finalLink = advertisedWebUrl() + "/auth?token=" + token;
 
         // Broadcast to client-side Fabric Mod (automatically renders HTML screen)
         // Encode using VarInt + UTF-8 to match Fabric's PacketCodecs.STRING format
