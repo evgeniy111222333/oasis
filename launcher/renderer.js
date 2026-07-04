@@ -22,6 +22,7 @@ const apiUrlInput = document.getElementById('apiUrlInput');
 
 let currentGamePath = '';
 let serverSettingsSaveTimer = null;
+let usernameSaveTimer = null;
 
 function setServerStatus({ online, text, players = '-- / --' }) {
     const statusDot = document.querySelector('.status-dot');
@@ -44,6 +45,9 @@ ipcRenderer.on('config-data', (event, data) => {
     currentGamePath = data.gamePath;
     gamePathInput.value = currentGamePath;
     fullscreenInput.checked = data.fullscreen || false;
+    if (Object.prototype.hasOwnProperty.call(data, 'lastUsername')) {
+        usernameInput.value = data.lastUsername || '';
+    }
     serverHostInput.value = data.gameHost || data.serverHost || 'localhost';
     serverPortInput.value = data.gamePort || data.serverPort || 25565;
     apiUrlInput.value = data.apiUrl || 'http://localhost:25580';
@@ -92,6 +96,13 @@ serverHostInput.addEventListener('input', scheduleServerSettingsSave);
 serverPortInput.addEventListener('input', scheduleServerSettingsSave);
 apiUrlInput.addEventListener('input', scheduleServerSettingsSave);
 
+usernameInput.addEventListener('input', () => {
+    clearTimeout(usernameSaveTimer);
+    usernameSaveTimer = setTimeout(() => {
+        ipcRenderer.send('save-username', usernameInput.value.trim());
+    }, 250);
+});
+
 // Window controls
 btnMinimize.addEventListener('click', () => {
     ipcRenderer.send('window-minimize');
@@ -109,6 +120,8 @@ btnPlay.addEventListener('click', () => {
         alert('Пожалуйста, введите ваш никнейм!');
         return;
     }
+
+    ipcRenderer.send('save-username', username);
 
     // Block play button and show progress bar
     btnPlay.disabled = true;

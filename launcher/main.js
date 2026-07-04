@@ -12,8 +12,8 @@ let isGameRunning = false;
 
 const CLIENT_VERSION = '26.1.2';
 const CLIENT_PROFILE_PATH = path.join('versions', CLIENT_VERSION, `${CLIENT_VERSION}.json`);
-const DEFAULT_API_URL = process.env.OASIS_API_URL || 'http://localhost:25580';
-const DEFAULT_GAME_SERVER_HOST = process.env.OASIS_GAME_SERVER_HOST || 'localhost';
+const DEFAULT_API_URL = process.env.OASIS_API_URL || 'http://192.168.0.241:25580';
+const DEFAULT_GAME_SERVER_HOST = process.env.OASIS_GAME_SERVER_HOST || '192.168.0.241';
 const DEFAULT_GAME_SERVER_PORT = Number(process.env.OASIS_GAME_SERVER_PORT || 25565);
 const REMOTE_CLIENT_BASE_URL = process.env.OASIS_CLIENT_BASE_URL || 'https://raw.githubusercontent.com/evgeniy111222333/oasis/dev/plugins/RPChat/client';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
@@ -300,11 +300,27 @@ function normalizeApiUrl(url) {
     return String(url || DEFAULT_API_URL).trim().replace(/\/+$/, '') || DEFAULT_API_URL;
 }
 
+function normalizeGameHost(host) {
+    const value = String(host || DEFAULT_GAME_SERVER_HOST).trim();
+    if (!value || value === 'localhost' || value === '127.0.0.1' || value === '::1') {
+        return DEFAULT_GAME_SERVER_HOST;
+    }
+    return value;
+}
+
+function normalizeStoredApiUrl(url) {
+    const value = normalizeApiUrl(url);
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(value)) {
+        return DEFAULT_API_URL;
+    }
+    return value;
+}
+
 function getServerSettings(config = readConfig()) {
     return {
-        gameHost: String(config.serverHost || DEFAULT_GAME_SERVER_HOST).trim() || DEFAULT_GAME_SERVER_HOST,
+        gameHost: normalizeGameHost(config.serverHost),
         gamePort: Number(config.serverPort || DEFAULT_GAME_SERVER_PORT) || DEFAULT_GAME_SERVER_PORT,
-        apiUrl: normalizeApiUrl(config.apiUrl)
+        apiUrl: normalizeStoredApiUrl(config.apiUrl)
     };
 }
 
@@ -472,14 +488,16 @@ ipcMain.on('get-config', (event) => {
     const defaultPath = fs.existsSync('D:\\oasis') ? 'D:\\oasis' : path.join(app.getPath('appData'), '.oasis-rp');
     const gamePath = config.gamePath || defaultPath;
     const fullscreen = config.fullscreen || false;
+    const lastUsername = String(config.lastUsername || '').trim();
     const serverSettings = getServerSettings(config);
     config.gamePath = gamePath;
     config.fullscreen = fullscreen;
+    config.lastUsername = lastUsername;
     config.serverHost = serverSettings.gameHost;
     config.serverPort = serverSettings.gamePort;
     config.apiUrl = serverSettings.apiUrl;
     saveConfig(config);
-    event.reply('config-data', { gamePath, fullscreen, ...serverSettings });
+    event.reply('config-data', { gamePath, fullscreen, lastUsername, ...serverSettings });
 });
 
 // Save fullscreen toggle state
@@ -489,13 +507,29 @@ ipcMain.on('save-fullscreen', (event, val) => {
     saveConfig(config);
 });
 
+ipcMain.on('save-username', (event, username) => {
+    const cleanUsername = String(username || '').trim();
+    const config = readConfig();
+    if (cleanUsername) {
+        config.lastUsername = cleanUsername;
+    } else {
+        delete config.lastUsername;
+    }
+    saveConfig(config);
+});
+
 ipcMain.on('save-server-settings', (event, settings) => {
     const config = readConfig();
-    config.serverHost = String(settings.serverHost || DEFAULT_GAME_SERVER_HOST).trim() || DEFAULT_GAME_SERVER_HOST;
+    config.serverHost = normalizeGameHost(settings.serverHost);
     config.serverPort = Number(settings.serverPort || DEFAULT_GAME_SERVER_PORT) || DEFAULT_GAME_SERVER_PORT;
-    config.apiUrl = normalizeApiUrl(settings.apiUrl);
+    config.apiUrl = normalizeStoredApiUrl(settings.apiUrl);
     saveConfig(config);
-    event.reply('config-data', { gamePath: config.gamePath, fullscreen: config.fullscreen || false, ...getServerSettings(config) });
+    event.reply('config-data', {
+        gamePath: config.gamePath,
+        fullscreen: config.fullscreen || false,
+        lastUsername: String(config.lastUsername || '').trim(),
+        ...getServerSettings(config)
+    });
 });
 
 ipcMain.on('get-server-status', async (event) => {
@@ -616,6 +650,9 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
     isGameRunning = true;
 
     const launchDebug = [];
+    const config = readConfig();
+    config.lastUsername = String(username || '').trim();
+    saveConfig(config);
     logLauncher(`Launching ${CLIENT_VERSION} for ${username} in path: ${gamePath}`);
     const launcher = new Client();
     
