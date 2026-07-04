@@ -104,11 +104,21 @@ public final class R2AppearanceStorage {
     }
 
     public UploadResult uploadSkin(UUID uuid, String hash, byte[] pngBytes) throws IOException, InterruptedException {
+        return uploadWithKey("skins/" + uuid + "/" + hash + ".png", pngBytes);
+    }
+
+    public UploadResult uploadCharacterSkin(String characterKey, String hash, byte[] pngBytes) throws IOException, InterruptedException {
         if (!enabled) {
             throw new IllegalStateException("R2 storage is disabled.");
         }
+        String safeCharacterKey = characterKey == null || characterKey.isBlank() ? "unknown" : characterKey.trim();
+        return uploadWithKey("skins/characters/" + safeCharacterKey + "/" + hash + ".png", pngBytes);
+    }
 
-        String key = "skins/" + uuid + "/" + hash + ".png";
+    private UploadResult uploadWithKey(String key, byte[] pngBytes) throws IOException, InterruptedException {
+        if (!enabled) {
+            throw new IllegalStateException("R2 storage is disabled.");
+        }
         String url = endpoint + "/" + urlEncodePath(bucket) + "/" + urlEncodePath(key);
         URI uri = URI.create(url);
         String host = uri.getHost();

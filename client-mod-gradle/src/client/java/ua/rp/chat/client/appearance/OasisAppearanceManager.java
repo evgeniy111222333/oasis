@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class OasisAppearanceManager {
+    private static final long FIRST_LOAD_RETRY_MS = 2500L;
+    private static final long PROFILE_REFRESH_MS = 30000L;
     private static final Map<UUID, Entry> CACHE = new ConcurrentHashMap<>();
     private static long lastSweepMs = 0L;
 
@@ -36,12 +38,10 @@ public final class OasisAppearanceManager {
         }
 
         Entry entry = CACHE.computeIfAbsent(uuid, ignored -> new Entry());
-        if (entry.skin != null) {
-            return entry.skin;
-        }
 
         long now = System.currentTimeMillis();
-        if (!entry.loading.get() && now - entry.lastAttemptMs > 2500L) {
+        long refreshDelay = entry.skin == null ? FIRST_LOAD_RETRY_MS : PROFILE_REFRESH_MS;
+        if (!entry.loading.get() && now - entry.lastAttemptMs > refreshDelay) {
             entry.lastAttemptMs = now;
             entry.loading.set(true);
             CompletableFuture.supplyAsync(() -> fetchProfile(uuid))
@@ -54,6 +54,8 @@ public final class OasisAppearanceManager {
                         if (profile == null || !profile.hasAppearance) {
                             entry.loading.set(false);
                             entry.missing = true;
+                            entry.skin = null;
+                            entry.hash = "";
                             return;
                         }
                         if (profile.hash.equals(entry.hash) && entry.skin != null) {
@@ -65,7 +67,7 @@ public final class OasisAppearanceManager {
         }
 
         sweepCache(now);
-        return null;
+        return entry.skin;
     }
 
     private static AppearanceProfile fetchProfile(UUID uuid) {
@@ -154,7 +156,18 @@ public final class OasisAppearanceManager {
                 return value.toString();
             }
             if (current == '\\' && i + 1 < body.length()) {
-                value.append(body.charAt(++i));
+                char escaped = body.charAt(++i);
+                if (escaped == 'u' && i + 4 < body.length()) {
+                    String hex = body.substring(i + 1, i + 5);
+                    try {
+                        value.append((char) Integer.parseInt(hex, 16));
+                        i += 4;
+                    } catch (NumberFormatException ignored) {
+                        value.append('u');
+                    }
+                } else {
+                    value.append(escaped);
+                }
             } else {
                 value.append(current);
             }

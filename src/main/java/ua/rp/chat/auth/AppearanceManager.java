@@ -77,7 +77,10 @@ public class AppearanceManager {
             String storageKey = null;
             if (storage.isEnabled()) {
                 try {
-                    R2AppearanceStorage.UploadResult upload = storage.uploadSkin(uuid, hash, storedBytes);
+                    String characterKey = AuthDatabase.characterKey(database.getRpName(uuid));
+                    R2AppearanceStorage.UploadResult upload = characterKey.isBlank()
+                            ? storage.uploadSkin(uuid, hash, storedBytes)
+                            : storage.uploadCharacterSkin(characterKey, hash, storedBytes);
                     publicUrl = upload.publicUrl();
                     storageKey = upload.key();
                 } catch (IOException | InterruptedException e) {

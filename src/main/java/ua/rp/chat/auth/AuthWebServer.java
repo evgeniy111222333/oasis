@@ -336,6 +336,11 @@ public class AuthWebServer {
                     return;
                 }
 
+                if (appearanceData == null || appearanceData.isBlank()) {
+                    sendJsonResponse(exchange, 400, createErrorJson("Загрузите облик персонажа перед созданием профиля."));
+                    return;
+                }
+
                 // Cyrillic Firstname Lastname validation
                 if (!rpName.matches("^[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+\\s+[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+$")) {
                     sendJsonResponse(exchange, 400, createErrorJson("РРјСЏ РїРµСЂСЃРѕРЅР°Р¶Р° РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ: РРІР°РЅ РџРµС‚СЂРѕРІ."));
@@ -344,6 +349,11 @@ public class AuthWebServer {
 
                 if (authManager.getDatabase().isLoginNameTaken(loginName)) {
                     sendJsonResponse(exchange, 400, createErrorJson("Р­С‚РѕС‚ Р»РѕРіРёРЅ СѓР¶Рµ Р·Р°РЅСЏС‚ РґСЂСѓРіРёРј РёРіСЂРѕРєРѕРј."));
+                    return;
+                }
+
+                if (authManager.getDatabase().isRpNameTaken(rpName)) {
+                    sendJsonResponse(exchange, 400, createErrorJson("Это имя персонажа уже занято другим игроком."));
                     return;
                 }
 
@@ -751,7 +761,7 @@ public class AuthWebServer {
         try {
             file.getParentFile().mkdirs();
             String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"c3d307fb95478ff0393e9abdf70269832248e035\", \"size\": 540772 },\n" +
+                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"a3b08b4fe21b1890358ca42b0fe2d03327c33ab1\", \"size\": 541102 },\n" +
                     "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
                     "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
                     "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +

@@ -135,6 +135,16 @@ public class AuthManager {
             return false;
         }
 
+        if (database.isRpNameTaken(rpName)) {
+            plugin.getLogger().warning("RP name already taken: " + rpName);
+            return false;
+        }
+
+        if (appearanceDataUrl == null || appearanceDataUrl.isBlank()) {
+            plugin.getLogger().warning("Registration rejected for " + player.getName() + ": missing required appearance.");
+            return false;
+        }
+
         AppearanceManager.SaveResult validation = appearanceManager.validateAppearance(appearanceDataUrl);
         if (!validation.success()) {
             plugin.getLogger().warning("Appearance validation failed for " + player.getName() + ": " + validation.message());
@@ -146,6 +156,8 @@ public class AuthManager {
             AppearanceManager.SaveResult appearanceResult = appearanceManager.saveAppearance(uuid, appearanceModel, appearanceDataUrl);
             if (!appearanceResult.success()) {
                 plugin.getLogger().warning("Appearance upload failed for " + player.getName() + ": " + appearanceResult.message());
+                database.deleteAccount(uuid);
+                return false;
             }
             database.updateLogin(uuid, null);
             
@@ -176,20 +188,24 @@ public class AuthManager {
             return false;
         }
 
-        String storedLogin = database.getLoginName(uuid);
-        if (storedLogin == null || !storedLogin.equalsIgnoreCase(loginName)) {
+        AuthDatabase.PlayerAccount account = database.getAccountByLoginName(loginName);
+        if (account == null) {
             return false;
         }
 
-        String storedHash = database.getPasswordHash(uuid);
+        String storedHash = account.passwordHash();
         if (storedHash == null) {
             return false;
         }
 
         if (PasswordHasher.verify(password, storedHash)) {
+            if (!account.uuid().equals(uuid) && !database.rebindAccountUuid(account.loginName(), uuid)) {
+                plugin.getLogger().warning("Could not rebind account " + account.loginName() + " to current uuid " + uuid);
+                return false;
+            }
             database.updateLogin(uuid, rememberDevice ? getPlayerIp(player) : null);
             
-            String rpName = database.getRpName(uuid);
+            String rpName = account.rpName();
             // Apply name tag and chat styles on main thread
             new BukkitRunnable() {
                 @Override
