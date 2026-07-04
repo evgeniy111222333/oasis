@@ -43,7 +43,7 @@ appearance:
     provider: "r2"
     r2:
       bucket: "oasis-skins"
-      endpoint: "https://711db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
+      endpoint: "https://111db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
       public-url: "https://pub-518224ecc86d45649eeb86d59dd2ad7e.r2.dev"
       region: "auto"
       required: false
