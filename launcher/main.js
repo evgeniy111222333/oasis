@@ -21,7 +21,7 @@ const JAVA_RUNTIME_MAJOR = 25;
 const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
 
 const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: 'a3b08b4fe21b1890358ca42b0fe2d03327c33ab1', size: 541102 },
+    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '45a30e87ed942d8fc0373701c1d5d971a72e1df2', size: 567507 },
     { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
     { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
     { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
@@ -497,7 +497,7 @@ ipcMain.on('get-config', (event) => {
     config.serverPort = serverSettings.gamePort;
     config.apiUrl = serverSettings.apiUrl;
     saveConfig(config);
-    event.reply('config-data', { gamePath, fullscreen, lastUsername, ...serverSettings });
+    event.reply('config-data', { gamePath, fullscreen, lastUsername });
 });
 
 // Save fullscreen toggle state
@@ -516,20 +516,6 @@ ipcMain.on('save-username', (event, username) => {
         delete config.lastUsername;
     }
     saveConfig(config);
-});
-
-ipcMain.on('save-server-settings', (event, settings) => {
-    const config = readConfig();
-    config.serverHost = normalizeGameHost(settings.serverHost);
-    config.serverPort = Number(settings.serverPort || DEFAULT_GAME_SERVER_PORT) || DEFAULT_GAME_SERVER_PORT;
-    config.apiUrl = normalizeStoredApiUrl(settings.apiUrl);
-    saveConfig(config);
-    event.reply('config-data', {
-        gamePath: config.gamePath,
-        fullscreen: config.fullscreen || false,
-        lastUsername: String(config.lastUsername || '').trim(),
-        ...getServerSettings(config)
-    });
 });
 
 ipcMain.on('get-server-status', async (event) => {

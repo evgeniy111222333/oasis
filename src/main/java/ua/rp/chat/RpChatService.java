@@ -38,13 +38,16 @@ public class RpChatService {
     }
 
     public void sendSpeech(Player sender, RpChatChannel channel, String message) {
-        deliver(sender, channel, message, formatSpeech(rpName(sender), channel, message), true);
+        deliverSpeech(sender, channel, message, true);
         showSpeechBubble(sender, channel, message);
     }
 
     public void sendAction(Player sender, String action) {
         deliver(sender, RpChatChannel.ACTION, action, formatAction(rpName(sender), action), true);
-        showSpeechBubble(sender, RpChatChannel.ACTION, "*" + action + "*");
+    }
+
+    public void sendActionHighlighted(Player sender, String action, String... highlightedNames) {
+        deliver(sender, RpChatChannel.ACTION, action, formatActionHighlighted(rpName(sender), action, highlightedNames), true);
     }
 
     public void sendDescription(Player sender, String description) {
@@ -61,13 +64,7 @@ public class RpChatService {
     }
 
     public void sendTodo(Player sender, String speech, String action) {
-        Component message = Component.text()
-                .append(Component.text("«" + speech + "» ", RpChatChannel.SPEAK.messageColor()))
-                .append(Component.text("— ", MUTED))
-                .append(Component.text(rpName(sender), NAME))
-                .append(Component.text(", " + action, RpChatChannel.ACTION.messageColor()))
-                .build();
-        deliver(sender, RpChatChannel.SPEAK, speech + " * " + action, message, true);
+        deliverTodo(sender, speech, action, true);
         showSpeechBubble(sender, RpChatChannel.SPEAK, speech);
     }
 
@@ -83,6 +80,59 @@ public class RpChatService {
 
     public void sendSystemLocal(Player sender, RpChatChannel channel, Component message) {
         deliver(sender, channel, "", message, false);
+    }
+
+    private void deliverSpeech(Player sender, RpChatChannel channel, String rawMessage, boolean notifyIfAlone) {
+        int heard = 0;
+        sender.sendMessage(formatSpeech(rpName(sender), channel, rawMessage));
+
+        for (Player receiver : plugin.getServer().getOnlinePlayers()) {
+            if (receiver.equals(sender)) {
+                continue;
+            }
+            Delivery delivery = deliveryFor(sender, receiver, channel);
+            if (delivery == Delivery.NONE) {
+                if (receiver.hasPermission("rpchat.spy")) {
+                    receiver.sendMessage(spyMessage(sender, channel, rawMessage));
+                }
+                continue;
+            }
+            String receiverName = displayNameFor(receiver, sender);
+            receiver.sendMessage(delivery == Delivery.CLEAR
+                    ? formatSpeech(receiverName, channel, rawMessage)
+                    : distantMessage(receiverName, channel, rawMessage));
+            heard++;
+        }
+
+        plugin.getServer().getConsoleSender().sendMessage(consoleMessage(sender, channel, rawMessage, heard));
+        notifyIfAlone(sender, heard, notifyIfAlone);
+    }
+
+    private void deliverTodo(Player sender, String speech, String action, boolean notifyIfAlone) {
+        String raw = speech + " * " + action;
+        int heard = 0;
+        sender.sendMessage(formatTodo(rpName(sender), speech, action));
+
+        for (Player receiver : plugin.getServer().getOnlinePlayers()) {
+            if (receiver.equals(sender)) {
+                continue;
+            }
+            Delivery delivery = deliveryFor(sender, receiver, RpChatChannel.SPEAK);
+            if (delivery == Delivery.NONE) {
+                if (receiver.hasPermission("rpchat.spy")) {
+                    receiver.sendMessage(spyMessage(sender, RpChatChannel.SPEAK, raw));
+                }
+                continue;
+            }
+            String receiverName = displayNameFor(receiver, sender);
+            receiver.sendMessage(delivery == Delivery.CLEAR
+                    ? formatTodo(receiverName, speech, action)
+                    : distantMessage(receiverName, RpChatChannel.SPEAK, speech));
+            heard++;
+        }
+
+        plugin.getServer().getConsoleSender().sendMessage(consoleMessage(sender, RpChatChannel.SPEAK, raw, heard));
+        notifyIfAlone(sender, heard, notifyIfAlone);
     }
 
     private void deliver(Player sender, RpChatChannel channel, String rawMessage, Component exact, boolean notifyIfAlone) {
@@ -105,6 +155,13 @@ public class RpChatService {
         }
 
         plugin.getServer().getConsoleSender().sendMessage(consoleMessage(sender, channel, rawMessage, heard));
+        notifyIfAlone(sender, heard, notifyIfAlone);
+    }
+
+    private void notifyIfAlone(Player sender, int heard, boolean notifyIfAlone) {
+        if (heard == 0 && notifyIfAlone) {
+            sender.sendMessage(Component.text("Поблизости никто не услышал.", MUTED));
+        }
     }
 
     private void showSpeechBubble(Player sender, RpChatChannel channel, String rawMessage) {
@@ -131,6 +188,7 @@ public class RpChatService {
             td.setTextOpacity((byte) 0);
         });
         activeBubbles.put(sender.getUniqueId(), display);
+        updateBubbleVisibility(sender, channel, display);
 
         new BukkitRunnable() {
             private int age;
@@ -146,6 +204,7 @@ public class RpChatService {
                 float floatUp = Math.min(0.22f, age * 0.0035f);
                 display.teleport(sender.getLocation().add(0.0, 2.72 + floatUp, 0.0));
                 display.setTextOpacity((byte) opacityFor(age));
+                updateBubbleVisibility(sender, channel, display);
 
                 age += 2;
                 if (age > BUBBLE_LIFETIME_TICKS) {
@@ -160,6 +219,23 @@ public class RpChatService {
         activeBubbles.remove(uuid, display);
         if (display != null && display.isValid()) {
             display.remove();
+        }
+    }
+
+    private void updateBubbleVisibility(Player sender, RpChatChannel channel, TextDisplay display) {
+        if (display == null || !display.isValid()) {
+            return;
+        }
+        for (Player receiver : plugin.getServer().getOnlinePlayers()) {
+            if (receiver.equals(sender)) {
+                receiver.showEntity(plugin, display);
+                continue;
+            }
+            if (deliveryFor(sender, receiver, channel) == Delivery.CLEAR) {
+                receiver.showEntity(plugin, display);
+            } else {
+                receiver.hideEntity(plugin, display);
+            }
         }
     }
 
@@ -214,6 +290,13 @@ public class RpChatService {
         return sender.hasLineOfSight(receiver) || receiver.hasLineOfSight(sender);
     }
 
+    private String displayNameFor(Player viewer, Player target) {
+        if (plugin.getAcquaintanceManager() != null) {
+            return plugin.getAcquaintanceManager().chatNameFor(viewer, target);
+        }
+        return rpName(target);
+    }
+
     private Component formatSpeech(String name, RpChatChannel channel, String message) {
         String verb = switch (channel) {
             case WHISPER -> " шепчет: ";
@@ -227,6 +310,15 @@ public class RpChatService {
                 .build();
     }
 
+    private Component formatTodo(String name, String speech, String action) {
+        return Component.text()
+                .append(Component.text("«" + speech + "» ", RpChatChannel.SPEAK.messageColor()))
+                .append(Component.text("- ", MUTED))
+                .append(Component.text(name, NAME))
+                .append(Component.text(", " + action, RpChatChannel.ACTION.messageColor()))
+                .build();
+    }
+
     private Component formatAction(String name, String action) {
         return Component.text()
                 .append(Component.text(name, NAME))
@@ -234,10 +326,47 @@ public class RpChatService {
                 .build();
     }
 
+    private Component formatActionHighlighted(String name, String action, String... highlightedNames) {
+        Component result = Component.text()
+                .append(Component.text(name, NAME))
+                .append(Component.text(" ", RpChatChannel.ACTION.messageColor()))
+                .build();
+        String remaining = action == null ? "" : action;
+        while (!remaining.isEmpty()) {
+            Highlight hit = firstHighlight(remaining, highlightedNames);
+            if (hit == null) {
+                return result.append(Component.text(remaining, RpChatChannel.ACTION.messageColor()));
+            }
+            if (hit.start > 0) {
+                result = result.append(Component.text(remaining.substring(0, hit.start), RpChatChannel.ACTION.messageColor()));
+            }
+            result = result.append(Component.text(hit.name, NAME));
+            remaining = remaining.substring(hit.start + hit.name.length());
+        }
+        return result;
+    }
+
+    private Highlight firstHighlight(String text, String... names) {
+        if (text == null || text.isBlank() || names == null) {
+            return null;
+        }
+        Highlight best = null;
+        for (String name : names) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            int index = text.indexOf(name);
+            if (index >= 0 && (best == null || index < best.start)) {
+                best = new Highlight(index, name);
+            }
+        }
+        return best;
+    }
+
     private Component formatDescription(String name, String description) {
         return Component.text()
                 .append(Component.text(description, RpChatChannel.DESCRIPTION.messageColor()))
-                .append(Component.text(" — ", MUTED))
+                .append(Component.text(" - ", MUTED))
                 .append(Component.text(name, MUTED))
                 .build();
     }
@@ -293,5 +422,8 @@ public class RpChatService {
         NONE,
         DISTANT,
         CLEAR
+    }
+
+    private record Highlight(int start, String name) {
     }
 }

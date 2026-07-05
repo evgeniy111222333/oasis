@@ -37,7 +37,13 @@ public class ChatListener implements Listener {
             rawMessage = rawMessage.substring(1).trim();
         }
         if (!rawMessage.isBlank()) {
-            plugin.getRpChatService().sendSpeech(sender, channel, rawMessage);
+            RpChatChannel finalChannel = channel;
+            String finalMessage = rawMessage;
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (sender.isOnline()) {
+                    plugin.getRpChatService().sendSpeech(sender, finalChannel, finalMessage);
+                }
+            });
         }
     }
 }

@@ -35,6 +35,9 @@ public class RPCommands implements CommandExecutor {
         if ("rpdemo".equals(cmd)) {
             return handleDemo(sender, args);
         }
+        if ("rpcombatdebug".equals(cmd)) {
+            return handleCombatDebug(sender);
+        }
 
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Эту команду может выполнить только игрок.", NamedTextColor.RED));
@@ -142,6 +145,24 @@ public class RPCommands implements CommandExecutor {
         sender.sendMessage(Component.text("/w или ~текст — шепот 7 блоков, дальний шум до 11.", MUTED));
         sender.sendMessage(Component.text("/s или !текст — крик 48 блоков, дальний шум до 68.", MUTED));
         sender.sendMessage(Component.text("/me, /do, /try, /todo, /b — локальные RP/OOC действия.", MUTED));
+        return true;
+    }
+
+    private boolean handleCombatDebug(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Эту команду может выполнить только игрок-оператор.", NamedTextColor.RED));
+            return true;
+        }
+        if (!player.isOp()) {
+            player.sendMessage(Component.text("Команда доступна только операторам сервера.", NamedTextColor.RED));
+            return true;
+        }
+        boolean enabled = plugin.getCombatManager().toggleDebug(player);
+        player.sendMessage(Component.text(
+                enabled ? "RP combat debug включен: броски боя будут видны только вам."
+                        : "RP combat debug выключен.",
+                enabled ? NamedTextColor.GREEN : NamedTextColor.GRAY
+        ));
         return true;
     }
 

@@ -447,16 +447,6 @@ body {
     border-radius: 3px;
 }
 
-.server-settings-group {
-    margin-top: 15px;
-}
-
-.server-settings-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 92px;
-    gap: 10px;
-}
-
 .modal-header {
     display: flex;
     justify-content: space-between;

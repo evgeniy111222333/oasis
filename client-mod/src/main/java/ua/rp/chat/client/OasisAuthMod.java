@@ -36,6 +36,9 @@ public class OasisAuthMod implements ClientModInitializer {
 
         // Register custom payload codec
         PayloadTypeRegistry.clientboundPlay().register(AuthPayload.TYPE, AuthPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(AcquaintancePayload.TYPE, AcquaintancePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(CombatIntentPayload.TYPE, CombatIntentPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -46,10 +49,14 @@ public class OasisAuthMod implements ClientModInitializer {
                 openAuthScreen(context.client(), authUrl);
             });
         });
+        ClientPlayNetworking.registerGlobalReceiver(AcquaintancePayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> AcquaintanceClientState.handle(payload));
+        });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SmartCameraManager.getInstance().clientTick(client);
             VitalsClientState.clientTick(client);
+            AcquaintanceClientState.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);
         });

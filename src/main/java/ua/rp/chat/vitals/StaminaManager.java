@@ -37,6 +37,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
+import ua.rp.chat.combat.CombatBodyZone;
+import ua.rp.chat.combat.CombatDamageProfile;
 
 import java.io.File;
 import java.io.FileReader;
@@ -114,6 +116,92 @@ public class StaminaManager implements Listener {
         json.add("treatment", treatmentJson(player));
         json.add("parts", bodyParts(v));
         return json;
+    }
+
+    public int combatAttackPenalty(Player player) {
+        Vitals v = getVitals(player);
+        BodyPartState mainArm = v.zone(BodyZone.RIGHT_ARM);
+        int penalty = 0;
+        if (mainArm.isBroken()) {
+            penalty += mainArm.fractureStabilized ? 4 : 7;
+        } else if (mainArm.condition < 55.0) {
+            penalty += 2;
+        }
+        if (mainArm.pain > 35.0) {
+            penalty += 1 + (int) Math.min(3, mainArm.pain / 22.0);
+        }
+        if (v.stamina < 18.0) {
+            penalty += 4;
+        } else if (v.stamina < 38.0) {
+            penalty += 2;
+        }
+        if (v.breathDebt > 70.0) {
+            penalty += 2;
+        }
+        if (v.totalPain() > 62.0) {
+            penalty += 2;
+        }
+        if (v.unconsciousTicks > 0) {
+            penalty += 20;
+        }
+        return penalty;
+    }
+
+    public int combatDefensePenalty(Player player) {
+        Vitals v = getVitals(player);
+        int penalty = 0;
+        if (v.zone(BodyZone.LEFT_LEG).isBroken() || v.zone(BodyZone.RIGHT_LEG).isBroken()) {
+            penalty += 5;
+        } else {
+            if (v.zone(BodyZone.LEFT_LEG).condition < 55.0) penalty += 2;
+            if (v.zone(BodyZone.RIGHT_LEG).condition < 55.0) penalty += 2;
+        }
+        if (v.stamina < 20.0) {
+            penalty += 3;
+        }
+        if (v.totalPain() > 70.0) {
+            penalty += 3;
+        }
+        if (v.unconsciousTicks > 0) {
+            penalty += 12;
+        }
+        return penalty;
+    }
+
+    public void applyCombatInjury(Player victim, CombatBodyZone combatZone, double medicalDamage,
+                                  double healthDamage, CombatDamageProfile combatProfile) {
+        if (victim == null || victim.isDead() || medicalDamage <= 0.0) {
+            return;
+        }
+        cancelTreatment(victim, "Лечение прервано.");
+        Vitals v = getVitals(victim);
+        BodyZone zone = bodyZoneFor(combatZone);
+        DamageProfile profile = damageProfileFor(combatProfile);
+        applyInjury(victim, v, zone, medicalDamage, profile);
+        v.lastDamage = Math.max(v.lastDamage, medicalDamage);
+        v.lastDamageCause = profile.id;
+        v.breathDebt = clamp(v.breathDebt + medicalDamage * profile.breathDebt, 0.0, 100.0);
+        v.fatigue = clamp(v.fatigue + medicalDamage * profile.fatigue, 0.0, 100.0);
+        markDirty();
+
+        if (profile == DamageProfile.BLUNT) {
+            victim.getWorld().spawnParticle(
+                    Particle.DAMAGE_INDICATOR,
+                    victim.getLocation().add(0.0, zoneParticleY(zone), 0.0),
+                    Math.max(2, Math.min(10, (int) Math.ceil(medicalDamage))),
+                    0.16, 0.10, 0.16, 0.0
+            );
+        } else {
+            victim.getWorld().spawnParticle(
+                    Particle.DUST,
+                    victim.getLocation().add(0.0, zoneParticleY(zone), 0.0),
+                    Math.max(2, Math.min(10, (int) Math.ceil(medicalDamage))),
+                    0.16, 0.10, 0.16, 0.0,
+                    new Particle.DustOptions(Color.fromRGB(120, 0, 0), 1.05f)
+            );
+        }
+        victim.playSound(victim.getLocation(), Sound.ENTITY_PLAYER_HURT, 0.75f, profile == DamageProfile.BLUNT ? 0.72f : 0.92f);
+        damagePlayerSilently(victim, healthDamage);
     }
 
     public JsonObject startTreatment(Player player, String partId, String actionId) {
@@ -696,6 +784,40 @@ public class StaminaManager implements Listener {
             return DamageProfile.BLUNT;
         }
         return DamageProfile.BLUNT;
+    }
+
+    private BodyZone bodyZoneFor(CombatBodyZone zone) {
+        if (zone == null) {
+            return weightedRandomZone(9, 38, 16, 16, 10, 11);
+        }
+        return switch (zone) {
+            case HEAD -> BodyZone.HEAD;
+            case TORSO -> BodyZone.TORSO;
+            case LEFT_ARM -> BodyZone.LEFT_ARM;
+            case RIGHT_ARM -> BodyZone.RIGHT_ARM;
+            case LEFT_LEG -> BodyZone.LEFT_LEG;
+            case RIGHT_LEG -> BodyZone.RIGHT_LEG;
+        };
+    }
+
+    private DamageProfile damageProfileFor(CombatDamageProfile profile) {
+        if (profile == null) {
+            return DamageProfile.BLUNT;
+        }
+        return switch (profile) {
+            case SHARP -> DamageProfile.SHARP;
+            case PROJECTILE -> DamageProfile.PROJECTILE;
+            case BLUNT -> DamageProfile.BLUNT;
+        };
+    }
+
+    private double zoneParticleY(BodyZone zone) {
+        return switch (zone) {
+            case HEAD -> 1.55;
+            case TORSO -> 1.08;
+            case LEFT_ARM, RIGHT_ARM -> 1.05;
+            case LEFT_LEG, RIGHT_LEG -> 0.45;
+        };
     }
 
     private BodyZone chooseZone(EntityDamageEvent event, Player player, DamageProfile profile) {

@@ -13,7 +13,8 @@
     "HumanoidArmorLayerMixin",
     "CustomHeadLayerMixin",
     "ItemInHandRendererMixin",
-    "AvatarRenderStateMixin"
+    "AvatarRenderStateMixin",
+    "MultiPlayerGameModeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

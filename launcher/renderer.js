@@ -16,12 +16,8 @@ const settingsModal = document.getElementById('settingsModal');
 const btnBrowseFolder = document.getElementById('btnBrowseFolder');
 const gamePathInput = document.getElementById('gamePathInput');
 const fullscreenInput = document.getElementById('fullscreenInput');
-const serverHostInput = document.getElementById('serverHostInput');
-const serverPortInput = document.getElementById('serverPortInput');
-const apiUrlInput = document.getElementById('apiUrlInput');
 
 let currentGamePath = '';
-let serverSettingsSaveTimer = null;
 let usernameSaveTimer = null;
 
 function setServerStatus({ online, text, players = '-- / --' }) {
@@ -48,9 +44,6 @@ ipcRenderer.on('config-data', (event, data) => {
     if (Object.prototype.hasOwnProperty.call(data, 'lastUsername')) {
         usernameInput.value = data.lastUsername || '';
     }
-    serverHostInput.value = data.gameHost || data.serverHost || 'localhost';
-    serverPortInput.value = data.gamePort || data.serverPort || 25565;
-    apiUrlInput.value = data.apiUrl || 'http://localhost:25580';
     ipcRenderer.send('check-updates', { gamePath: currentGamePath });
     updateServerStatus();
 });
@@ -79,22 +72,6 @@ ipcRenderer.on('selected-directory', (event, path) => {
 fullscreenInput.addEventListener('change', () => {
     ipcRenderer.send('save-fullscreen', fullscreenInput.checked);
 });
-
-function scheduleServerSettingsSave() {
-    clearTimeout(serverSettingsSaveTimer);
-    serverSettingsSaveTimer = setTimeout(() => {
-        ipcRenderer.send('save-server-settings', {
-            serverHost: serverHostInput.value.trim(),
-            serverPort: Number(serverPortInput.value) || 25565,
-            apiUrl: apiUrlInput.value.trim()
-        });
-        updateServerStatus();
-    }, 300);
-}
-
-serverHostInput.addEventListener('input', scheduleServerSettingsSave);
-serverPortInput.addEventListener('input', scheduleServerSettingsSave);
-apiUrlInput.addEventListener('input', scheduleServerSettingsSave);
 
 usernameInput.addEventListener('input', () => {
     clearTimeout(usernameSaveTimer);

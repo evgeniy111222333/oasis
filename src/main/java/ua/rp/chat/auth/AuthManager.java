@@ -221,7 +221,7 @@ public class AuthManager {
     }
 
     /**
-     * Applies custom display names, tablist names, and spawns the 3D Text Display nametag.
+     * Applies custom display and tab names, while keeping world nametags hidden for full RP.
      */
     public void applyRpIdentity(Player player, String rpName) {
         if (player == null || rpName == null) return;
@@ -241,24 +241,6 @@ public class AuthManager {
         }
         team.setOption(org.bukkit.scoreboard.Team.Option.NAME_TAG_VISIBILITY, org.bukkit.scoreboard.Team.OptionStatus.NEVER);
         team.addEntry(player.getName());
-
-        // 3. Spawn floating TextDisplay passenger
-        org.bukkit.Location loc = player.getLocation().add(0, 2.2, 0);
-        org.bukkit.entity.TextDisplay textDisplay = player.getWorld().spawn(loc, org.bukkit.entity.TextDisplay.class, td -> {
-            td.text(Component.text(rpName, net.kyori.adventure.text.format.NamedTextColor.WHITE));
-            td.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
-            td.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0)); // transparent
-            td.setShadowed(true);
-            td.setGravity(false);
-            td.setPersistent(false);
-        });
-
-        player.addPassenger(textDisplay);
-        
-        // Hide entity from player himself so it doesn't block their first-person camera view
-        player.hideEntity(plugin, textDisplay);
-
-        activeNametags.put(player.getUniqueId(), textDisplay);
     }
 
     /**

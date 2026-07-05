@@ -1,7 +1,9 @@
 package ua.rp.chat;
 
 import org.bukkit.plugin.java.JavaPlugin;
+import ua.rp.chat.acquaintance.AcquaintanceManager;
 import ua.rp.chat.auth.*;
+import ua.rp.chat.combat.CombatManager;
 import ua.rp.chat.vitals.StaminaManager;
 
 import java.sql.SQLException;
@@ -15,6 +17,8 @@ public class RPChat extends JavaPlugin {
     private AppearanceManager appearanceManager;
     private StaminaManager staminaManager;
     private RpChatService rpChatService;
+    private CombatManager combatManager;
+    private AcquaintanceManager acquaintanceManager;
 
     @Override
     public void onEnable() {
@@ -44,6 +48,10 @@ public class RPChat extends JavaPlugin {
         rpChatService = new RpChatService(this);
         staminaManager = new StaminaManager(this);
         staminaManager.start();
+        combatManager = new CombatManager(this);
+        getServer().getPluginManager().registerEvents(combatManager, this);
+        acquaintanceManager = new AcquaintanceManager(this);
+        acquaintanceManager.start();
         
         // Initialize and register GUI Manager
         authGuiManager = new AuthGuiManager(this, authManager);
@@ -51,6 +59,7 @@ public class RPChat extends JavaPlugin {
 
         // Register Outgoing Plugin Channel for Fabric Client Mod
         getServer().getMessenger().registerOutgoingPluginChannel(this, "rpchat:auth_init");
+        getServer().getMessenger().registerIncomingPluginChannel(this, CombatManager.INTENT_CHANNEL, combatManager);
 
         // Register auth events (MUST be before chat events for priority)
         getServer().getPluginManager().registerEvents(new AuthListener(authManager), this);
@@ -87,6 +96,7 @@ public class RPChat extends JavaPlugin {
         getCommand("rpreload").setExecutor(commands);
         getCommand("rpcrun").setExecutor(commands);
         getCommand("rpdemo").setExecutor(commands);
+        getCommand("rpcombatdebug").setExecutor(commands);
 
         getLogger().info("RPChat has been successfully enabled! Active chat style: " + ChatFormatter.STYLE_NAMES[activeStyle - 1]);
         getLogger().info("Auth system initialized with cinematic camera and web interface.");
@@ -120,6 +130,9 @@ public class RPChat extends JavaPlugin {
     public void onDisable() {
         if (staminaManager != null) {
             staminaManager.shutdown();
+        }
+        if (acquaintanceManager != null) {
+            acquaintanceManager.shutdown();
         }
         if (authWebServer != null) {
             authWebServer.stop();
@@ -160,5 +173,13 @@ public class RPChat extends JavaPlugin {
 
     public RpChatService getRpChatService() {
         return rpChatService;
+    }
+
+    public CombatManager getCombatManager() {
+        return combatManager;
+    }
+
+    public AcquaintanceManager getAcquaintanceManager() {
+        return acquaintanceManager;
     }
 }

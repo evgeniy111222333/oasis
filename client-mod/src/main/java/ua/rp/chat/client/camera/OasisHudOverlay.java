@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
+import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.OasisAuthMod;
 
 public final class OasisHudOverlay implements HudElement {
@@ -54,5 +55,7 @@ public final class OasisHudOverlay implements HudElement {
         if (danger > 0.0f || ua.rp.chat.client.vitals.VitalsClientState.isUnconscious()) {
             MedicalScreenEffects.render(graphics, width, height);
         }
+
+        AcquaintanceClientState.render(graphics, width, height);
     }
 }
