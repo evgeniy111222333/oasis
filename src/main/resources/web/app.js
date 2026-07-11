@@ -4,7 +4,7 @@ let mcUsername = "";
 let mcUuid = "";
 let appearanceData = "";
 let sessionRecoveryInFlight = null;
-const savedCredentialsKey = "oasisAuth.savedCredentials.v1";
+const savedCredentialsKey = "eclipseAuth.savedCredentials.v1";
 
 document.addEventListener("DOMContentLoaded", () => {
     const params = new URLSearchParams(window.location.search);
@@ -256,7 +256,7 @@ async function handleLoginSubmit(event) {
 
 function restoreSavedCredentials(expectedLogin = "") {
     try {
-        const saved = JSON.parse(localStorage.getItem(savedCredentialsKey) || "{}");
+        const saved = readSavedCredentials();
         const rememberInput = document.getElementById("rememberMe");
         const loginInput = document.getElementById("loginName");
         const passwordInput = document.getElementById("loginPassword");
@@ -279,6 +279,28 @@ function restoreSavedCredentials(expectedLogin = "") {
         localStorage.removeItem(savedCredentialsKey);
     }
     return false;
+}
+
+function readSavedCredentials() {
+    const current = localStorage.getItem(savedCredentialsKey);
+    if (current) {
+        return JSON.parse(current);
+    }
+
+    const legacyKey = Object.keys(localStorage).find((key) =>
+        key !== savedCredentialsKey && key.endsWith("Auth.savedCredentials.v1")
+    );
+    if (!legacyKey) {
+        return {};
+    }
+
+    const legacy = localStorage.getItem(legacyKey);
+    if (!legacy) {
+        return {};
+    }
+    localStorage.setItem(savedCredentialsKey, legacy);
+    localStorage.removeItem(legacyKey);
+    return JSON.parse(legacy);
 }
 
 function persistSavedCredentials(loginName, password) {

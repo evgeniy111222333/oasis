@@ -1,62 +1,81 @@
 [
     {
-        "name": "oasisauth-1.0.0.jar",
-        "path": "mods/oasisauth-1.0.0.jar",
-        "sha1": "997f68e8e5583181731483d2ec2bede5f7f9f6b5",
-        "size": 596925
+        "name": "eclipse-client-1.1.0.jar",
+        "path": "mods/eclipse-client-1.1.0.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/eclipse-client-1.1.0.jar",
+        "sha1": "1b3285be5e8cecb886c3c26bf7bb5a6adf3a0bdb",
+        "size": 614886
     },
     {
         "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",
         "path": "mods/mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "size": 453664,
         "sha1": "3168366b5cfce5302a53635674dcee443bb7eeca",
-        "size": 453664
+        "sha256": "566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964"
     },
     {
         "name": "fabric-api-0.153.0+26.1.2.jar",
         "path": "mods/fabric-api-0.153.0+26.1.2.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/fabric-api-0.153.0+26.1.2.jar",
+        "size": 2504357,
         "sha1": "5d984764e54f1f1db397d3f76429a0f15e591845",
-        "size": 2504357
+        "sha256": "2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c"
     },
     {
         "name": "fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
         "path": "mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "size": 8076848,
         "sha1": "2bc17bb4275cc70a12e4ac35d139a71a30845720",
-        "size": 8076848
+        "sha256": "36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832"
     },
     {
         "name": "yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
         "path": "mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "size": 1121083,
         "sha1": "dd0b7f266eced755bb48d5213df309f07d71de5b",
-        "size": 1121083
+        "sha256": "836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41"
     },
     {
         "name": "sodium-fabric-0.8.12+mc26.1.2.jar",
         "path": "mods/sodium-fabric-0.8.12+mc26.1.2.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/sodium-fabric-0.8.12+mc26.1.2.jar",
+        "size": 1844226,
         "sha1": "cd6c6236f0dcff03c7148414db220de32c934b5a",
-        "size": 1844226
+        "sha256": "e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df"
     },
     {
         "name": "iris-fabric-1.10.9+mc26.1.1.jar",
         "path": "mods/iris-fabric-1.10.9+mc26.1.1.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/iris-fabric-1.10.9+mc26.1.1.jar",
+        "size": 2803860,
         "sha1": "c30e04509a1b284372cb9037b07714d4223ae91a",
-        "size": 2803860
+        "sha256": "aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07"
     },
     {
         "name": "zoomify-2.16.1+26.1.jar",
         "path": "mods/zoomify-2.16.1+26.1.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/zoomify-2.16.1+26.1.jar",
+        "size": 561967,
         "sha1": "c180ae8cf90da1abd67c26b5c5e7bf5d795c3b1d",
-        "size": 561967
+        "sha256": "944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a"
     },
     {
         "name": "entity_texture_features_26.1-fabric-7.1.jar",
         "path": "mods/entity_texture_features_26.1-fabric-7.1.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/entity_texture_features_26.1-fabric-7.1.jar",
+        "size": 740706,
         "sha1": "ff6284b53ad23e06bc082d1e05e8828e47455126",
-        "size": 740706
+        "sha256": "7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4"
     },
     {
         "name": "entity_model_features-3.2.4-26.1-fabric.jar",
         "path": "mods/entity_model_features-3.2.4-26.1-fabric.jar",
+        "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/entity_model_features-3.2.4-26.1-fabric.jar",
+        "size": 577617,
         "sha1": "7a43e5c92b87e360bfa0156870f2097549e3732d",
-        "size": 577617
+        "sha256": "07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8"
     }
 ]

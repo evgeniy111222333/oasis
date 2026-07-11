@@ -18,15 +18,15 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 @Mixin(CustomHeadLayer.class)
 public class CustomHeadLayerMixin {
     @Inject(method = "submit(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;FF)V", at = @At("HEAD"), cancellable = true)
-    private void oasis$skipLocalHeadLayer(PoseStack poseStack, SubmitNodeCollector collector, int light, LivingEntityRenderState state, float yRot, float xRot, CallbackInfo ci) {
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
+    private void eclipse$skipLocalHeadLayer(PoseStack poseStack, SubmitNodeCollector collector, int light, LivingEntityRenderState state, float yRot, float xRot, CallbackInfo ci) {
+        if (eclipse$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             ci.cancel();
         }
     }
 
     @Unique
-    private boolean oasis$isLocalFirstPersonState(EntityRenderState state) {
-        if (state instanceof LocalPlayerRenderState lprs && lprs.oasis$isLocalPlayer()) {
+    private boolean eclipse$isLocalFirstPersonState(EntityRenderState state) {
+        if (state instanceof LocalPlayerRenderState lprs && lprs.eclipse$isLocalPlayer()) {
             return true;
         }
         Minecraft client = Minecraft.getInstance();

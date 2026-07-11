@@ -12,7 +12,7 @@ import ua.rp.chat.client.camera.SmartCameraManager;
 @Mixin(Entity.class)
 public class EntityEyePositionMixin {
     @Inject(method = "getEyePosition(F)Lnet/minecraft/world/phys/Vec3;", at = @At("RETURN"), cancellable = true)
-    private void oasis$frontEyePosition(float partialTick, CallbackInfoReturnable<Vec3> cir) {
+    private void eclipse$frontEyePosition(float partialTick, CallbackInfoReturnable<Vec3> cir) {
         Entity entity = (Entity) (Object) this;
         Minecraft client = Minecraft.getInstance();
         SmartCameraManager camera = SmartCameraManager.getInstance();

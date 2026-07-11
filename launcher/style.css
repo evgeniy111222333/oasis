@@ -1,4 +1,4 @@
-/* 🌾 Oasis RP Launcher — Style System */
+/* 🌾 Eclipse RP Launcher — Style System */
 
 :root {
     --sand-gold: #E3C099;
@@ -721,4 +721,52 @@ body {
 @keyframes pulsePlayBtn {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.02); box-shadow: 0 0 15px rgba(227, 192, 153, 0.4); }
+}
+
+.launcher-toast {
+    position: fixed;
+    top: 54px;
+    right: 22px;
+    z-index: 2400;
+    width: min(340px, calc(100vw - 44px));
+    padding: 13px 15px;
+    border: 1px solid rgba(153, 195, 162, 0.35);
+    border-radius: 8px;
+    background: rgba(20, 24, 21, 0.97);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-12px);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.launcher-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.launcher-toast > i {
+    color: var(--success-green);
+    font-size: 20px;
+}
+
+.launcher-toast div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.launcher-toast strong {
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.launcher-toast span {
+    color: var(--pebble-gray);
+    font-size: 11px;
+    line-height: 1.35;
 }

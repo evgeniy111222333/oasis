@@ -12,7 +12,7 @@ import ua.rp.chat.client.CombatIntentSender;
 @Mixin(MultiPlayerGameMode.class)
 public class MultiPlayerGameModeMixin {
     @Inject(method = "attack", at = @At("HEAD"))
-    private void oasis$sendCombatIntent(Player player, Entity target, CallbackInfo ci) {
+    private void eclipse$sendCombatIntent(Player player, Entity target, CallbackInfo ci) {
         CombatIntentSender.send(player, target);
     }
 }

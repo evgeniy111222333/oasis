@@ -20,17 +20,17 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 @Mixin(HumanoidArmorLayer.class)
 public class HumanoidArmorLayerMixin {
     @Inject(method = "renderArmorPiece", at = @At("HEAD"), cancellable = true)
-    private void oasis$skipLocalHeadArmor(PoseStack poseStack, SubmitNodeCollector collector, ItemStack stack, EquipmentSlot slot, int light, HumanoidRenderState state, CallbackInfo ci) {
+    private void eclipse$skipLocalHeadArmor(PoseStack poseStack, SubmitNodeCollector collector, ItemStack stack, EquipmentSlot slot, int light, HumanoidRenderState state, CallbackInfo ci) {
         if (slot == EquipmentSlot.HEAD
-                && oasis$isLocalFirstPersonState(state)
+                && eclipse$isLocalFirstPersonState(state)
                 && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
             ci.cancel();
         }
     }
 
     @Unique
-    private boolean oasis$isLocalFirstPersonState(EntityRenderState state) {
-        if (state instanceof LocalPlayerRenderState lprs && lprs.oasis$isLocalPlayer()) {
+    private boolean eclipse$isLocalFirstPersonState(EntityRenderState state) {
+        if (state instanceof LocalPlayerRenderState lprs && lprs.eclipse$isLocalPlayer()) {
             return true;
         }
         Minecraft client = Minecraft.getInstance();

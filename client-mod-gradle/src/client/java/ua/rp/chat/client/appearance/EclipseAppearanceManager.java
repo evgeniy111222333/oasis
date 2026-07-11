@@ -6,8 +6,8 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
-import ua.rp.chat.client.OasisApiClient;
-import ua.rp.chat.client.OasisAuthMod;
+import ua.rp.chat.client.EclipseApiClient;
+import ua.rp.chat.client.EclipseClientMod;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -22,13 +22,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class OasisAppearanceManager {
+public final class EclipseAppearanceManager {
     private static final long FIRST_LOAD_RETRY_MS = 2500L;
     private static final long PROFILE_REFRESH_MS = 30000L;
     private static final Map<UUID, Entry> CACHE = new ConcurrentHashMap<>();
     private static long lastSweepMs = 0L;
 
-    private OasisAppearanceManager() {
+    private EclipseAppearanceManager() {
     }
 
     public static PlayerSkin getSkin(UUID uuid) {
@@ -47,7 +47,7 @@ public final class OasisAppearanceManager {
             CompletableFuture.supplyAsync(() -> fetchProfile(uuid))
                     .whenComplete((profile, throwable) -> {
                         if (throwable != null) {
-                            OasisAuthMod.LOGGER.debug("Appearance profile request failed for " + uuid, throwable);
+                            EclipseClientMod.LOGGER.debug("Appearance profile request failed for " + uuid, throwable);
                             entry.loading.set(false);
                             return;
                         }
@@ -71,7 +71,7 @@ public final class OasisAppearanceManager {
     }
 
     private static AppearanceProfile fetchProfile(UUID uuid) {
-        String body = get(OasisApiClient.resolve("/api/appearance/profile?uuid=" + uuid));
+        String body = get(EclipseApiClient.resolve("/api/appearance/profile?uuid=" + uuid));
         if (body == null || body.isBlank()) {
             return null;
         }
@@ -87,10 +87,10 @@ public final class OasisAppearanceManager {
     }
 
     private static void fetchAndRegisterTexture(Minecraft client, UUID uuid, AppearanceProfile profile, Entry entry) {
-        CompletableFuture.supplyAsync(() -> getBytes(OasisApiClient.resolve(profile.textureUrl)))
+        CompletableFuture.supplyAsync(() -> getBytes(EclipseApiClient.resolve(profile.textureUrl)))
                 .whenComplete((bytes, throwable) -> {
                     if (throwable != null || bytes == null || bytes.length == 0) {
-                        OasisAuthMod.LOGGER.debug("Appearance texture request failed for " + uuid, throwable);
+                        EclipseClientMod.LOGGER.debug("Appearance texture request failed for " + uuid, throwable);
                         entry.loading.set(false);
                         return;
                     }
@@ -98,17 +98,17 @@ public final class OasisAppearanceManager {
                     client.execute(() -> {
                         try {
                             NativeImage image = NativeImage.read(new ByteArrayInputStream(bytes));
-                            Identifier id = Identifier.fromNamespaceAndPath("oasisauth", "appearance/" + uuid.toString().replace("-", "_") + "_" + profile.hash);
-                            DynamicTexture texture = new DynamicTexture(() -> "Oasis appearance " + uuid, image);
+                            Identifier id = Identifier.fromNamespaceAndPath("eclipseclient", "appearance/" + uuid.toString().replace("-", "_") + "_" + profile.hash);
+                            DynamicTexture texture = new DynamicTexture(() -> "Eclipse appearance " + uuid, image);
                             client.getTextureManager().register(id, texture);
                             PlayerModelType model = "slim".equalsIgnoreCase(profile.model) ? PlayerModelType.SLIM : PlayerModelType.WIDE;
-                            entry.skin = PlayerSkin.insecure(new OasisTextureAsset(id), null, null, model);
+                            entry.skin = PlayerSkin.insecure(new EclipseTextureAsset(id), null, null, model);
                             entry.hash = profile.hash;
                             entry.model = profile.model;
                             entry.debugSkinPath = exportDebugTexture(client, uuid, profile, bytes);
                             entry.missing = false;
                         } catch (IOException e) {
-                            OasisAuthMod.LOGGER.warn("Could not read Oasis appearance texture for " + uuid, e);
+                            EclipseClientMod.LOGGER.warn("Could not read Eclipse appearance texture for " + uuid, e);
                         } finally {
                             entry.loading.set(false);
                         }
@@ -196,13 +196,13 @@ public final class OasisAppearanceManager {
             return null;
         }
         try {
-            Path debugDir = client.gameDirectory.toPath().resolve("oasis-debug").resolve("skins");
+            Path debugDir = client.gameDirectory.toPath().resolve("eclipse-debug").resolve("skins");
             Files.createDirectories(debugDir);
             Path skinPath = debugDir.resolve(uuid + ".png");
             Files.write(skinPath, bytes);
             return skinPath.toAbsolutePath().toString().replace('\\', '/');
         } catch (IOException e) {
-            OasisAuthMod.LOGGER.debug("Could not export Oasis debug skin " + uuid, e);
+            EclipseClientMod.LOGGER.debug("Could not export Eclipse debug skin " + uuid, e);
             return null;
         }
     }

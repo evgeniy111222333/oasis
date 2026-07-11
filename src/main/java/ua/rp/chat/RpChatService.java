@@ -159,9 +159,7 @@ public class RpChatService {
     }
 
     private void notifyIfAlone(Player sender, int heard, boolean notifyIfAlone) {
-        if (heard == 0 && notifyIfAlone) {
-            sender.sendMessage(Component.text("Поблизости никто не услышал.", MUTED));
-        }
+        // Silence is an IC outcome; no delivery report is shown to the speaker.
     }
 
     private void showSpeechBubble(Player sender, RpChatChannel channel, String rawMessage) {

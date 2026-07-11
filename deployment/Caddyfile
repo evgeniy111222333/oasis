@@ -1,0 +1,4 @@
+eclipse-rp.13-51-232-191.sslip.io {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:25580
+}

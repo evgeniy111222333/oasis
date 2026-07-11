@@ -25,7 +25,7 @@ public abstract class CameraMixin {
     @Shadow public abstract float getCameraEntityPartialTicks(DeltaTracker deltaTracker);
 
     @Inject(method = "update", at = @At("RETURN"))
-    private void oasis$afterUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void eclipse$afterUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
         if (this.entity instanceof Player player && SmartCameraManager.getInstance().isCameraMotionActiveFor(player) && !this.detached) {
             float partialTick = this.getCameraEntityPartialTicks(deltaTracker);
             SmartCameraManager.getInstance().updatePhysics(player, partialTick);
@@ -36,7 +36,7 @@ public abstract class CameraMixin {
     }
 
     @Inject(method = "isDetached", at = @At("HEAD"), cancellable = true)
-    private void oasis$isDetached(CallbackInfoReturnable<Boolean> cir) {
+    private void eclipse$isDetached(CallbackInfoReturnable<Boolean> cir) {
         if (SmartCameraManager.getInstance().isWorldFirstPersonBodyRender()) {
             cir.setReturnValue(true);
         }

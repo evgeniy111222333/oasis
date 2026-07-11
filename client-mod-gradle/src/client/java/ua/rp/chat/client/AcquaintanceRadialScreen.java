@@ -25,7 +25,7 @@ public class AcquaintanceRadialScreen extends Screen {
     private String activeGroup = "social";
 
     public AcquaintanceRadialScreen(UUID targetId, String targetLabel) {
-        super(Component.literal("Oasis interaction"));
+        super(Component.literal("Eclipse interaction"));
         this.targetId = targetId;
         this.targetLabel = targetLabel == null ? "Незнакомец" : targetLabel;
         roots.add(new Option("social", "Общение", "знакомство и приметы", 0, "social"));
@@ -91,6 +91,9 @@ public class AcquaintanceRadialScreen extends Screen {
         List<Option> list = new ArrayList<>();
         switch (group) {
             case "control" -> {
+                if (EscapeClientState.isBound()) {
+                    list.add(new Option("help_bound", "Помочь пленнику", "разобрать узлы зубами", 76, null));
+                }
                 list.add(new Option("bind", "Связать", "веревка / цепь / ремень", 11, null));
                 list.add(new Option("unbind", "Развязать", "освободить руки", 12, null));
                 list.add(new Option("disarm", "Снять оружие", "из рук или пояса", 18, null));

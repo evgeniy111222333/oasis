@@ -6,16 +6,16 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 import ua.rp.chat.client.AcquaintanceClientState;
-import ua.rp.chat.client.OasisAuthMod;
+import ua.rp.chat.client.EclipseClientMod;
 
-public final class OasisHudOverlay implements HudElement {
-    private static final Identifier ID = Identifier.fromNamespaceAndPath(OasisAuthMod.MOD_ID, "helmet_visor");
+public final class EclipseHudOverlay implements HudElement {
+    private static final Identifier ID = Identifier.fromNamespaceAndPath(EclipseClientMod.MOD_ID, "helmet_visor");
 
-    private OasisHudOverlay() {
+    private EclipseHudOverlay() {
     }
 
     public static void register() {
-        HudElementRegistry.addLast(ID, new OasisHudOverlay());
+        HudElementRegistry.addLast(ID, new EclipseHudOverlay());
     }
 
     @Override

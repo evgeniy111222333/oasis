@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "savedAt": 1783757384614,
+  "savedAt": 1783761631079,
   "players": {
     "85307a7e-3cf5-39fe-98e5-639b63a71759": {
       "stamina": 100.0,
       "breathDebt": 0.0,
       "fatigue": 0.0,
       "blood": 100.0,
-      "lastDamage": 7.954602188659619E-73,
+      "lastDamage": 1.3551085136648334E-104,
       "lastDamageCause": "fall",
-      "ticks": 13192,
+      "ticks": 18032,
       "unconsciousTicks": 0,
       "parts": {
         "head": {
@@ -145,9 +145,9 @@
       "breathDebt": 0.0,
       "fatigue": 0.0,
       "blood": 100.0,
-      "lastDamage": 1.462453374939964E-7,
+      "lastDamage": 1.5831590665786556E-39,
       "lastDamageCause": "fall",
-      "ticks": 13215,
+      "ticks": 18085,
       "unconsciousTicks": 0,
       "parts": {
         "head": {
@@ -237,7 +237,7 @@
         "leftLeg": {
           "condition": 76.6,
           "bleeding": 0.0,
-          "pain": 9.859999999999351,
+          "pain": 0.0,
           "burn": 0.0,
           "fracture": false,
           "infected": false,

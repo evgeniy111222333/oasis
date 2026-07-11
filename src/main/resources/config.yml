@@ -23,7 +23,7 @@ web:
   # Port for the embedded HTTP server (Must be open on firewall)
   port: 25580
   # Base URL sent to client auth overlay. Use the LAN/public address players can reach.
-  url: "http://192.168.0.241:25580"
+  url: "https://eclipse-rp.13-51-232-191.sslip.io"
 
 # ==========================================
 #             Auth Session Settings
@@ -42,10 +42,10 @@ appearance:
     # r2 = upload immutable skin PNGs to Cloudflare R2 and serve them by public URL.
     provider: "r2"
     r2:
-      bucket: "oasis-skins"
+      bucket: "${ECLIPSE_APPEARANCE_BUCKET}"
       endpoint: "https://111db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
-      public-url: "https://pub-518224ecc86d45649eeb86d59dd2ad7e.r2.dev"
+      public-url: "${ECLIPSE_APPEARANCE_PUBLIC_URL}"
       region: "auto"
       required: false
-      access-key-id: "${OASIS_R2_ACCESS_KEY_ID}"
-      secret-access-key: "${OASIS_R2_SECRET_ACCESS_KEY}"
+      access-key-id: "${ECLIPSE_R2_ACCESS_KEY_ID}"
+      secret-access-key: "${ECLIPSE_R2_SECRET_ACCESS_KEY}"

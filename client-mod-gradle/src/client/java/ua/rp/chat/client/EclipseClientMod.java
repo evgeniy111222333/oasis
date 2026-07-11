@@ -10,7 +10,7 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import ua.rp.chat.client.camera.OasisHudOverlay;
+import ua.rp.chat.client.camera.EclipseHudOverlay;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.vitals.VitalsClientState;
 
@@ -22,10 +22,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class OasisAuthMod implements ClientModInitializer {
+public class EclipseClientMod implements ClientModInitializer {
 
-    public static final String MOD_ID = "oasisauth";
-    public static final Logger LOGGER = LogManager.getLogger("OasisAuth");
+    public static final String MOD_ID = "eclipseclient";
+    public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static boolean bodyStatusKeyDown = false;
     private static int sessionPollTicks = 0;
@@ -33,8 +33,8 @@ public class OasisAuthMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Oasis Auth Mod initialized! Waiting for server packages...");
-        OasisHudOverlay.register();
+        LOGGER.info("Eclipse RolePlay Client initialized! Waiting for server packages...");
+        EclipseHudOverlay.register();
 
         // Register custom payload codec
         PayloadTypeRegistry.clientboundPlay().register(AuthPayload.TYPE, AuthPayload.CODEC);
@@ -93,7 +93,7 @@ public class OasisAuthMod implements ClientModInitializer {
         sessionPollTicks = 0;
 
         String username = client.getUser().getName();
-        String sessionUrl = OasisApiClient.resolve("/api/client-session?username=")
+        String sessionUrl = EclipseApiClient.resolve("/api/client-session?username=")
                 + URLEncoder.encode(username, StandardCharsets.UTF_8);
         SESSION_CHECK_IN_FLIGHT.set(true);
 
@@ -101,7 +101,7 @@ public class OasisAuthMod implements ClientModInitializer {
                 .whenComplete((authUrl, throwable) -> {
                     SESSION_CHECK_IN_FLIGHT.set(false);
                     if (throwable != null) {
-                        LOGGER.debug("Oasis auth session poll failed.", throwable);
+                        LOGGER.debug("Eclipse auth session poll failed.", throwable);
                         return;
                     }
                     if (authUrl == null || authUrl.isBlank() || authUrl.equals(lastOpenedUrl)) {
@@ -113,13 +113,13 @@ public class OasisAuthMod implements ClientModInitializer {
 
     private static void openAuthScreen(Minecraft client, String authUrl) {
         if (!isValidAuthUrl(authUrl)) {
-            LOGGER.warn("Ignored invalid Oasis auth URL: " + authUrl);
+            LOGGER.warn("Ignored invalid Eclipse auth URL: " + authUrl);
             return;
         }
         if (client.screen instanceof AuthScreen current && current.usesAuthUrl(authUrl)) {
             return;
         }
-        OasisApiClient.rememberFromUrl(authUrl);
+        EclipseApiClient.rememberFromUrl(authUrl);
         lastOpenedUrl = authUrl;
         client.setScreen(new AuthScreen(authUrl));
     }
@@ -137,7 +137,7 @@ public class OasisAuthMod implements ClientModInitializer {
                 return null;
             }
             if (code != 200) {
-                LOGGER.debug("Oasis auth session endpoint returned HTTP " + code);
+                LOGGER.debug("Eclipse auth session endpoint returned HTTP " + code);
                 return null;
             }
 
@@ -147,7 +147,7 @@ public class OasisAuthMod implements ClientModInitializer {
                     ? response.get("authUrl").getAsString()
                     : null;
         } catch (IOException | RuntimeException e) {
-            LOGGER.debug("Unable to poll Oasis auth session.", e);
+            LOGGER.debug("Unable to poll Eclipse auth session.", e);
             return null;
         } finally {
             if (connection != null) {

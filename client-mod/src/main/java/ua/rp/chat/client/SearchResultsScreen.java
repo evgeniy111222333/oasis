@@ -19,7 +19,7 @@ public class SearchResultsScreen extends Screen {
     private int ticksOpen;
 
     public SearchResultsScreen(UUID targetId, String title, JsonArray items) {
-        super(Component.literal("Oasis search"));
+        super(Component.literal("Eclipse search"));
         this.targetId = targetId;
         this.title = title == null ? "Обыск" : title;
         for (int i = 0; i < items.size(); i++) {

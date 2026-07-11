@@ -12,13 +12,16 @@ let isGameRunning = false;
 
 const CLIENT_VERSION = '26.1.2';
 const CLIENT_PROFILE_PATH = path.join('versions', CLIENT_VERSION, `${CLIENT_VERSION}.json`);
-const DEFAULT_API_URL = process.env.OASIS_API_URL || 'http://192.168.0.241:25580';
-const DEFAULT_GAME_SERVER_HOST = process.env.OASIS_GAME_SERVER_HOST || '192.168.0.241';
-const DEFAULT_GAME_SERVER_PORT = Number(process.env.OASIS_GAME_SERVER_PORT || 25565);
-const REMOTE_CLIENT_BASE_URL = process.env.OASIS_CLIENT_BASE_URL || 'https://raw.githubusercontent.com/evgeniy111222333/oasis/dev/plugins/RPChat/client';
+const DEFAULT_API_URL = process.env.ECLIPSE_API_URL || 'https://eclipse-rp.13-51-232-191.sslip.io';
+const DEFAULT_GAME_SERVER_HOST = process.env.ECLIPSE_GAME_SERVER_HOST || '13.51.232.191';
+const DEFAULT_GAME_SERVER_PORT = Number(process.env.ECLIPSE_GAME_SERVER_PORT || 25565);
+const DISTRIBUTION_BASE_URL = process.env.ECLIPSE_DISTRIBUTION_BASE_URL || 'https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev';
+const DISTRIBUTION_MANIFEST_URL = process.env.ECLIPSE_DISTRIBUTION_MANIFEST_URL || joinUrl(DISTRIBUTION_BASE_URL, 'manifests/production.json');
+const REMOTE_CLIENT_BASE_URL = process.env.ECLIPSE_CLIENT_BASE_URL || joinUrl(DISTRIBUTION_BASE_URL, 'client');
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 const JAVA_RUNTIME_MAJOR = 25;
 const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
+const MANAGED_CLIENT_MOD_PREFIX = 'eclipse-client-';
 
 const LEGACY_MANAGED_MOD_FILENAMES = [
     'fabric-api-0.106.1+1.21.2.jar',
@@ -31,6 +34,28 @@ const LEGACY_MANAGED_MOD_FILENAMES = [
     'mcef-2.1.0.jar',
     'continuity-3.0.1-beta.2+26.1.jar'
 ];
+const LEGACY_MANAGED_MOD_SHA1 = new Set([
+    'd2a7c3b26354307f9a6d504f16aae5a786a11b7f'
+]);
+
+class EclipseMinecraftClient extends Client {
+    startMinecraft(launchArguments) {
+        const minecraft = childProcess.spawn(
+            this.options.javaPath || 'java',
+            launchArguments,
+            {
+                cwd: this.options.overrides.cwd || this.options.root,
+                detached: this.options.overrides.detached,
+                windowsHide: process.platform === 'win32',
+                stdio: ['ignore', 'pipe', 'pipe']
+            }
+        );
+        minecraft.stdout.on('data', data => this.emit('data', data.toString('utf-8')));
+        minecraft.stderr.on('data', data => this.emit('data', data.toString('utf-8')));
+        minecraft.on('close', code => this.emit('close', code));
+        return minecraft;
+    }
+}
 
 function getTransport(url) {
     return url.startsWith('https:') ? https : http;
@@ -170,9 +195,63 @@ function parseJavaMajor(versionOutput) {
     return Number(version.split('.')[0]);
 }
 
+function discoverWindowsJavaExecutables() {
+    if (process.platform !== 'win32') {
+        return [];
+    }
+
+    const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean);
+    const vendorDirectories = ['Java', 'Eclipse Adoptium', 'Microsoft', 'BellSoft'];
+    const candidates = [];
+    for (const base of programFiles) {
+        for (const vendor of vendorDirectories) {
+            const vendorRoot = path.join(base, vendor);
+            if (!fs.existsSync(vendorRoot)) {
+                continue;
+            }
+            for (const entry of fs.readdirSync(vendorRoot, { withFileTypes: true })) {
+                if (!entry.isDirectory()) {
+                    continue;
+                }
+                const javaExe = path.join(vendorRoot, entry.name, 'bin', 'java.exe');
+                if (fs.existsSync(javaExe)) {
+                    candidates.push(javaExe);
+                }
+            }
+        }
+    }
+    return candidates.sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
+}
+
+function resolveExecutablePath(executable) {
+    if (path.isAbsolute(executable) && fs.existsSync(executable)) {
+        return fs.realpathSync(executable);
+    }
+    if (process.platform === 'win32') {
+        const result = childProcess.spawnSync('where.exe', [executable], {
+            encoding: 'utf8',
+            windowsHide: true
+        });
+        const match = String(result.stdout || '').split(/\r?\n/).map(line => line.trim()).find(Boolean);
+        if (match && fs.existsSync(match)) {
+            return fs.realpathSync(match);
+        }
+    }
+    return executable;
+}
+
+function getJavaLaunchExecutable(javaExecutable) {
+    if (process.platform !== 'win32') {
+        return javaExecutable;
+    }
+    const javaw = path.join(path.dirname(javaExecutable), 'javaw.exe');
+    return fs.existsSync(javaw) ? javaw : javaExecutable;
+}
+
 function checkJavaExecutable(javaPath) {
     return new Promise((resolve, reject) => {
-        childProcess.execFile(javaPath, ['-version'], { timeout: 5000 }, (error, stdout, stderr) => {
+        const resolvedJavaPath = resolveExecutablePath(javaPath);
+        childProcess.execFile(resolvedJavaPath, ['-version'], { timeout: 5000, windowsHide: true }, (error, stdout, stderr) => {
             if (error) {
                 reject(error);
                 return;
@@ -190,7 +269,7 @@ function checkJavaExecutable(javaPath) {
                 return;
             }
 
-            resolve({ javaPath, major, output });
+            resolve({ javaPath: resolvedJavaPath, major, output });
         });
     });
 }
@@ -199,6 +278,8 @@ async function resolveJavaExecutable() {
     const config = readConfig();
     const candidates = [
         config.javaPath,
+        process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : null,
+        ...discoverWindowsJavaExecutables(),
         'java'
     ].filter(Boolean);
     const errors = [];
@@ -212,7 +293,7 @@ async function resolveJavaExecutable() {
     }
 
     throw new Error(
-        `Не найдена подходящая Java. Для Oasis нужен Java ${JAVA_RUNTIME_MAJOR} или новее.\n` +
+        `Не найдена подходящая Java. Для Eclipse нужен Java ${JAVA_RUNTIME_MAJOR} или новее.\n` +
         `Скачайте и установите Temurin/OpenJDK ${JAVA_RUNTIME_MAJOR} с официальной страницы: ${JAVA_DOWNLOAD_PAGE}\n` +
         `После установки перезапустите лаунчер. Детали проверки: ${errors.join(' | ') || 'java не найдена в PATH'}`
     );
@@ -259,9 +340,18 @@ function hasObsoleteManagedMods(gamePath, requiredMods) {
     const requiredNames = new Set(requiredMods.map(mod => mod.name));
     const modsPath = path.join(gamePath, 'mods');
     const managedNames = new Set([...requiredNames, ...LEGACY_MANAGED_MOD_FILENAMES]);
-    return [...managedNames].some(filename => {
+    if ([...managedNames].some(filename => {
         return !requiredNames.has(filename) && fs.existsSync(path.join(modsPath, filename));
-    });
+    })) {
+        return true;
+    }
+    if (!fs.existsSync(modsPath)) {
+        return false;
+    }
+    return fs.readdirSync(modsPath)
+        .filter(filename => filename.toLowerCase().endsWith('.jar') && !requiredNames.has(filename))
+        .some(filename => filename.startsWith(MANAGED_CLIENT_MOD_PREFIX)
+            || LEGACY_MANAGED_MOD_SHA1.has(fileSha1(path.join(modsPath, filename))));
 }
 
 function removeObsoleteManagedMods(gamePath, requiredMods) {
@@ -276,6 +366,18 @@ function removeObsoleteManagedMods(gamePath, requiredMods) {
         const obsoletePath = path.join(modsPath, filename);
         if (fs.existsSync(obsoletePath)) {
             fs.unlinkSync(obsoletePath);
+        }
+    }
+    if (fs.existsSync(modsPath)) {
+        for (const filename of fs.readdirSync(modsPath)) {
+            const candidate = path.join(modsPath, filename);
+            if (!filename.toLowerCase().endsWith('.jar') || requiredNames.has(filename)) {
+                continue;
+            }
+            if (filename.startsWith(MANAGED_CLIENT_MOD_PREFIX)
+                    || LEGACY_MANAGED_MOD_SHA1.has(fileSha1(candidate))) {
+                fs.unlinkSync(candidate);
+            }
         }
     }
 }
@@ -299,7 +401,8 @@ function normalizeApiUrl(url) {
 
 function normalizeGameHost(host) {
     const value = String(host || DEFAULT_GAME_SERVER_HOST).trim();
-    if (!value || value === 'localhost' || value === '127.0.0.1' || value === '::1') {
+    if (!value || value === 'localhost' || value === '127.0.0.1' || value === '::1'
+            || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(value)) {
         return DEFAULT_GAME_SERVER_HOST;
     }
     return value;
@@ -307,7 +410,7 @@ function normalizeGameHost(host) {
 
 function normalizeStoredApiUrl(url) {
     const value = normalizeApiUrl(url);
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(value)) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.[^/:]+|192\.168\.[^/:]+|172\.(1[6-9]|2\d|3[01])\.[^/:]+)(?::\d+)?$/i.test(value)) {
         return DEFAULT_API_URL;
     }
     return value;
@@ -321,7 +424,23 @@ function getServerSettings(config = readConfig()) {
     };
 }
 
+async function fetchDistributionManifest() {
+    const distribution = await requestJson(`${DISTRIBUTION_MANIFEST_URL}?ts=${Date.now()}`, 5000);
+    if (!distribution || !distribution.client || !Array.isArray(distribution.client.mods)) {
+        throw new Error('Invalid Eclipse distribution manifest');
+    }
+    return distribution;
+}
+
 async function fetchRequiredModsFromSources(apiUrl) {
+    try {
+        const distribution = await fetchDistributionManifest();
+        logLauncher(`Loaded Eclipse distribution manifest from ${DISTRIBUTION_MANIFEST_URL}`);
+        return distribution.client.mods;
+    } catch (error) {
+        logLauncher(`Distribution manifest unavailable: ${error.message}`);
+    }
+
     try {
         const apiList = await requestJson(`${normalizeApiUrl(apiUrl)}/api/required-mods?ts=${Date.now()}`, 5000);
         if (Array.isArray(apiList)) {
@@ -358,8 +477,8 @@ async function fetchRequiredModsFromSources(apiUrl) {
 
 async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
     const candidates = [
-        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`),
-        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath)
+        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath),
+        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`)
     ];
     let lastError;
 
@@ -390,8 +509,8 @@ async function repairManagedMod(mod, dest, apiUrl, onProgress) {
     if (mod.url) {
         candidates.push(mod.url);
     }
-    candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
     candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
+    candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
 
     let lastError;
     for (const url of candidates) {
@@ -491,7 +610,7 @@ ipcMain.on('window-close', () => {
 // Load configuration
 ipcMain.on('get-config', (event) => {
     const config = readConfig();
-    const defaultPath = fs.existsSync('D:\\oasis') ? 'D:\\oasis' : path.join(app.getPath('appData'), '.oasis-rp');
+    const defaultPath = fs.existsSync('D:\\eclipse') ? 'D:\\eclipse' : path.join(app.getPath('appData'), '.eclipse-rp');
     const gamePath = config.gamePath || defaultPath;
     const fullscreen = config.fullscreen || false;
     const lastUsername = String(config.lastUsername || '').trim();
@@ -536,39 +655,38 @@ ipcMain.on('get-server-status', async (event) => {
 
 // Verification and update handlers
 ipcMain.on('check-updates', async (event, { gamePath }) => {
-    const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
-    const { apiUrl } = getServerSettings();
-
-    const requiredMods = await fetchRequiredModsFromSources(apiUrl);
-
-    if (!isClientProfileValid(getClientProfilePath(activeGamePath))) {
-        event.reply('update-status', { updateRequired: true });
-        return;
+    try {
+        const distribution = await fetchDistributionManifest();
+        const release = distribution.release;
+        const config = readConfig();
+        const updateRequired = Boolean(
+            release
+            && release.published === true
+            && typeof release.id === 'string'
+            && release.id.trim()
+            && release.id !== config.lastAppliedReleaseId
+        );
+        event.reply('update-status', { updateRequired, release: updateRequired ? release : null });
+    } catch (error) {
+        logLauncher(`Release push check failed quietly: ${error.message}`);
+        event.reply('update-status', { updateRequired: false });
     }
-
-    if (hasObsoleteManagedMods(activeGamePath, requiredMods)) {
-        event.reply('update-status', { updateRequired: true });
-        return;
-    }
-
-    for (const mod of requiredMods) {
-        const modLocalPath = path.join(activeGamePath, mod.path);
-        if (!isManagedFileValid(modLocalPath, mod)) {
-            event.reply('update-status', { updateRequired: true });
-            return;
-        }
-    }
-
-    event.reply('update-status', { updateRequired: false });
 });
 
 ipcMain.on('trigger-update', async (event, { gamePath }) => {
-    const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
+    const activeGamePath = gamePath || path.join(app.getPath('appData'), '.eclipse-rp');
     const { apiUrl } = getServerSettings();
+    let activeRelease = null;
     
     try {
-        // Fetch dynamic mods list from the live server first, then public fallbacks.
-        const requiredMods = await fetchRequiredModsFromSources(apiUrl);
+        let requiredMods;
+        try {
+            const distribution = await fetchDistributionManifest();
+            requiredMods = distribution.client.mods;
+            activeRelease = distribution.release || null;
+        } catch (error) {
+            requiredMods = await fetchRequiredModsFromSources(apiUrl);
+        }
         
         let totalSteps = 1 + requiredMods.length;
         let currentStep = 0;
@@ -608,10 +726,15 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         }
 
         updateProgress('Клиент успешно обновлен!', 100);
-        event.reply('update-status', { updateRequired: false, success: true });
+        if (activeRelease && activeRelease.published === true && activeRelease.id) {
+            const config = readConfig();
+            config.lastAppliedReleaseId = activeRelease.id;
+            saveConfig(config);
+        }
+        event.reply('update-status', { updateRequired: false, success: true, release: activeRelease });
     } catch (err) {
         console.error('Update failed:', err);
-        event.reply('update-status', { updateRequired: true, error: err.message });
+        event.reply('update-status', { updateRequired: true, error: err.message, release: activeRelease });
     }
 });
 
@@ -619,7 +742,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
 ipcMain.on('select-directory', (event) => {
     dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
-        title: 'Выберите папку для установки Oasis RP'
+        title: 'Выберите папку для установки Eclipse RP'
     }).then(result => {
         if (!result.canceled && result.filePaths.length > 0) {
             const selectedPath = result.filePaths[0];
@@ -646,10 +769,10 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
     config.lastUsername = String(username || '').trim();
     saveConfig(config);
     logLauncher(`Launching ${CLIENT_VERSION} for ${username} in path: ${gamePath}`);
-    const launcher = new Client();
+    const launcher = new EclipseMinecraftClient();
     
     // Default fallback path
-    const activeGamePath = gamePath || path.join(app.getPath('appData'), '.oasis-rp');
+    const activeGamePath = gamePath || path.join(app.getPath('appData'), '.eclipse-rp');
     const { gameHost, gamePort, apiUrl } = getServerSettings();
 
     if (!fs.existsSync(activeGamePath)) {
@@ -695,7 +818,8 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             message: `Проверка Java ${JAVA_RUNTIME_MAJOR}+...`
         });
         const javaInfo = await resolveJavaExecutable();
-        logLauncher(`Using Java ${javaInfo.major} at ${javaInfo.javaPath}`);
+        const launchJavaPath = getJavaLaunchExecutable(javaInfo.javaPath);
+        logLauncher(`Using Java ${javaInfo.major} runtime ${javaInfo.javaPath}; launching through ${launchJavaPath}`);
 
         // Quick fallback verification (just in case they deleted files since last check)
         const versionJsonPath = getClientProfilePath(activeGamePath);
@@ -740,7 +864,10 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             clientPackage: null,
             authorization: authSession,
             root: activeGamePath,
-            javaPath: javaInfo.javaPath,
+            javaPath: launchJavaPath,
+            overrides: {
+                detached: false
+            },
             server: {
                 host: gameHost,
                 port: gamePort

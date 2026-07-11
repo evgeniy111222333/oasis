@@ -96,6 +96,43 @@ public class StaminaManager implements Listener {
         return player != null && getVitals(player).unconsciousTicks > 0;
     }
 
+    public boolean consumeEscapeEffort(Player player, double staminaCost, double fatigueGain) {
+        if (player == null || player.isDead()) {
+            return false;
+        }
+        Vitals v = getVitals(player);
+        if (v.unconsciousTicks > 0 || v.stamina < staminaCost) {
+            return false;
+        }
+        v.stamina = clamp(v.stamina - staminaCost, 0.0, MAX_STAMINA);
+        v.fatigue = clamp(v.fatigue + fatigueGain, 0.0, 100.0);
+        v.breathDebt = clamp(v.breathDebt + staminaCost * 0.65, 0.0, 100.0);
+        dirty = true;
+        return true;
+    }
+
+    public double escapeStamina(Player player) {
+        return player == null ? 0.0 : getVitals(player).stamina;
+    }
+
+    public void applyEscapeBurn(Player player, double severity) {
+        if (player == null || player.isDead()) {
+            return;
+        }
+        Vitals v = getVitals(player);
+        double amount = clamp(severity, 0.2, 8.0);
+        for (BodyZone zone : new BodyZone[]{BodyZone.LEFT_ARM, BodyZone.RIGHT_ARM}) {
+            BodyPartState arm = v.zone(zone);
+            arm.condition = clamp(arm.condition - amount * 0.85, 0.0, 100.0);
+            arm.pain = clamp(arm.pain + amount * 2.4, 0.0, 100.0);
+            arm.burn = clamp(arm.burn + amount * 3.2, 0.0, 100.0);
+            arm.burnTreated = false;
+        }
+        v.fatigue = clamp(v.fatigue + amount * 0.9, 0.0, 100.0);
+        dirty = true;
+        damagePlayerSilently(player, Math.min(2.5, amount * 0.24));
+    }
+
     public int restraintPenalty(Player player) {
         if (player == null) {
             return 0;

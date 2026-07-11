@@ -1,0 +1,10 @@
+{
+  "id": "draft",
+  "published": false,
+  "publishedAt": null,
+  "title": "Доступно обновление",
+  "summary": "Подготовлено новое обновление клиента.",
+  "notes": [],
+  "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
+  "successMessage": "Обновление загружено и установлено."
+}

@@ -72,11 +72,11 @@ public final class R2AppearanceStorage {
             return disabled(logger);
         }
 
-        String bucket = section.getString("bucket", "");
-        String endpoint = section.getString("endpoint", "");
-        String publicBaseUrl = section.getString("public-url", "");
-        String accessKeyId = resolveSecret(section.getString("access-key-id", ""));
-        String secretAccessKey = resolveSecret(section.getString("secret-access-key", ""));
+        String bucket = resolveEnvironmentValue(section.getString("bucket", ""));
+        String endpoint = resolveEnvironmentValue(section.getString("endpoint", ""));
+        String publicBaseUrl = resolveEnvironmentValue(section.getString("public-url", ""));
+        String accessKeyId = resolveEnvironmentValue(section.getString("access-key-id", ""));
+        String secretAccessKey = resolveEnvironmentValue(section.getString("secret-access-key", ""));
         boolean required = section.getBoolean("required", false);
         String region = section.getString("region", "auto");
 
@@ -180,7 +180,7 @@ public final class R2AppearanceStorage {
         return publicBaseUrl + "/" + urlEncodePath(key);
     }
 
-    private static String resolveSecret(String value) {
+    private static String resolveEnvironmentValue(String value) {
         if (value == null) {
             return "";
         }

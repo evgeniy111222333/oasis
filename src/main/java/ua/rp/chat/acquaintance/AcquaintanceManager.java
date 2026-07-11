@@ -16,11 +16,13 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
@@ -67,6 +69,13 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
     private static final int ACTION_TAKE_SEARCH_ITEM = 30;
     private static final int ACTION_ACCEPT_CONTROL = 40;
     private static final int ACTION_DECLINE_CONTROL = 41;
+    private static final int ACTION_ESCAPE_STRUGGLE = 70;
+    private static final int ACTION_ESCAPE_QTE = 71;
+    private static final int ACTION_ESCAPE_BLADE = 72;
+    private static final int ACTION_ESCAPE_ENVIRONMENT = 73;
+    private static final int ACTION_ESCAPE_CANCEL = 74;
+    private static final int ACTION_ESCAPE_CALL = 75;
+    private static final int ACTION_ESCAPE_HELP = 76;
     private static final int FORCE_ACTION_OFFSET = 40;
 
     private static final TextColor SAND = TextColor.color(0xE3C099);
@@ -89,6 +98,8 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
     private final Map<UUID, SearchSession> searchSessions = new ConcurrentHashMap<>();
     private final Map<UUID, ActivePhysicalAction> activeActions = new ConcurrentHashMap<>();
     private final Map<UUID, Long> forceCooldownByActor = new ConcurrentHashMap<>();
+    private final Map<UUID, EscapeSession> escapeSessions = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> escapeCooldowns = new ConcurrentHashMap<>();
     private boolean dirty;
     private boolean captivityDirty;
 
@@ -140,6 +151,10 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
             int action = input.readInt();
             UUID targetId = new UUID(input.readLong(), input.readLong());
             String text = readUtf8(input);
+            if (action >= ACTION_ESCAPE_STRUGGLE && action <= ACTION_ESCAPE_CALL) {
+                handleSelfEscapeAction(player, action);
+                return;
+            }
             Player target = Bukkit.getPlayer(targetId);
             if (target == null || !target.isOnline() || target.equals(player) || !near(player, target, 4.2)) {
                 sendToast(player, "Собеседник слишком далеко.", "muted");
@@ -167,6 +182,7 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
                 case ACTION_TAKE_SEARCH_ITEM -> takeSearchItem(player, target, text);
                 case ACTION_ACCEPT_CONTROL -> acceptControl(player, target);
                 case ACTION_DECLINE_CONTROL -> declineControl(player, target);
+                case ACTION_ESCAPE_HELP -> startEscapeHelp(player, target);
                 default -> {
                     ControlAction forced = action >= 50 && action <= 62 ? controlAction(action - FORCE_ACTION_OFFSET) : null;
                     if (forced != null) {
@@ -185,6 +201,7 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         searchSessions.entrySet().removeIf(entry -> entry.getValue().expiresAt < now);
         forceCooldownByActor.entrySet().removeIf(entry -> entry.getValue() < now);
         tickActiveActions(now);
+        tickEscapeSessions(now);
         tickCaptives();
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             sendState(viewer);
@@ -205,6 +222,18 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
             }
             CaptiveState state = entry.getValue();
             if (state.bound) {
+                if (state.restraintMax <= 0.0) {
+                    RestraintProfile profile = restraintProfile(state);
+                    state.restraintMax = profile.maxDurability;
+                    state.restraintHealth = profile.maxDurability;
+                    state.lastWeakenAt = System.currentTimeMillis();
+                    captivityDirty = true;
+                } else if (state.lastWeakenAt > 0L && System.currentTimeMillis() - state.lastWeakenAt >= 300_000L
+                        && restraintProfile(state) != RestraintProfile.CHAIN) {
+                    state.restraintHealth = Math.max(state.restraintMax * 0.15, state.restraintHealth - state.restraintMax * 0.10);
+                    state.lastWeakenAt = System.currentTimeMillis();
+                    captivityDirty = true;
+                }
                 target.setSprinting(false);
                 target.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS, 30, state.tight ? 3 : 1, true, false, false));
                 target.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.WEAKNESS, 30, 2, true, false, false));
@@ -672,6 +701,366 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         }
     }
 
+    private void handleSelfEscapeAction(Player player, int action) {
+        CaptiveState state = captives.get(player.getUniqueId());
+        if (state == null || !state.bound) {
+            sendToast(player, "Руки свободны — освобождаться не от чего.", "muted");
+            return;
+        }
+        switch (action) {
+            case ACTION_ESCAPE_STRUGGLE -> startStruggle(player, state);
+            case ACTION_ESCAPE_QTE -> resolveStruggleHit(player, state);
+            case ACTION_ESCAPE_BLADE -> startBladeEscape(player, state);
+            case ACTION_ESCAPE_ENVIRONMENT -> startEnvironmentEscape(player, state);
+            case ACTION_ESCAPE_CANCEL -> cancelEscape(player.getUniqueId(), "Попытка прекращена.", false);
+            case ACTION_ESCAPE_CALL -> callForHelp(player);
+            default -> {
+            }
+        }
+    }
+
+    private void startStruggle(Player player, CaptiveState state) {
+        RestraintProfile profile = restraintProfile(state);
+        if (!profile.struggleAllowed) {
+            sendToast(player, "Эти путы невозможно разорвать одной силой.", "muted");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (escapeCooldowns.getOrDefault(player.getUniqueId(), 0L) > now) {
+            sendToast(player, "Нужно перевести дыхание перед новой попыткой.", "muted");
+            return;
+        }
+        if (!plugin.getStaminaManager().consumeEscapeEffort(player, 4.0, 1.5)) {
+            sendToast(player, "Не хватает сил, чтобы начать вырываться.", "muted");
+            return;
+        }
+        EscapeSession session = EscapeSession.struggle(player, state, profile, now);
+        escapeSessions.put(player.getUniqueId(), session);
+        state.escapeMode = "STRUGGLE";
+        captivityDirty = true;
+        sendEscapeState(player, session, "Найдите ритм узла и нажимайте пробел в отмеченной зоне.");
+        plugin.getRpChatService().sendAction(player, "напрягает связанные запястья, осторожно проверяя узел на прочность.");
+    }
+
+    private void resolveStruggleHit(Player player, CaptiveState state) {
+        EscapeSession session = escapeSessions.get(player.getUniqueId());
+        if (session == null || session.mode != EscapeMode.STRUGGLE) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        double phase = Math.min(1.0, Math.max(0.0, (now - session.cycleStartedAt) / (double) session.cycleDurationMs));
+        boolean success = !session.hitConsumed && Math.abs(phase - session.windowCenter) <= session.windowWidth * 0.5;
+        session.hitConsumed = true;
+        if (success && plugin.getStaminaManager().consumeEscapeEffort(player, 7.0, 2.8)) {
+            double precision = 1.0 - Math.min(1.0, Math.abs(phase - session.windowCenter) / Math.max(0.01, session.windowWidth * 0.5));
+            state.restraintHealth = Math.max(0.0, state.restraintHealth - state.restraintMax * (0.075 + precision * 0.055));
+            captivityDirty = true;
+            player.playSound(player.getLocation(), Sound.BLOCK_WOOL_BREAK, 0.45f, 0.72f);
+            if (state.restraintHealth <= 0.01) {
+                completeEscape(player, player, EscapeMode.STRUGGLE);
+                return;
+            }
+            session.nextCycle(now + 420L);
+            sendEscapeState(player, session, precision > 0.72 ? "Точный рывок — волокна заметно поддались." : "Узел понемногу ослабевает.");
+            return;
+        }
+        plugin.getStaminaManager().consumeEscapeEffort(player, 4.5, 3.5);
+        emitEscapeNoise(player, true);
+        escapeCooldowns.put(player.getUniqueId(), now + 2_800L);
+        session.nextCycle(now + 1_050L);
+        sendEscapeState(player, session, "Рывок сорвался. Боль в запястьях сбила дыхание.");
+    }
+
+    private void startBladeEscape(Player player, CaptiveState state) {
+        ItemStack blade = findEscapeBlade(player);
+        if (blade == null) {
+            sendToast(player, "При вас не осталось доступного острого предмета.", "muted");
+            return;
+        }
+        RestraintProfile profile = restraintProfile(state);
+        if (!profile.bladeAllowed) {
+            sendToast(player, "Обычное лезвие не справится с этими путами.", "muted");
+            return;
+        }
+        startTimedEscape(player, player, state, EscapeMode.BLADE, profile.bladeDurationMs,
+                "Лезвие заведено под путы. Любое резкое движение сорвет работу.");
+        plugin.getRpChatService().sendAction(player, "нащупывает спрятанный острый край и начинает понемногу надрезать путы за спиной.");
+    }
+
+    private void startEnvironmentEscape(Player player, CaptiveState state) {
+        var block = player.getTargetBlockExact(2);
+        if (block == null) {
+            sendToast(player, "Рядом нет подходящей поверхности.", "muted");
+            return;
+        }
+        String material = block.getType().name();
+        RestraintProfile profile = restraintProfile(state);
+        if (isOpenFire(material)) {
+            if (!profile.fireAllowed) {
+                sendToast(player, "Огонь не освободит от этих пут.", "muted");
+                return;
+            }
+            startTimedEscape(player, player, state, EscapeMode.FIRE, 7_000L,
+                    "Огонь быстро разрушает путы, но обжигает обе руки.");
+            return;
+        }
+        if (isAbrasiveStone(material)) {
+            if (!profile.stoneAllowed) {
+                sendToast(player, "Камень почти не оставляет следа на этих путах.", "muted");
+                return;
+            }
+            startTimedEscape(player, player, state, EscapeMode.STONE, profile.stoneDurationMs,
+                    "Прижмитесь путами к камню и сохраняйте положение.");
+            return;
+        }
+        sendToast(player, "Эта поверхность не поможет перетереть путы.", "muted");
+    }
+
+    private void startEscapeHelp(Player actor, Player target) {
+        CaptiveState actorState = captives.get(actor.getUniqueId());
+        CaptiveState targetState = captives.get(target.getUniqueId());
+        if (actorState == null || !actorState.bound || targetState == null || !targetState.bound) {
+            sendToast(actor, "Для такой помощи оба пленника должны быть связаны.", "muted");
+            return;
+        }
+        if (!nearLoose(actor, target, 1.8) || !isBehind(actor, target)) {
+            sendToast(actor, "Нужно встать вплотную за товарищем, рядом с его узлами.", "muted");
+            return;
+        }
+        RestraintProfile profile = restraintProfile(targetState);
+        if (!profile.helpAllowed) {
+            sendToast(actor, "Эти крепления невозможно развязать зубами.", "muted");
+            return;
+        }
+        startTimedEscape(actor, target, targetState, EscapeMode.HELP, 90_000L,
+                "Не двигайтесь: узел приходится разбирать почти вслепую.");
+        plugin.getRpChatService().sendActionHighlighted(actor,
+                "подбирается к узлам на запястьях " + plugin.getRpChatService().rpName(target) + " и осторожно тянет свободный конец зубами.",
+                plugin.getRpChatService().rpName(target));
+    }
+
+    private void startTimedEscape(Player actor, Player target, CaptiveState targetState, EscapeMode mode, long durationMs, String hint) {
+        cancelEscape(actor.getUniqueId(), "", false);
+        long now = System.currentTimeMillis();
+        EscapeSession session = EscapeSession.timed(actor, target, targetState, mode, durationMs, now);
+        escapeSessions.put(actor.getUniqueId(), session);
+        CaptiveState actorState = captives.get(actor.getUniqueId());
+        if (actorState != null) actorState.escapeMode = mode == EscapeMode.HELP ? "HELP_ACTOR" : mode.name();
+        targetState.escapeMode = mode == EscapeMode.HELP ? "HELP_TARGET" : mode.name();
+        captivityDirty = true;
+        sendEscapeState(actor, session, hint);
+        if (!actor.equals(target)) {
+            sendEscapeState(target, session, "Товарищ пытается добраться до ваших узлов.");
+        }
+    }
+
+    private void tickEscapeSessions(long now) {
+        for (EscapeSession session : new ArrayList<>(escapeSessions.values())) {
+            Player actor = Bukkit.getPlayer(session.actor);
+            Player target = Bukkit.getPlayer(session.target);
+            CaptiveState state = captives.get(session.target);
+            if (actor == null || target == null || state == null || !state.bound) {
+                cancelEscape(session.actor, "Попытка больше не актуальна.", false);
+                continue;
+            }
+            if (session.mode == EscapeMode.STRUGGLE) {
+                if (now - session.cycleStartedAt > session.cycleDurationMs + 900L) {
+                    emitEscapeNoise(actor, false);
+                    session.nextCycle(now + 650L);
+                }
+                sendEscapeState(actor, session, "Ловите момент, когда натяжение ослабевает.");
+                continue;
+            }
+            if (movedTooFar(actor, session.actorStart, 0.18) || movedTooFar(target, session.targetStart, 0.18)
+                    || session.mode == EscapeMode.HELP && (!nearLoose(actor, target, 1.9) || !isBehind(actor, target))) {
+                cancelEscape(session.actor, "Движение сорвало попытку освобождения.", true);
+                continue;
+            }
+            long elapsed = Math.max(0L, now - session.lastTickAt);
+            session.lastTickAt = now;
+            double damage = state.restraintMax * elapsed / (double) session.durationMs;
+            state.restraintHealth = Math.max(0.0, state.restraintHealth - damage);
+            captivityDirty = true;
+
+            if (session.mode == EscapeMode.FIRE && now - session.lastHazardAt >= 1_000L) {
+                session.lastHazardAt = now;
+                plugin.getStaminaManager().applyEscapeBurn(actor, 2.6);
+                actor.setFireTicks(Math.max(actor.getFireTicks(), 24));
+                actor.playSound(actor.getLocation(), Sound.ENTITY_PLAYER_HURT, 0.9f, 0.72f);
+                emitEscapeNoise(actor, true);
+            } else if (session.mode == EscapeMode.STONE && now - session.lastSoundAt >= 2_400L) {
+                session.lastSoundAt = now;
+                actor.getWorld().playSound(actor.getLocation(), Sound.BLOCK_STONE_HIT, 0.42f, 0.58f);
+            } else if (session.mode == EscapeMode.BLADE && now - session.lastSoundAt >= 3_100L) {
+                session.lastSoundAt = now;
+                actor.playSound(actor.getLocation(), Sound.BLOCK_WOOL_BREAK, 0.22f, 1.28f);
+            }
+            if (state.restraintHealth <= 0.01 || now >= session.completeAt) {
+                completeEscape(actor, target, session.mode);
+                continue;
+            }
+            sendEscapeState(actor, session, escapeModeHint(session.mode));
+            if (!actor.equals(target)) {
+                sendEscapeState(target, session, "Узел постепенно поддается.");
+            }
+        }
+    }
+
+    private void completeEscape(Player actor, Player target, EscapeMode mode) {
+        CaptiveState state = captives.get(target.getUniqueId());
+        if (state == null) {
+            return;
+        }
+        state.bound = false;
+        state.material = "";
+        state.escapeMode = "";
+        state.restraintHealth = 0.0;
+        captivityDirty = true;
+        escapeSessions.entrySet().removeIf(entry -> entry.getValue().actor.equals(actor.getUniqueId()) || entry.getValue().target.equals(target.getUniqueId()));
+        if (mode == EscapeMode.BLADE) {
+            wearEscapeBlade(actor);
+        }
+        JsonObject done = base("escape_state");
+        done.addProperty("active", false);
+        done.addProperty("completed", true);
+        done.addProperty("message", "Путы разорваны. Руки снова свободны.");
+        send(actor, done);
+        if (!actor.equals(target)) send(target, done);
+        target.playSound(target.getLocation(), Sound.BLOCK_CHAIN_BREAK, 0.8f, 1.05f);
+        plugin.getRpChatService().sendActionHighlighted(actor,
+                actor.equals(target) ? "доводит попытку до конца — поврежденные путы соскальзывают с запястий."
+                        : "находит слабину в узле и освобождает руки " + plugin.getRpChatService().rpName(target) + ".",
+                plugin.getRpChatService().rpName(target));
+        plugin.getRpChatService().sendDescription(target, "Путы больше не удерживают запястья.");
+        audit(actor, target, "escape_" + mode.name().toLowerCase(), "");
+    }
+
+    private void cancelEscape(UUID actorId, String message, boolean cooldown) {
+        EscapeSession removed = escapeSessions.remove(actorId);
+        if (removed == null) return;
+        CaptiveState actorState = captives.get(removed.actor);
+        CaptiveState targetState = captives.get(removed.target);
+        if (actorState != null) actorState.escapeMode = "";
+        if (targetState != null) targetState.escapeMode = "";
+        captivityDirty = true;
+        Player actor = Bukkit.getPlayer(actorId);
+        if (cooldown) escapeCooldowns.put(actorId, System.currentTimeMillis() + 2_000L);
+        if (actor != null) {
+            JsonObject json = base("escape_state");
+            json.addProperty("active", false);
+            json.addProperty("completed", false);
+            json.addProperty("message", message == null ? "" : message);
+            send(actor, json);
+        }
+    }
+
+    private void callForHelp(Player player) {
+        plugin.getRpChatService().sendAction(player, "набирает воздух и громко зовет на помощь.");
+        player.getWorld().playSound(player.getLocation(), Sound.ENTITY_PLAYER_HURT, 1.0f, 0.84f);
+        escapeCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + 3_000L);
+    }
+
+    private void sendEscapeState(Player player, EscapeSession session, String message) {
+        CaptiveState state = captives.get(session.target);
+        if (state == null) return;
+        JsonObject json = base("escape_state");
+        json.addProperty("active", true);
+        json.addProperty("mode", session.mode.name());
+        json.addProperty("progress", 1.0 - state.restraintHealth / Math.max(1.0, state.restraintMax));
+        json.addProperty("durability", state.restraintHealth);
+        json.addProperty("maxDurability", state.restraintMax);
+        json.addProperty("message", message == null ? "" : message);
+        json.addProperty("startedAt", session.startedAt);
+        json.addProperty("completeAt", session.completeAt);
+        json.addProperty("cycleStartedAt", session.cycleStartedAt);
+        json.addProperty("cycleDurationMs", session.cycleDurationMs);
+        json.addProperty("windowCenter", session.windowCenter);
+        json.addProperty("windowWidth", session.windowWidth);
+        send(player, json);
+    }
+
+    private void emitEscapeNoise(Player player, boolean loud) {
+        player.getWorld().playSound(player.getLocation(), loud ? Sound.ENTITY_PLAYER_HURT : Sound.BLOCK_WOOL_HIT, loud ? 0.95f : 0.45f, loud ? 0.72f : 0.82f);
+        if (loud) plugin.getRpChatService().sendAction(player, "не сдерживает болезненный стон, пока путы впиваются в запястья.");
+    }
+
+    private ItemStack findEscapeBlade(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item == null || item.getType().isAir()) continue;
+            String type = item.getType().name();
+            String custom = item.hasItemMeta() && item.getItemMeta().hasDisplayName() && item.getItemMeta().displayName() != null
+                    ? net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(item.getItemMeta().displayName()).toLowerCase()
+                    : "";
+            if (type.contains("SWORD") || type.contains("SHEARS") || type.equals("FLINT") || type.contains("DAGGER")
+                    || type.equals("IRON_NUGGET") || custom.contains("скрытое лезвие") || custom.contains("hidden blade")) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private void wearEscapeBlade(Player player) {
+        ItemStack blade = findEscapeBlade(player);
+        if (blade == null) return;
+        if (blade.getItemMeta() instanceof Damageable damageable && blade.getType().getMaxDurability() > 0) {
+            int next = damageable.getDamage() + Math.max(1, blade.getType().getMaxDurability() / 18);
+            if (next >= blade.getType().getMaxDurability()) {
+                blade.setAmount(blade.getAmount() - 1);
+            } else {
+                damageable.setDamage(next);
+                blade.setItemMeta(damageable);
+            }
+        } else if (blade.getType() == Material.FLINT || blade.getType() == Material.IRON_NUGGET) {
+            blade.setAmount(blade.getAmount() - 1);
+        }
+    }
+
+    private boolean isHiddenBlade(ItemStack item) {
+        if (item == null || !item.hasItemMeta() || !item.getItemMeta().hasDisplayName() || item.getItemMeta().displayName() == null) return false;
+        String name = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(item.getItemMeta().displayName()).toLowerCase();
+        return name.contains("скрытое лезвие") || name.contains("hidden blade") || name.contains("лезвие в сапоге");
+    }
+
+    private boolean isBehind(Player actor, Player target) {
+        Vector facing = target.getLocation().getDirection().setY(0);
+        Vector toActor = actor.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0);
+        if (facing.lengthSquared() < 0.001 || toActor.lengthSquared() < 0.001) return false;
+        return facing.normalize().dot(toActor.normalize()) < -0.25;
+    }
+
+    private boolean movedTooFar(Player player, Location origin, double distance) {
+        return player == null || origin == null || !player.getWorld().equals(origin.getWorld())
+                || player.getLocation().distanceSquared(origin) > distance * distance;
+    }
+
+    private boolean isOpenFire(String material) {
+        return material.contains("CAMPFIRE") || material.equals("FIRE") || material.equals("SOUL_FIRE") || material.equals("LAVA");
+    }
+
+    private boolean isAbrasiveStone(String material) {
+        return material.contains("COBBLESTONE") || material.contains("STONE_BRICK") || material.contains("DEEPSLATE")
+                || material.contains("TUFF") || material.contains("BLACKSTONE") || material.contains("GRINDSTONE");
+    }
+
+    private String escapeModeHint(EscapeMode mode) {
+        return switch (mode) {
+            case BLADE -> "Лезвие медленно проходит сквозь волокна.";
+            case STONE -> "Шероховатый край стирает путы слой за слоем.";
+            case FIRE -> "Путы горят; жар становится почти невыносимым.";
+            case HELP -> "Свободный конец узла понемногу выходит из петли.";
+            case STRUGGLE -> "Ловите ослабление натяжения.";
+        };
+    }
+
+    private RestraintProfile restraintProfile(CaptiveState state) {
+        String material = state.material == null ? "" : state.material.toLowerCase();
+        if (material.contains("цеп")) return RestraintProfile.CHAIN;
+        if (material.contains("кож") || material.contains("рем")) return RestraintProfile.LEATHER;
+        if (material.contains("нит")) return RestraintProfile.THREAD;
+        return state.tight ? RestraintProfile.ROPE_TIGHT : RestraintProfile.ROPE;
+    }
+
     private void bind(Player actor, Player target) {
         RestraintMaterial material = restraintMaterial(actor);
         if (material == null) {
@@ -685,6 +1074,11 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         state.boundBy = actor.getUniqueId();
         state.boundAt = System.currentTimeMillis();
         state.material = material.label;
+        RestraintProfile profile = restraintProfile(state);
+        state.restraintMax = profile.maxDurability;
+        state.restraintHealth = profile.maxDurability;
+        state.lastWeakenAt = state.boundAt;
+        state.searchedMask = 0;
         captivityDirty = true;
         plugin.getRpChatService().sendActionHighlighted(actor,
                 "заводит руки " + plugin.getRpChatService().rpName(target) + " за спину и стягивает запястья: " + material.label + ".",
@@ -705,6 +1099,9 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         }
         state.bound = false;
         state.material = "";
+        state.escapeMode = "";
+        state.restraintHealth = 0.0;
+        escapeSessions.entrySet().removeIf(entry -> entry.getValue().target.equals(target.getUniqueId()));
         captivityDirty = true;
         plugin.getRpChatService().sendActionHighlighted(actor,
                 "ослабляет узел и освобождает руки " + plugin.getRpChatService().rpName(target) + ".",
@@ -783,6 +1180,11 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
     }
 
     private void startSearch(Player actor, Player target, SearchSection section) {
+        CaptiveState captive = captives.get(target.getUniqueId());
+        if (captive != null && captive.bound) {
+            captive.searchedMask |= 1 << section.ordinal();
+            captivityDirty = true;
+        }
         List<SearchItem> items = collectSearchItems(target, section);
         SearchSession session = new SearchSession(UUID.randomUUID().toString(), actor.getUniqueId(), target.getUniqueId(), section, System.currentTimeMillis() + SEARCH_SESSION_TTL_MS);
         for (SearchItem item : items) {
@@ -930,6 +1332,9 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
                 addClothingItems(result, target);
             }
         }
+        if (section != SearchSection.THOROUGH) {
+            result.removeIf(item -> isHiddenBlade(item.stack));
+        }
         if (result.size() > section.maxItems) {
             return new ArrayList<>(result.subList(0, section.maxItems));
         }
@@ -1011,6 +1416,21 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEscapeDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player player && event.getFinalDamage() > 0.0) {
+            EscapeSession direct = escapeSessions.get(player.getUniqueId());
+            if (direct != null && direct.mode != EscapeMode.FIRE) {
+                cancelEscape(player.getUniqueId(), "Полученная травма сорвала попытку освобождения.", true);
+            }
+            for (EscapeSession session : new ArrayList<>(escapeSessions.values())) {
+                if (session.target.equals(player.getUniqueId()) && !session.actor.equals(player.getUniqueId())) {
+                    cancelEscape(session.actor, "Полученная травма сорвала попытку освобождения.", true);
+                }
+            }
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBoundInteract(PlayerInteractEvent event) {
         cancelActiveForParticipant(event.getPlayer().getUniqueId(), "исполнитель отвлекся");
@@ -1078,6 +1498,17 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
             p.addProperty("kneeling", captive != null && captive.kneeling);
             p.addProperty("carried", captive != null && captive.carriedBy != null);
             p.addProperty("escorting", isEscorting(target.getUniqueId()));
+            p.addProperty("escapeMode", captive == null || captive.escapeMode == null ? "" : captive.escapeMode);
+            if (self && captive != null && captive.bound) {
+                RestraintProfile profile = restraintProfile(captive);
+                p.addProperty("restraintMaterial", captive.material == null ? "" : captive.material);
+                p.addProperty("restraintDurability", captive.restraintHealth);
+                p.addProperty("restraintMax", captive.restraintMax);
+                p.addProperty("canStruggle", profile.struggleAllowed);
+                p.addProperty("canBlade", profile.bladeAllowed && findEscapeBlade(viewer) != null);
+                p.addProperty("canEnvironment", profile.fireAllowed || profile.stoneAllowed);
+                p.addProperty("escapeStamina", plugin.getStaminaManager().escapeStamina(viewer));
+            }
             players.add(p);
         }
         json.add("players", players);
@@ -1257,6 +1688,11 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
                 state.kneeling = raw.has("kneeling") && raw.get("kneeling").getAsBoolean();
                 state.material = raw.has("material") ? raw.get("material").getAsString() : "";
                 state.boundAt = raw.has("boundAt") ? raw.get("boundAt").getAsLong() : 0L;
+                state.restraintMax = raw.has("restraintMax") ? raw.get("restraintMax").getAsDouble() : 0.0;
+                state.restraintHealth = raw.has("restraintHealth") ? raw.get("restraintHealth").getAsDouble() : state.restraintMax;
+                state.lastWeakenAt = raw.has("lastWeakenAt") ? raw.get("lastWeakenAt").getAsLong() : state.boundAt;
+                state.searchedMask = raw.has("searchedMask") ? raw.get("searchedMask").getAsInt() : 0;
+                state.escapeMode = "";
                 if (raw.has("boundBy") && !raw.get("boundBy").getAsString().isBlank()) {
                     state.boundBy = UUID.fromString(raw.get("boundBy").getAsString());
                 }
@@ -1288,6 +1724,10 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
                 raw.addProperty("material", state.material == null ? "" : state.material);
                 raw.addProperty("boundAt", state.boundAt);
                 raw.addProperty("boundBy", state.boundBy == null ? "" : state.boundBy.toString());
+                raw.addProperty("restraintMax", state.restraintMax);
+                raw.addProperty("restraintHealth", state.restraintHealth);
+                raw.addProperty("lastWeakenAt", state.lastWeakenAt);
+                raw.addProperty("searchedMask", state.searchedMask);
                 root.add(entry.getKey().toString(), raw);
             }
             try (FileWriter writer = new FileWriter(captivityFile, StandardCharsets.UTF_8)) {
@@ -1414,6 +1854,96 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
     private record RestraintMaterial(String label, boolean tight) {
     }
 
+    private enum EscapeMode {
+        STRUGGLE,
+        BLADE,
+        STONE,
+        FIRE,
+        HELP
+    }
+
+    private enum RestraintProfile {
+        THREAD(46.0, true, true, true, true, true, 38_000L, 105_000L, 0.22),
+        ROPE(82.0, true, true, true, true, true, 48_000L, 145_000L, 0.17),
+        ROPE_TIGHT(108.0, true, true, true, true, true, 58_000L, 170_000L, 0.13),
+        LEATHER(132.0, true, true, false, true, true, 78_000L, 240_000L, 0.10),
+        CHAIN(180.0, false, false, false, false, false, 0L, 0L, 0.0);
+
+        private final double maxDurability;
+        private final boolean struggleAllowed;
+        private final boolean bladeAllowed;
+        private final boolean stoneAllowed;
+        private final boolean fireAllowed;
+        private final boolean helpAllowed;
+        private final long bladeDurationMs;
+        private final long stoneDurationMs;
+        private final double qteWidth;
+
+        RestraintProfile(double maxDurability, boolean struggleAllowed, boolean bladeAllowed, boolean stoneAllowed,
+                         boolean fireAllowed, boolean helpAllowed, long bladeDurationMs, long stoneDurationMs, double qteWidth) {
+            this.maxDurability = maxDurability;
+            this.struggleAllowed = struggleAllowed;
+            this.bladeAllowed = bladeAllowed;
+            this.stoneAllowed = stoneAllowed;
+            this.fireAllowed = fireAllowed;
+            this.helpAllowed = helpAllowed;
+            this.bladeDurationMs = bladeDurationMs;
+            this.stoneDurationMs = stoneDurationMs;
+            this.qteWidth = qteWidth;
+        }
+    }
+
+    private static final class EscapeSession {
+        private final UUID actor;
+        private final UUID target;
+        private final EscapeMode mode;
+        private final long startedAt;
+        private final long completeAt;
+        private final long durationMs;
+        private final Location actorStart;
+        private final Location targetStart;
+        private long lastTickAt;
+        private long lastSoundAt;
+        private long lastHazardAt;
+        private long cycleStartedAt;
+        private long cycleDurationMs;
+        private double windowCenter;
+        private double windowWidth;
+        private boolean hitConsumed;
+
+        private EscapeSession(Player actor, Player target, EscapeMode mode, long durationMs, long now) {
+            this.actor = actor.getUniqueId();
+            this.target = target.getUniqueId();
+            this.mode = mode;
+            this.startedAt = now;
+            this.completeAt = now + durationMs;
+            this.durationMs = Math.max(1L, durationMs);
+            this.actorStart = actor.getLocation().clone();
+            this.targetStart = target.getLocation().clone();
+            this.lastTickAt = now;
+            this.lastSoundAt = now;
+            this.lastHazardAt = now;
+        }
+
+        private static EscapeSession struggle(Player actor, CaptiveState state, RestraintProfile profile, long now) {
+            EscapeSession session = new EscapeSession(actor, actor, EscapeMode.STRUGGLE, 300_000L, now);
+            session.windowWidth = profile.qteWidth;
+            session.nextCycle(now + 700L);
+            return session;
+        }
+
+        private static EscapeSession timed(Player actor, Player target, CaptiveState state, EscapeMode mode, long durationMs, long now) {
+            return new EscapeSession(actor, target, mode, durationMs, now);
+        }
+
+        private void nextCycle(long startAt) {
+            this.cycleStartedAt = startAt;
+            this.cycleDurationMs = 1_750L + ThreadLocalRandom.current().nextLong(0L, 450L);
+            this.windowCenter = 0.24 + ThreadLocalRandom.current().nextDouble() * 0.52;
+            this.hitConsumed = false;
+        }
+    }
+
     private record SearchItem(String key, ItemStack stack, InventoryRef ref) {
     }
 
@@ -1530,6 +2060,11 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         private UUID carriedBy;
         private long boundAt;
         private String material = "";
+        private double restraintMax;
+        private double restraintHealth;
+        private long lastWeakenAt;
+        private int searchedMask;
+        private String escapeMode = "";
     }
 
     private static final class PendingControl {

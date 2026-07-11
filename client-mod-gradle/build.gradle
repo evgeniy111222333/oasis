@@ -22,7 +22,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"oasisauth" {
+		"eclipseclient" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}
@@ -81,7 +81,8 @@ tasks.register("syncClientDistribution") {
 	def clientRoot = layout.projectDirectory.dir("../plugins/RPChat/client")
 	def modsDir = clientRoot.dir("mods")
 	def manifestFile = clientRoot.file("mods.json")
-	def modFileName = "oasisauth-${project.version}.jar"
+	def modFileName = "eclipse-client-${project.version}.jar"
+	def supersededClientSha1 = "d2a7c3b26354307f9a6d504f16aae5a786a11b7f"
 
 	inputs.file(remappedJar)
 	outputs.file(modsDir.file(modFileName))
@@ -102,12 +103,25 @@ tasks.register("syncClientDistribution") {
 		if (manifestFile.asFile.exists()) {
 			manifest = new JsonSlurper().parse(manifestFile.asFile) as List
 		}
-
-		def entry = manifest.find { it.name == modFileName }
-		if (entry == null) {
-			entry = [name: modFileName, path: "mods/${modFileName}"]
-			manifest.add(0, entry)
+		def obsoleteClientEntries = manifest.findAll {
+			it.sha1 == supersededClientSha1 || (it.name?.startsWith("eclipse-client-") && it.name != modFileName)
 		}
+		obsoleteClientEntries.each { obsolete ->
+			def obsoleteFile = modsDir.file(obsolete.name as String).asFile
+			if (obsoleteFile.exists()) {
+				obsoleteFile.delete()
+			}
+		}
+		manifest.removeAll {
+			it.sha1 == supersededClientSha1 || it.name == modFileName || it.name?.startsWith("eclipse-client-")
+		}
+
+		def entry = [
+			name: modFileName,
+			path: "mods/${modFileName}",
+			url: "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/${modFileName}"
+		]
+		manifest.add(0, entry)
 		entry.path = "mods/${modFileName}"
 		entry.sha1 = sha1
 		entry.size = targetJar.length()

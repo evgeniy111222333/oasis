@@ -27,7 +27,7 @@ public class BodyStatusScreen extends Screen {
     private int panelHeight;
 
     public BodyStatusScreen(String url) {
-        super(Component.literal("Oasis: состояние персонажа"));
+        super(Component.literal("Eclipse: состояние персонажа"));
         this.url = url;
     }
 
@@ -53,7 +53,7 @@ public class BodyStatusScreen extends Screen {
         } catch (Throwable t) {
             browser = null;
             fallbackStatus = "Встроенная панель состояния недоступна. Открываем в браузере.";
-            OasisAuthMod.LOGGER.warn("MCEF body status failed, using external fallback.", t);
+            EclipseClientMod.LOGGER.warn("MCEF body status failed, using external fallback.", t);
             openExternalFallback();
         }
     }
@@ -69,7 +69,7 @@ public class BodyStatusScreen extends Screen {
             }
         }
         graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
-        graphics.centeredText(font, "OASIS: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
+        graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
     }
 
@@ -200,7 +200,7 @@ public class BodyStatusScreen extends Screen {
             Util.getPlatform().openUri(new URI(url));
         } catch (Exception e) {
             fallbackStatus = "Не удалось открыть состояние персонажа.";
-            OasisAuthMod.LOGGER.warn("Failed to open body status URL.", e);
+            EclipseClientMod.LOGGER.warn("Failed to open body status URL.", e);
         }
     }
 }

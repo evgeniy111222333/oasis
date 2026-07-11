@@ -5,11 +5,11 @@ import net.minecraft.client.multiplayer.ServerData;
 
 import java.net.URI;
 
-public final class OasisApiClient {
+public final class EclipseApiClient {
     private static final String DEFAULT_BASE_URL = "http://localhost:25580";
     private static volatile String rememberedBaseUrl = "";
 
-    private OasisApiClient() {
+    private EclipseApiClient() {
     }
 
     public static void rememberFromUrl(String url) {
@@ -20,7 +20,7 @@ public final class OasisApiClient {
     }
 
     public static String baseUrl() {
-        String override = System.getProperty("oasis.apiUrl", "").trim();
+        String override = System.getProperty("eclipse.apiUrl", "").trim();
         if (!override.isBlank()) {
             return trimTrailingSlash(override);
         }

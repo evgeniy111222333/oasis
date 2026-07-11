@@ -6,7 +6,7 @@ import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import ua.rp.chat.client.appearance.OasisAppearanceManager;
+import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
 
 import java.io.IOException;
@@ -14,10 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class OasisPoseDebugExporter {
+public final class EclipsePoseDebugExporter {
     private static long lastWriteMs = 0L;
 
-    private OasisPoseDebugExporter() {
+    private EclipsePoseDebugExporter() {
     }
 
     public static void capture(PlayerModel model, AvatarRenderState state, Player player, boolean localPlayerState) {
@@ -33,7 +33,7 @@ public final class OasisPoseDebugExporter {
         lastWriteMs = now;
 
         try {
-            Path debugDir = client.gameDirectory.toPath().resolve("oasis-debug");
+            Path debugDir = client.gameDirectory.toPath().resolve("eclipse-debug");
             Files.createDirectories(debugDir);
             Files.writeString(debugDir.resolve("live-pose.json"), toJson(client, model, state, player, now), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
@@ -46,7 +46,7 @@ public final class OasisPoseDebugExporter {
         Vec3 eyeOffset = camera.getEyeOffset(player.getYRot(), player.getXRot());
         double forward = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
         double eyeForward = Math.sqrt(eyeOffset.x * eyeOffset.x + eyeOffset.z * eyeOffset.z);
-        OasisAppearanceManager.DebugSkinInfo skin = OasisAppearanceManager.getDebugSkinInfo(player.getUUID());
+        EclipseAppearanceManager.DebugSkinInfo skin = EclipseAppearanceManager.getDebugSkinInfo(player.getUUID());
 
         StringBuilder json = new StringBuilder(4096);
         json.append("{\n");
@@ -106,14 +106,14 @@ public final class OasisPoseDebugExporter {
         field(json, "zRot", part.zRot).append(",");
         field(json, "visible", part.visible).append(",");
         json.append("\"children\":{");
-        child(json, "oasis_upper_arm", part).append(",");
-        child(json, "oasis_forearm", part).append(",");
-        child(json, "oasis_upper_sleeve", part).append(",");
-        child(json, "oasis_forearm_sleeve", part).append(",");
-        child(json, "oasis_thigh", part).append(",");
-        child(json, "oasis_shin", part).append(",");
-        child(json, "oasis_thigh_pants", part).append(",");
-        child(json, "oasis_shin_pants", part);
+        child(json, "eclipse_upper_arm", part).append(",");
+        child(json, "eclipse_forearm", part).append(",");
+        child(json, "eclipse_upper_sleeve", part).append(",");
+        child(json, "eclipse_forearm_sleeve", part).append(",");
+        child(json, "eclipse_thigh", part).append(",");
+        child(json, "eclipse_shin", part).append(",");
+        child(json, "eclipse_thigh_pants", part).append(",");
+        child(json, "eclipse_shin_pants", part);
         json.append("}}");
         return json;
     }

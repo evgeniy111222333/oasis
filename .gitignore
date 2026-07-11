@@ -49,4 +49,5 @@ target/
 tools/
 node_modules/
 launcher/dist/
-
+/distribution-build/
+/eclipse-*.tar.gz

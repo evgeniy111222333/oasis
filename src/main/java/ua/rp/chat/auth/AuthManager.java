@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class AuthManager {
 
-    // Desert Oasis palette
+    // Desert Eclipse palette
     private static final TextColor SAND_GOLD = TextColor.color(0xE3C099);
     private static final TextColor PEBBLE_GRAY = TextColor.color(0xB0A8A0);
     private static final TextColor SEAFOAM = TextColor.color(0xA5C3C4);
@@ -66,7 +66,7 @@ public class AuthManager {
         UUID uuid = player.getUniqueId();
 
         // Explicit web authentication is the default. The optional IP shortcut stays
-        // behind configuration for private deployments and is disabled for Oasis.
+        // behind configuration for private deployments and is disabled for Eclipse.
         String currentIp = getPlayerIp(player);
         if (plugin.getConfig().getBoolean("auth.auto-login-by-ip", false) && database.isRegistered(uuid)) {
             String lastIp = database.getLastIp(uuid);
@@ -360,7 +360,7 @@ public class AuthManager {
             byteOut.write(len);
             byteOut.write(urlBytes);
             player.sendPluginMessage(plugin, "rpchat:auth_init", byteOut.toByteArray());
-            plugin.getLogger().info("Sent Oasis auth overlay trigger to " + player.getName() + ": " + finalLink);
+            plugin.getLogger().info("Sent Eclipse auth overlay trigger to " + player.getName() + ": " + finalLink);
         } catch (java.io.IOException e) {
             plugin.getLogger().warning("Failed to send client-mod auth packet: " + e.getMessage());
         }
@@ -434,7 +434,7 @@ public class AuthManager {
         player.sendMessage(Component.text("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", DRY_EARTH));
         player.sendMessage(Component.empty());
         player.sendMessage(
-            Component.text("               OASIS ROLEPLAY", SAND_GOLD)
+            Component.text("               ECLIPSE ROLEPLAY", SAND_GOLD)
                 .decoration(TextDecoration.BOLD, true)
         );
         player.sendMessage(Component.empty());

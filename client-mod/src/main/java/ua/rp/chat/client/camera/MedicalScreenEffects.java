@@ -3,7 +3,7 @@ package ua.rp.chat.client.camera;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
-import ua.rp.chat.client.OasisAuthMod;
+import ua.rp.chat.client.EclipseClientMod;
 import ua.rp.chat.client.vitals.VitalsClientState;
 
 final class MedicalScreenEffects {
@@ -113,7 +113,7 @@ final class MedicalScreenEffects {
     }
 
     private static Identifier effect(String name) {
-        return Identifier.fromNamespaceAndPath(OasisAuthMod.MOD_ID, "effects/" + name);
+        return Identifier.fromNamespaceAndPath(EclipseClientMod.MOD_ID, "effects/" + name);
     }
 
     private static float smoothStep(float edge0, float edge1, float value) {

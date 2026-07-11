@@ -13,7 +13,7 @@ import ua.rp.chat.client.AcquaintanceClientState;
 @Mixin(PlayerTabOverlay.class)
 public class PlayerTabOverlayMixin {
     @Inject(method = "setVisible", at = @At("HEAD"), cancellable = true)
-    private void oasis$blockVanillaTabVisible(boolean visible, CallbackInfo ci) {
+    private void eclipse$blockVanillaTabVisible(boolean visible, CallbackInfo ci) {
         AcquaintanceClientState.setTabRequested(visible);
         if (visible) {
             ci.cancel();
@@ -21,7 +21,7 @@ public class PlayerTabOverlayMixin {
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"), cancellable = true)
-    private void oasis$hideVanillaTab(GuiGraphicsExtractor graphics, int width, Scoreboard scoreboard, Objective objective, CallbackInfo ci) {
+    private void eclipse$hideVanillaTab(GuiGraphicsExtractor graphics, int width, Scoreboard scoreboard, Objective objective, CallbackInfo ci) {
         if (AcquaintanceClientState.isCustomTabVisible()) {
             ci.cancel();
         }

@@ -179,16 +179,54 @@ updateServerStatus(); // initial check
 // Update modal UI elements
 const updateModal = document.getElementById('updateModal');
 const btnStartUpdate = document.getElementById('btnStartUpdate');
+const updateTitle = document.getElementById('updateTitle');
+const updateSummary = document.getElementById('updateSummary');
+const updateNotes = document.getElementById('updateNotes');
+const updateToast = document.getElementById('updateToast');
+const updateToastMessage = document.getElementById('updateToastMessage');
 const modalProgressContainer = document.getElementById('modalProgressContainer');
 const modalProgressBarFill = document.getElementById('modalProgressBarFill');
 const modalProgressMessage = document.getElementById('modalProgressMessage');
 const modalProgressPercent = document.getElementById('modalProgressPercent');
 
 let isUpdating = false;
+let currentRelease = null;
+
+function renderRelease(release) {
+    currentRelease = release || null;
+    updateTitle.innerText = release?.title || 'Доступно обновление';
+    updateSummary.innerText = release?.summary || 'Подготовлено новое обновление клиента.';
+    updateNotes.replaceChildren();
+    const notes = Array.isArray(release?.notes) ? release.notes.filter(note => typeof note === 'string' && note.trim()) : [];
+    updateNotes.style.display = notes.length > 0 ? '' : 'none';
+    for (const note of notes) {
+        const row = document.createElement('div');
+        row.className = 'file-item';
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-circle-check';
+        const text = document.createElement('span');
+        text.innerText = note;
+        row.append(icon, text);
+        updateNotes.appendChild(row);
+    }
+    const buttonIcon = document.createElement('i');
+    buttonIcon.className = 'fa-solid fa-download';
+    btnStartUpdate.replaceChildren(buttonIcon, document.createTextNode(` ${release?.buttonLabel || 'ЗАГРУЗИТЬ ОБНОВЛЕНИЕ'}`));
+}
+
+function showUpdateToast(message) {
+    updateToastMessage.innerText = message || 'Клиент готов к запуску.';
+    updateToast.classList.add('visible');
+    clearTimeout(showUpdateToast.timer);
+    showUpdateToast.timer = setTimeout(() => updateToast.classList.remove('visible'), 4500);
+}
 
 // Handle check-updates status response
 ipcRenderer.on('update-status', (event, data) => {
     if (data.updateRequired) {
+        if (data.release) {
+            renderRelease(data.release);
+        }
         updateModal.style.display = 'flex';
         btnPlay.disabled = true;
         btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-cloud-arrow-down"></i> ТРЕБУЕТСЯ ОБНОВЛЕНИЕ</span>';
@@ -213,8 +251,9 @@ ipcRenderer.on('update-status', (event, data) => {
         
         if (data.success && isUpdating) {
             isUpdating = false;
-            // Highlight play button to denote success
+            showUpdateToast(data.release?.successMessage || 'Обновление загружено и установлено.');
             btnPlay.style.animation = 'pulsePlayBtn 1.5s infinite';
+            modalProgressContainer.style.display = 'none';
         }
     }
 });
@@ -237,5 +276,5 @@ btnStartUpdate.addEventListener('click', () => {
     btnStartUpdate.style.opacity = '0.6';
     btnStartUpdate.style.cursor = 'not-allowed';
     
-    ipcRenderer.send('trigger-update', { gamePath: currentGamePath });
+    ipcRenderer.send('trigger-update', { gamePath: currentGamePath, releaseId: currentRelease?.id || null });
 });

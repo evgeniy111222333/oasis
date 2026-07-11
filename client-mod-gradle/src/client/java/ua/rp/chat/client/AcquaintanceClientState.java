@@ -59,6 +59,7 @@ public final class AcquaintanceClientState {
                 );
                 case "search_results" -> openSearchResults(json);
                 case "physical_action" -> updatePhysicalAction(json);
+                case "escape_state" -> EscapeClientState.handle(json);
                 case "introduce" -> openInput(
                         UUID.fromString(json.get("target").getAsString()),
                         4,
@@ -79,6 +80,7 @@ public final class AcquaintanceClientState {
             TAB_ENTRIES.clear();
             PHYSICAL_POSES.clear();
             pendingRequest = null;
+            EscapeClientState.reset();
             tabRequested = false;
             tabTicks = 0;
             return;
@@ -93,6 +95,7 @@ public final class AcquaintanceClientState {
             handshakeFx = null;
         }
         PHYSICAL_POSES.entrySet().removeIf(entry -> entry.getValue().isExpired());
+        EscapeClientState.clientTick(client);
 
         long handle = client.getWindow().handle();
         boolean tab = client.screen == null && (tabRequested || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS);
@@ -105,6 +108,8 @@ public final class AcquaintanceClientState {
             Player target = targetedPlayer(client);
             if (target != null) {
                 client.setScreen(new AcquaintanceRadialScreen(target.getUUID(), labelFor(target)));
+            } else if (EscapeClientState.isBound()) {
+                client.setScreen(new EscapeRadialScreen());
             } else {
                 toast("Посмотрите на персонажа, чтобы взаимодействовать.", "muted");
             }
@@ -184,6 +189,7 @@ public final class AcquaintanceClientState {
         if (handshakeFx != null) {
             renderHandshake(graphics, width, height, handshakeFx.ticks);
         }
+        EscapeClientState.render(graphics, width, height);
     }
 
     public static void openNote(UUID target, String label) {
@@ -213,6 +219,10 @@ public final class AcquaintanceClientState {
         LabelInfo label = LABELS.get(player.getId());
         if (label == null) {
             return RoleplayPose.NONE;
+        }
+        if (label.escapeMode != null && !label.escapeMode.isBlank()) {
+            return new RoleplayPose("ESCAPE_" + label.escapeMode, "HELP_ACTOR".equals(label.escapeMode), 1.0f,
+                    label.bound, label.kneeling, label.carried, label.escorting);
         }
         if (label.carried) {
             return RoleplayPose.carriedPose();
@@ -268,6 +278,10 @@ public final class AcquaintanceClientState {
         if (players != null) {
             for (int i = 0; i < players.size(); i++) {
                 JsonObject p = players.get(i).getAsJsonObject();
+                Minecraft client = Minecraft.getInstance();
+                if (client != null && client.player != null && p.get("entityId").getAsInt() == client.player.getId()) {
+                    EscapeClientState.updateCapabilities(p);
+                }
                 LABELS.put(p.get("entityId").getAsInt(), new LabelInfo(
                         UUID.fromString(p.get("uuid").getAsString()),
                         p.get("label").getAsString(),
@@ -277,7 +291,8 @@ public final class AcquaintanceClientState {
                         p.has("bound") && p.get("bound").getAsBoolean(),
                         p.has("kneeling") && p.get("kneeling").getAsBoolean(),
                         p.has("carried") && p.get("carried").getAsBoolean(),
-                        p.has("escorting") && p.get("escorting").getAsBoolean()
+                        p.has("escorting") && p.get("escorting").getAsBoolean(),
+                        p.has("escapeMode") ? p.get("escapeMode").getAsString() : ""
                 ));
             }
         }
@@ -339,7 +354,7 @@ public final class AcquaintanceClientState {
         graphics.fill(x, y, x + panelW, y + panelH, (alpha << 24) | 0x15110E);
         graphics.fill(x, y, x + panelW, y + 3, 0xFFE3C099);
         graphics.fill(x, y + 42, x + panelW, y + 43, 0x66705B42);
-        graphics.centeredText(client.font, "OASIS ROLEPLAY", width / 2, y + 10, 0xFFE3C099);
+        graphics.centeredText(client.font, "ECLIPSE ROLEPLAY", width / 2, y + 10, 0xFFE3C099);
         graphics.text(client.font, "В сети: " + entries.size(), x + 18, y + 25, 0xFFB0A8A0);
         graphics.text(client.font, "Реестр персонажей", x + 104, y + 25, 0xFFA5C3C4);
         graphics.text(client.font, "TAB", x + panelW - 36, y + 25, 0x887FD0CC);
@@ -463,7 +478,7 @@ public final class AcquaintanceClientState {
         graphics.fill(x, y, x + panelW, y + panelH, (alpha << 24) | 0x15110E);
         graphics.fill(x, y, x + panelW, y + 3, 0xFFE3C099);
         graphics.fill(x, y + 36, x + panelW, y + 37, 0x66705B42);
-        graphics.centeredText(client.font, "OASIS ROLEPLAY", width / 2, y + 10, 0xFFE3C099);
+        graphics.centeredText(client.font, "ECLIPSE ROLEPLAY", width / 2, y + 10, 0xFFE3C099);
 
         List<Player> players = new ArrayList<>(client.level.players());
         players.sort(Comparator.comparing(AcquaintanceClientState::sortName, String.CASE_INSENSITIVE_ORDER));
@@ -565,8 +580,11 @@ public final class AcquaintanceClientState {
         }
     }
 
-    private record LabelInfo(UUID uuid, String label, boolean known, String note, boolean masked, boolean bound, boolean kneeling, boolean carried, boolean escorting) {
+    private record LabelInfo(UUID uuid, String label, boolean known, String note, boolean masked, boolean bound, boolean kneeling, boolean carried, boolean escorting, String escapeMode) {
         private String statusLine() {
+            if (escapeMode != null && !escapeMode.isBlank()) {
+                return escapeMode.startsWith("HELP") ? "освобождает пленника" : "пытается освободиться";
+            }
             if (carried) {
                 return "тащат";
             }

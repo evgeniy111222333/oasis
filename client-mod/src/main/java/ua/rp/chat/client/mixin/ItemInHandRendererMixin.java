@@ -14,7 +14,7 @@ import ua.rp.chat.client.camera.SmartCameraManager;
 @Mixin(ItemInHandRenderer.class)
 public class ItemInHandRendererMixin {
     @Inject(method = "renderHandsWithItems", at = @At("HEAD"), cancellable = true)
-    private void oasis$cancelFirstPersonHands(float partialTick, PoseStack poseStack, SubmitNodeCollector collector, LocalPlayer player, int light, CallbackInfo ci) {
+    private void eclipse$cancelFirstPersonHands(float partialTick, PoseStack poseStack, SubmitNodeCollector collector, LocalPlayer player, int light, CallbackInfo ci) {
         if (SmartCameraManager.getInstance().isFullBodyFirstPersonEnabled()) {
             ci.cancel();
         }

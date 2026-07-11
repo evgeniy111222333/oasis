@@ -1,8 +1,8 @@
 {
-  "name": "oasis-launcher",
-  "version": "1.0.0",
-  "description": "Oasis RolePlay Desktop Launcher",
-  "author": "Oasis RolePlay",
+  "name": "eclipse-launcher",
+  "version": "1.0.5",
+  "description": "Eclipse RolePlay Desktop Launcher",
+  "author": "Eclipse RolePlay",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,8 +10,8 @@
     "dist": "electron-builder --win nsis"
   },
   "build": {
-    "appId": "ua.oasis.roleplay.launcher",
-    "productName": "Oasis RolePlay Launcher",
+    "appId": "ua.eclipse.roleplay.launcher",
+    "productName": "Eclipse RolePlay Launcher",
     "directories": {
       "output": "dist"
     },

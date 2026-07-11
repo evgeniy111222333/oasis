@@ -67,7 +67,7 @@ public class AuthGuiManager implements Listener {
         UUID uuid = player.getUniqueId();
         playerStages.put(uuid, AuthStage.NONE);
 
-        Inventory gui = Bukkit.createInventory(null, 54, Component.text("§0§lOASIS RP — Авторизація"));
+        Inventory gui = Bukkit.createInventory(null, 54, Component.text("§0§lECLIPSE RP — Авторизація"));
 
         // Fill GUI background
         ItemStack grayPane = createItem(Material.GRAY_STAINED_GLASS_PANE, "§7 ");
@@ -144,7 +144,7 @@ public class AuthGuiManager implements Listener {
         block.setType(Material.OAK_SIGN);
 
         Sign sign = (Sign) block.getState();
-        sign.setLine(0, "§6§lOASIS ROLEPLAY");
+        sign.setLine(0, "§6§lECLIPSE ROLEPLAY");
         sign.setLine(1, line1);
         sign.setLine(2, line2);
         sign.setLine(3, ""); // Text input line
@@ -163,7 +163,7 @@ public class AuthGuiManager implements Listener {
 
         // Check if it is our custom auth GUI
         String title = event.getView().getTitle();
-        if (!title.equals("§0§lOASIS RP — Авторизація")) return;
+        if (!title.equals("§0§lECLIPSE RP — Авторизація")) return;
 
         event.setCancelled(true); // Prevent item stealing
 
@@ -199,7 +199,7 @@ public class AuthGuiManager implements Listener {
         if (!authManager.isPendingAuth(player.getUniqueId())) return;
 
         // Keep re-opening the menu if they close it while in auth
-        if (event.getView().getTitle().equals("§0§lOASIS RP — Авторизація")) {
+        if (event.getView().getTitle().equals("§0§lECLIPSE RP — Авторизація")) {
             AuthStage stage = playerStages.getOrDefault(player.getUniqueId(), AuthStage.NONE);
             if (stage == AuthStage.NONE) {
                 new BukkitRunnable() {

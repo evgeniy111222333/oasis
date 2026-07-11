@@ -709,7 +709,7 @@ public class AuthWebServer {
                 return;
             }
 
-            String path = exchange.getRequestURI().getPath(); // /client/mods/oasisauth.jar
+            String path = exchange.getRequestURI().getPath(); // /client/mods/eclipseclient.jar
             // Safe substring to extract the relative path
             String relPath = path.startsWith("/client") ? path.substring("/client".length()) : path;
             

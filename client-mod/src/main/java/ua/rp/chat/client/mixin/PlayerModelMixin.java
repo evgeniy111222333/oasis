@@ -23,43 +23,49 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.camera.SmartCameraManager;
-import ua.rp.chat.client.debug.OasisPoseDebugExporter;
+import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
-    private static void oasis$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
+    private static void eclipse$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
         MeshDefinition mesh = cir.getReturnValue();
         if (mesh == null) {
             return;
         }
         PartDefinition root = mesh.getRoot();
-        oasis$replaceArm(root, "right_arm", "right_sleeve", -5.0f, true, slim, 40, 16, 40, 32, deformation);
-        oasis$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
-        oasis$replaceLeg(root, "right_leg", "right_pants", -1.9f, 0, 16, 0, 32, deformation);
-        oasis$replaceLeg(root, "left_leg", "left_pants", 1.9f, 16, 48, 0, 48, deformation);
+        eclipse$replaceArm(root, "right_arm", "right_sleeve", -5.0f, true, slim, 40, 16, 40, 32, deformation);
+        eclipse$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
+        eclipse$replaceLeg(root, "right_leg", "right_pants", -1.9f, 0, 16, 0, 32, deformation);
+        eclipse$replaceLeg(root, "left_leg", "left_pants", 1.9f, 16, 48, 0, 48, deformation);
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
-    private void oasis$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
+    private void eclipse$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
-        oasis$applyStableRoleplayPose(model, state);
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
+        eclipse$applyStableRoleplayPose(model, state);
+        boolean localFirstPerson = eclipse$isLocalFirstPersonState(state)
+                && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose();
+        if (localFirstPerson) {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
-        Player player = oasis$getRenderedPlayer(state);
-        oasis$applyPhysicalInteractionPose(model, state, player);
-        OasisPoseDebugExporter.capture(model, state, player, oasis$isLocalFirstPersonState(state));
+        Player player = eclipse$getRenderedPlayer(state);
+        eclipse$applyPhysicalInteractionPose(model, state, player);
+        if (localFirstPerson) {
+            eclipse$anchorUpperBodyAtHips(model);
+            eclipse$syncWearableLayers(model);
+        }
+        EclipsePoseDebugExporter.capture(model, state, player, eclipse$isLocalFirstPersonState(state));
     }
 
     @Unique
-    private void oasis$applyStableRoleplayPose(PlayerModel model, AvatarRenderState state) {
+    private void eclipse$applyStableRoleplayPose(PlayerModel model, AvatarRenderState state) {
         if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
             return;
         }
 
-        float moving = oasis$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
+        float moving = eclipse$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
         ItemStack main = state.getMainHandItemStack();
         String heldItem = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
         boolean heavyItem = heldItem.contains("axe") || heldItem.contains("mace") || heldItem.contains("hammer") || heldItem.contains("great") || heldItem.contains("halberd");
@@ -76,14 +82,14 @@ public class PlayerModelMixin {
         if (aiming) {
             motionDamp *= 0.55f;
         }
-        float calm = calmBase * oasis$clamp(motionDamp, 0.28f, 1.0f);
+        float calm = calmBase * eclipse$clamp(motionDamp, 0.28f, 1.0f);
 
         // --- ДИХАННЯ ---
         // ~13 дихань/хв при 20 TPS. Амплітуди підібрані так, щоб рух було
         // видно неозброєним оком (кути ~2-3° замість колишніх 0.3-0.5°).
         // ВАЖЛИВО: НЕ модифікуємо body.y — це рвало тулуб від голови.
-        float breathRate = 0.0114f + moving * 0.0038f + oasis$clamp(state.speedValue, 0.0f, 0.35f) * 0.0030f + fatigue * 0.017f;
-        float breath = oasis$breathCurve(state.ageInTicks * breathRate);
+        float breathRate = 0.0114f + moving * 0.0038f + eclipse$clamp(state.speedValue, 0.0f, 0.35f) * 0.0030f + fatigue * 0.017f;
+        float breath = eclipse$breathCurve(state.ageInTicks * breathRate);
         float inhale = breath * calm;
         float exhale = (1.0f - breath) * calm;
         float micro = ((float) Math.sin(state.ageInTicks * 0.173f + 0.7f) * 0.10f
@@ -115,7 +121,7 @@ public class PlayerModelMixin {
         // ВАЖЛИВО: НЕ зсуваємо body.y/body.z — це рвало модель.
         // Тільки оберт body.xRot (плечі й шия залишаються нерухомими
         // при оберті навколо X — точка кріплення голови (0,0,0) не змінюється).
-        float lookDown = oasis$smoothStep(25.0f, 65.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
+        float lookDown = eclipse$smoothStep(25.0f, 65.0f, eclipse$clamp(state.xRot, 0.0f, 90.0f));
         float lean = lookDown * (state.isCrouching ? 0.5f : 1.0f);
         float torsoLeanDelta = lean * 0.060f;
         model.body.xRot += torsoLeanDelta;
@@ -131,18 +137,18 @@ public class PlayerModelMixin {
         model.head.xRot += torsoLeanDelta * 0.30f;
 
         // --- ПОВОРОТ ТУЛУБА ЗА ПОГЛЯДОМ ---
-        float lookSide = oasis$clamp(oasis$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
+        float lookSide = eclipse$clamp(eclipse$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
         float upperTurn = lookSide * (0.025f + calm * 0.025f);
         model.body.yRot += upperTurn;
         model.leftArm.yRot += upperTurn * 0.45f;
         model.rightArm.yRot += upperTurn * 0.45f;
 
-        oasis$applyStableArmStance(model, state, moving, calm);
-        oasis$syncWearableLayers(model);
+        eclipse$applyStableArmStance(model, state, moving, calm);
+        eclipse$applyArticulatedLimbs(model, state, moving, calm, lean);
     }
 
     @Unique
-    private void oasis$applyStableArmStance(PlayerModel model, AvatarRenderState state, float moving, float calm) {
+    private void eclipse$applyStableArmStance(PlayerModel model, AvatarRenderState state, float moving, float calm) {
         model.leftArm.xRot -= calm * 0.025f;
         model.rightArm.xRot -= calm * 0.025f;
         model.leftArm.zRot += calm * 0.018f;
@@ -178,7 +184,7 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyPhysicalInteractionPose(PlayerModel model, AvatarRenderState state, Player player) {
+    private void eclipse$applyPhysicalInteractionPose(PlayerModel model, AvatarRenderState state, Player player) {
         if (player == null || model == null || state == null || state.isFallFlying || state.isVisuallySwimming) {
             return;
         }
@@ -187,35 +193,46 @@ public class PlayerModelMixin {
             return;
         }
 
-        float progress = oasis$clamp(pose.progress(), 0.0f, 1.0f);
+        float progress = eclipse$clamp(pose.progress(), 0.0f, 1.0f);
         float ease = progress * progress * (3.0f - 2.0f * progress);
         float pulse = (float) Math.sin(state.ageInTicks * 0.38f) * 0.035f;
 
         if (pose.active()) {
             if (pose.actor()) {
-                oasis$applyActorInteractionPose(model, pose.action(), ease, pulse);
+                eclipse$applyActorInteractionPose(model, pose.action(), ease, pulse);
             } else {
-                oasis$applyTargetInteractionPose(model, pose.action(), ease, pulse);
+                eclipse$applyTargetInteractionPose(model, pose.action(), ease, pulse);
             }
         }
 
         if (pose.carried()) {
-            oasis$applyEscortedPose(model, 1.0f, pulse);
+            eclipse$applyEscortedPose(model, 1.0f, pulse);
         }
         if (pose.escorting()) {
-            oasis$applyEscortingPose(model, 1.0f, pulse);
+            eclipse$applyEscortingPose(model, 1.0f, pulse);
         }
         if (pose.kneeling()) {
-            oasis$applyKneelingPose(model, 1.0f, pulse);
+            eclipse$applyKneelingPose(model, 1.0f, pulse);
         }
         if (pose.bound()) {
-            oasis$applyBoundHandsPose(model, 1.0f, pulse);
+            eclipse$applyBoundHandsPose(model, 1.0f, pulse);
         }
-        oasis$syncWearableLayers(model);
+        eclipse$syncWearableLayers(model);
     }
 
     @Unique
-    private void oasis$applyActorInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+    private void eclipse$applyActorInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+        if (action.equals("ESCAPE_HELP_ACTOR")) {
+            model.body.xRot += 0.38f * ease;
+            model.head.xRot += 0.24f * ease;
+            model.leftArm.xRot = eclipse$lerp(model.leftArm.xRot, -0.92f, ease);
+            model.rightArm.xRot = eclipse$lerp(model.rightArm.xRot, -0.86f, ease);
+            model.leftArm.yRot -= 0.32f * ease;
+            model.rightArm.yRot += 0.32f * ease;
+            eclipse$setLowerArm(model.leftArm, model.leftSleeve, 0.52f + pulse);
+            eclipse$setLowerArm(model.rightArm, model.rightSleeve, 0.48f - pulse);
+            return;
+        }
         boolean search = action.startsWith("SEARCH") || action.equals("INSPECT");
         boolean bind = action.equals("BIND");
         boolean disarm = action.equals("DISARM");
@@ -223,7 +240,7 @@ public class PlayerModelMixin {
         boolean kneel = action.equals("KNEEL");
 
         float lean = (search ? 0.22f : bind ? 0.18f : disarm ? 0.14f : carry ? 0.16f : kneel ? 0.16f : 0.10f) * ease;
-        oasis$applyCoherentUpperLean(model, lean);
+        eclipse$applyCoherentUpperLean(model, lean);
         model.leftLeg.zRot += 0.05f * ease;
         model.rightLeg.zRot -= 0.05f * ease;
 
@@ -240,7 +257,7 @@ public class PlayerModelMixin {
             model.rightArm.yRot -= 0.34f * ease;
             model.leftArm.xRot -= 0.34f * ease;
         } else if (carry) {
-            oasis$applyEscortingPose(model, ease, pulse);
+            eclipse$applyEscortingPose(model, ease, pulse);
         } else if (kneel) {
             model.rightArm.xRot -= 0.82f * ease;
             model.rightArm.yRot -= 0.25f * ease;
@@ -249,21 +266,58 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyTargetInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+    private void eclipse$applyTargetInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+        if (action.startsWith("ESCAPE_")) {
+            eclipse$applyBoundHandsPose(model, ease, pulse);
+            switch (action) {
+                case "ESCAPE_STRUGGLE" -> {
+                    model.body.xRot += (0.11f + Math.abs(pulse) * 0.7f) * ease;
+                    model.body.zRot += pulse * 0.42f;
+                    model.leftArm.yRot -= (0.16f + pulse) * ease;
+                    model.rightArm.yRot += (0.16f - pulse) * ease;
+                    model.leftLeg.zRot += 0.045f * ease;
+                    model.rightLeg.zRot -= 0.045f * ease;
+                }
+                case "ESCAPE_BLADE" -> {
+                    model.body.yRot += 0.10f * ease;
+                    model.leftArm.xRot += (0.13f + pulse) * ease;
+                    model.rightArm.xRot += (0.09f - pulse) * ease;
+                    eclipse$setLowerArm(model.leftArm, model.leftSleeve, 0.56f + pulse);
+                    eclipse$setLowerArm(model.rightArm, model.rightSleeve, 0.46f - pulse);
+                }
+                case "ESCAPE_STONE" -> {
+                    model.body.xRot += 0.20f * ease;
+                    model.body.yRot += (0.18f + pulse * 1.4f) * ease;
+                    model.leftLeg.xRot -= 0.08f * ease;
+                    model.rightLeg.xRot += 0.05f * ease;
+                }
+                case "ESCAPE_FIRE" -> {
+                    model.body.xRot -= 0.08f * ease;
+                    model.leftArm.xRot = eclipse$lerp(model.leftArm.xRot, -0.72f + pulse, ease);
+                    model.rightArm.xRot = eclipse$lerp(model.rightArm.xRot, -0.72f - pulse, ease);
+                    model.leftArm.yRot = eclipse$lerp(model.leftArm.yRot, -0.22f, ease);
+                    model.rightArm.yRot = eclipse$lerp(model.rightArm.yRot, 0.22f, ease);
+                }
+                case "ESCAPE_HELP_TARGET" -> model.body.xRot += 0.08f * ease;
+                default -> {
+                }
+            }
+            return;
+        }
         if (action.equals("BIND") || action.startsWith("SEARCH") || action.equals("DISARM")) {
-            oasis$applyBoundHandsPose(model, Math.min(1.0f, 0.35f + ease * 0.65f), pulse);
+            eclipse$applyBoundHandsPose(model, Math.min(1.0f, 0.35f + ease * 0.65f), pulse);
             model.body.xRot += 0.08f * ease;
         }
         if (action.equals("KNEEL")) {
-            oasis$applyKneelingPose(model, ease, pulse);
+            eclipse$applyKneelingPose(model, ease, pulse);
         }
         if (action.equals("CARRY")) {
-            oasis$applyEscortedPose(model, ease, pulse);
+            eclipse$applyEscortedPose(model, ease, pulse);
         }
     }
 
     @Unique
-    private void oasis$applyCoherentUpperLean(PlayerModel model, float lean) {
+    private void eclipse$applyCoherentUpperLean(PlayerModel model, float lean) {
         model.body.xRot += lean;
         model.head.xRot -= lean * 0.35f;
         model.leftArm.xRot += lean * 0.35f;
@@ -271,7 +325,7 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyEscortingPose(PlayerModel model, float amount, float pulse) {
+    private void eclipse$applyEscortingPose(PlayerModel model, float amount, float pulse) {
         model.body.yRot += 0.08f * amount;
         model.body.xRot += 0.06f * amount;
         model.rightArm.xRot -= (0.38f + pulse) * amount;
@@ -283,8 +337,8 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyEscortedPose(PlayerModel model, float amount, float pulse) {
-        oasis$applyBoundHandsPose(model, amount, pulse);
+    private void eclipse$applyEscortedPose(PlayerModel model, float amount, float pulse) {
+        eclipse$applyBoundHandsPose(model, amount, pulse);
         model.body.xRot += 0.05f * amount;
         model.body.yRot -= 0.04f * amount;
         model.leftLeg.xRot += 0.04f * amount;
@@ -292,19 +346,19 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyBoundHandsPose(PlayerModel model, float amount, float pulse) {
+    private void eclipse$applyBoundHandsPose(PlayerModel model, float amount, float pulse) {
         model.leftArm.xRot = model.leftArm.xRot * (1.0f - amount) + (0.70f + pulse) * amount;
         model.rightArm.xRot = model.rightArm.xRot * (1.0f - amount) + (0.70f - pulse) * amount;
         model.leftArm.yRot = model.leftArm.yRot * (1.0f - amount) + (-0.72f) * amount;
         model.rightArm.yRot = model.rightArm.yRot * (1.0f - amount) + (0.72f) * amount;
         model.leftArm.zRot = model.leftArm.zRot * (1.0f - amount) + (0.18f) * amount;
         model.rightArm.zRot = model.rightArm.zRot * (1.0f - amount) + (-0.18f) * amount;
-        oasis$setLowerArm(model.leftArm, model.leftSleeve, 0.34f * amount);
-        oasis$setLowerArm(model.rightArm, model.rightSleeve, 0.34f * amount);
+        eclipse$setLowerArm(model.leftArm, model.leftSleeve, 0.34f * amount);
+        eclipse$setLowerArm(model.rightArm, model.rightSleeve, 0.34f * amount);
     }
 
     @Unique
-    private void oasis$applyKneelingPose(PlayerModel model, float amount, float pulse) {
+    private void eclipse$applyKneelingPose(PlayerModel model, float amount, float pulse) {
         float upperDrop = 5.5f * amount;
         float hipDrop = 3.0f * amount;
 
@@ -317,16 +371,14 @@ public class PlayerModelMixin {
 
         model.body.xRot += 0.17f * amount;
         model.head.xRot -= 0.13f * amount;
-        model.leftLeg.xRot = oasis$lerp(model.leftLeg.xRot, -1.27f, amount);
-        model.rightLeg.xRot = oasis$lerp(model.rightLeg.xRot, -1.19f, amount);
-        model.leftLeg.yRot = oasis$lerp(model.leftLeg.yRot, 0.10f, amount);
-        model.rightLeg.yRot = oasis$lerp(model.rightLeg.yRot, -0.10f, amount);
-        model.leftLeg.zRot = oasis$lerp(model.leftLeg.zRot, 0.055f, amount);
-        model.rightLeg.zRot = oasis$lerp(model.rightLeg.zRot, -0.055f, amount);
-        oasis$setLowerLeg(model.leftLeg, model.leftPants, -1.30f * amount);
-        oasis$setLowerLeg(model.rightLeg, model.rightPants, -1.23f * amount);
-        oasis$setFootPose(model.leftLeg, model.leftPants, -0.03f * amount);
-        oasis$setFootPose(model.rightLeg, model.rightPants, -0.04f * amount);
+        model.leftLeg.xRot = eclipse$lerp(model.leftLeg.xRot, -1.27f, amount);
+        model.rightLeg.xRot = eclipse$lerp(model.rightLeg.xRot, -1.19f, amount);
+        model.leftLeg.yRot = eclipse$lerp(model.leftLeg.yRot, 0.10f, amount);
+        model.rightLeg.yRot = eclipse$lerp(model.rightLeg.yRot, -0.10f, amount);
+        model.leftLeg.zRot = eclipse$lerp(model.leftLeg.zRot, 0.055f, amount);
+        model.rightLeg.zRot = eclipse$lerp(model.rightLeg.zRot, -0.055f, amount);
+        eclipse$setLowerLeg(model.leftLeg, model.leftPants, -1.30f * amount);
+        eclipse$setLowerLeg(model.rightLeg, model.rightPants, -1.23f * amount);
 
         model.leftArm.xRot += (0.20f + pulse) * amount;
         model.rightArm.xRot += (0.20f - pulse) * amount;
@@ -337,12 +389,12 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applySharedRoleplayPose(PlayerModel model, AvatarRenderState state) {
+    private void eclipse$applySharedRoleplayPose(PlayerModel model, AvatarRenderState state) {
         if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
             return;
         }
 
-        float moving = oasis$clamp(state.walkAnimationSpeed * 3.8f, 0.0f, 1.0f);
+        float moving = eclipse$clamp(state.walkAnimationSpeed * 3.8f, 0.0f, 1.0f);
         float calm = 1.0f - moving;
         if (state.isCrouching) {
             calm *= 0.65f;
@@ -363,7 +415,7 @@ public class PlayerModelMixin {
         model.leftLeg.zRot += idleShift * 0.010f;
         model.rightLeg.zRot += idleShift * 0.010f;
 
-        float lookDown = oasis$smoothStep(65.0f, 88.0f, oasis$clamp(state.xRot, 0.0f, 90.0f));
+        float lookDown = eclipse$smoothStep(65.0f, 88.0f, eclipse$clamp(state.xRot, 0.0f, 90.0f));
         float crouchGuard = state.isCrouching ? 0.55f : 1.0f;
         float lean = lookDown * crouchGuard;
         model.body.xRot += lean * 0.26f;
@@ -382,14 +434,14 @@ public class PlayerModelMixin {
         model.leftLeg.zRot += lean * 0.025f;
         model.rightLeg.zRot -= lean * 0.025f;
 
-        float lookSide = oasis$clamp(oasis$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
+        float lookSide = eclipse$clamp(eclipse$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
         float upperTurn = lookSide * (0.035f + calm * 0.035f);
         model.body.yRot += upperTurn;
         model.leftArm.yRot += upperTurn * 0.6f;
         model.rightArm.yRot += upperTurn * 0.6f;
 
-        Player player = oasis$getRenderedPlayer(state);
-        float terrain = oasis$getTerrainBalance(player);
+        Player player = eclipse$getRenderedPlayer(state);
+        float terrain = eclipse$getTerrainBalance(player);
         if (Math.abs(terrain) > 0.01f && moving < 0.45f) {
             model.body.zRot += terrain * 0.045f;
             model.leftLeg.xRot -= Math.max(0.0f, terrain) * 0.10f;
@@ -398,47 +450,45 @@ public class PlayerModelMixin {
             model.rightLeg.zRot += terrain * 0.025f;
         }
 
-        float runLean = moving * oasis$clamp(state.speedValue * 0.45f, 0.0f, 1.0f);
+        float runLean = moving * eclipse$clamp(state.speedValue * 0.45f, 0.0f, 1.0f);
         model.body.xRot += runLean * 0.055f;
         model.leftArm.xRot -= runLean * 0.035f;
         model.rightArm.xRot -= runLean * 0.035f;
 
-        oasis$applyWeaponStance(model, state, moving);
-        oasis$applyWeatherPosture(model, player, calm);
-        oasis$applyArticulatedLimbs(model, state, moving, calm, lean);
+        eclipse$applyWeaponStance(model, state, moving);
+        eclipse$applyWeatherPosture(model, player, calm);
+        eclipse$applyArticulatedLimbs(model, state, moving, calm, lean);
     }
 
     @Unique
-    private static void oasis$replaceArm(PartDefinition root, String armName, String sleeveName, float x, boolean right, boolean slim, int texX, int texY, int sleeveTexX, int sleeveTexY, CubeDeformation deformation) {
+    private static void eclipse$replaceArm(PartDefinition root, String armName, String sleeveName, float x, boolean right, boolean slim, int texX, int texY, int sleeveTexX, int sleeveTexY, CubeDeformation deformation) {
         int width = slim ? 3 : 4;
         float minX = right ? (slim ? -2.0f : -3.0f) : -1.0f;
         PartDefinition arm = root.addOrReplaceChild(armName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
-        arm.addOrReplaceChild("oasis_upper_arm", CubeListBuilder.create().texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation), PartPose.ZERO);
-        arm.addOrReplaceChild("oasis_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
+        PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", CubeListBuilder.create().texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation), PartPose.ZERO);
+        PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
 
         CubeDeformation sleeve = deformation.extend(0.25f);
-        PartDefinition sleeveRoot = arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
-        sleeveRoot.addOrReplaceChild("oasis_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
-        sleeveRoot.addOrReplaceChild("oasis_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.offset(0.0f, 3.8f, 0.0f));
+        upperArm.addOrReplaceChild("eclipse_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
+        forearm.addOrReplaceChild("eclipse_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.ZERO);
+        arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
     }
 
     @Unique
-    private static void oasis$replaceLeg(PartDefinition root, String legName, String pantsName, float x, int texX, int texY, int pantsTexX, int pantsTexY, CubeDeformation deformation) {
+    private static void eclipse$replaceLeg(PartDefinition root, String legName, String pantsName, float x, int texX, int texY, int pantsTexX, int pantsTexY, CubeDeformation deformation) {
         PartDefinition leg = root.addOrReplaceChild(legName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
-        leg.addOrReplaceChild("oasis_thigh", CubeListBuilder.create().texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, deformation), PartPose.ZERO);
-        PartDefinition shin = leg.addOrReplaceChild("oasis_shin", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, deformation), PartPose.offset(0.0f, 5.9f, 0.0f));
-        shin.addOrReplaceChild("oasis_foot", CubeListBuilder.create().texOffs(texX, texY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, deformation), PartPose.ZERO);
+        PartDefinition thigh = leg.addOrReplaceChild("eclipse_thigh", CubeListBuilder.create().texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation), PartPose.ZERO);
+        PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation), PartPose.offset(0.0f, 6.0f, 0.0f));
 
         CubeDeformation pants = deformation.extend(0.25f);
-        PartDefinition pantsRoot = leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
-        pantsRoot.addOrReplaceChild("oasis_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, pants), PartPose.ZERO);
-        PartDefinition pantsShin = pantsRoot.addOrReplaceChild("oasis_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, pants), PartPose.offset(0.0f, 5.9f, 0.0f));
-        pantsShin.addOrReplaceChild("oasis_foot_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, pants), PartPose.ZERO);
+        thigh.addOrReplaceChild("eclipse_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants), PartPose.ZERO);
+        shin.addOrReplaceChild("eclipse_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants), PartPose.ZERO);
+        leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
     }
 
     @Unique
-    private boolean oasis$isLocalFirstPersonState(EntityRenderState state) {
-        if (state instanceof LocalPlayerRenderState lprs && lprs.oasis$isLocalPlayer()) {
+    private boolean eclipse$isLocalFirstPersonState(EntityRenderState state) {
+        if (state instanceof LocalPlayerRenderState lprs && lprs.eclipse$isLocalPlayer()) {
             return true;
         }
         Minecraft client = Minecraft.getInstance();
@@ -449,30 +499,30 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private float oasis$smoothStep(float edge0, float edge1, float value) {
-        float x = oasis$clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    private float eclipse$smoothStep(float edge0, float edge1, float value) {
+        float x = eclipse$clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
         return x * x * (3.0f - 2.0f * x);
     }
 
     @Unique
-    private float oasis$breathCurve(float cycles) {
+    private float eclipse$breathCurve(float cycles) {
         float phase = cycles - (float) Math.floor(cycles);
         if (phase < 0.34f) {
-            return oasis$smoothStep(0.0f, 0.34f, phase);
+            return eclipse$smoothStep(0.0f, 0.34f, phase);
         }
         if (phase < 0.88f) {
-            return 1.0f - oasis$smoothStep(0.34f, 0.88f, phase);
+            return 1.0f - eclipse$smoothStep(0.34f, 0.88f, phase);
         }
         return 0.0f;
     }
 
     @Unique
-    private float oasis$clamp(float value, float min, float max) {
+    private float eclipse$clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
 
     @Unique
-    private Player oasis$getRenderedPlayer(AvatarRenderState state) {
+    private Player eclipse$getRenderedPlayer(AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.level == null || state == null) {
             return null;
@@ -481,20 +531,20 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private float oasis$getTerrainBalance(Player player) {
+    private float eclipse$getTerrainBalance(Player player) {
         if (player == null || player.level() == null || !player.onGround()) {
             return 0.0f;
         }
         double yaw = Math.toRadians(player.getYRot());
         double sideX = Math.cos(yaw) * 0.24;
         double sideZ = Math.sin(yaw) * 0.24;
-        double left = oasis$getSupportHeight(player, sideX, sideZ);
-        double right = oasis$getSupportHeight(player, -sideX, -sideZ);
-        return oasis$clamp((float) (left - right), -0.55f, 0.55f);
+        double left = eclipse$getSupportHeight(player, sideX, sideZ);
+        double right = eclipse$getSupportHeight(player, -sideX, -sideZ);
+        return eclipse$clamp((float) (left - right), -0.55f, 0.55f);
     }
 
     @Unique
-    private double oasis$getSupportHeight(Player player, double offsetX, double offsetZ) {
+    private double eclipse$getSupportHeight(Player player, double offsetX, double offsetZ) {
         double x = player.getX() + offsetX;
         double z = player.getZ() + offsetZ;
         int baseY = (int) Math.floor(player.getY() - 0.08);
@@ -509,7 +559,7 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyWeaponStance(PlayerModel model, AvatarRenderState state, float moving) {
+    private void eclipse$applyWeaponStance(PlayerModel model, AvatarRenderState state, float moving) {
         ItemStack main = state.getMainHandItemStack();
         String item = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
         boolean melee = item.contains("sword") || item.contains("axe") || item.contains("mace") || item.contains("trident") || item.contains("spear");
@@ -548,7 +598,7 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyWeatherPosture(PlayerModel model, Player player, float calm) {
+    private void eclipse$applyWeatherPosture(PlayerModel model, Player player, float calm) {
         if (player == null || player.level() == null || calm <= 0.0f || !player.level().isRainingAt(player.blockPosition())) {
             return;
         }
@@ -561,16 +611,16 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void oasis$applyArticulatedLimbs(PlayerModel model, AvatarRenderState state, float moving, float calm, float lookDownLean) {
+    private void eclipse$applyArticulatedLimbs(PlayerModel model, AvatarRenderState state, float moving, float calm, float lookDownLean) {
         float step = (float) Math.sin(state.walkAnimationPos * 0.6662f);
         float oppositeStep = (float) Math.sin(state.walkAnimationPos * 0.6662f + Math.PI);
-        float walk = oasis$clamp(moving, 0.0f, 1.0f);
+        float walk = eclipse$clamp(moving, 0.0f, 1.0f);
         float idleArmBend = 0.18f * calm;
         float lookBend = 0.24f * lookDownLean;
         float runTuck = walk * (state.speedValue > 0.12f ? 0.08f : 0.0f);
 
-        oasis$setLowerArm(model.rightArm, model.rightSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -step) * 0.22f));
-        oasis$setLowerArm(model.leftArm, model.leftSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -oppositeStep) * 0.22f));
+        eclipse$setLowerArm(model.rightArm, model.rightSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -step) * 0.22f));
+        eclipse$setLowerArm(model.leftArm, model.leftSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -oppositeStep) * 0.22f));
 
         float rightKnee = 0.06f * calm + walk * (0.10f + Math.max(0.0f, step) * 0.38f);
         float leftKnee = 0.06f * calm + walk * (0.10f + Math.max(0.0f, oppositeStep) * 0.38f);
@@ -579,105 +629,86 @@ public class PlayerModelMixin {
             leftKnee += 0.22f;
         }
 
-        oasis$setLowerLeg(model.rightLeg, model.rightPants, rightKnee);
-        oasis$setLowerLeg(model.leftLeg, model.leftPants, leftKnee);
+        eclipse$setLowerLeg(model.rightLeg, model.rightPants, rightKnee);
+        eclipse$setLowerLeg(model.leftLeg, model.leftPants, leftKnee);
 
-        float stance = 0.16f + calm * 0.07f + walk * 0.04f;
-        model.rightLeg.x -= stance;
-        model.leftLeg.x += stance;
-        model.rightLeg.zRot -= 0.018f * calm;
-        model.leftLeg.zRot += 0.018f * calm;
-
-        oasis$syncWearableLayers(model);
+        eclipse$syncWearableLayers(model);
     }
 
     @Unique
-    private void oasis$syncWearableLayers(PlayerModel model) {
-        oasis$resetWearableLocalPose(model.hat);
-        oasis$resetWearableLocalPose(model.jacket);
-        oasis$resetWearableLocalPose(model.rightSleeve);
-        oasis$resetWearableLocalPose(model.leftSleeve);
-        oasis$resetWearableLocalPose(model.rightPants);
-        oasis$resetWearableLocalPose(model.leftPants);
-        oasis$copyChildPose(model.rightSleeve, model.rightArm, "oasis_forearm", "oasis_forearm_sleeve");
-        oasis$copyChildPose(model.leftSleeve, model.leftArm, "oasis_forearm", "oasis_forearm_sleeve");
-        oasis$copyChildPose(model.rightPants, model.rightLeg, "oasis_shin", "oasis_shin_pants");
-        oasis$copyChildPose(model.leftPants, model.leftLeg, "oasis_shin", "oasis_shin_pants");
+    private void eclipse$syncWearableLayers(PlayerModel model) {
+        eclipse$resetWearableLocalPose(model.hat);
+        eclipse$resetWearableLocalPose(model.jacket);
+        eclipse$resetWearableLocalPose(model.rightSleeve);
+        eclipse$resetWearableLocalPose(model.leftSleeve);
+        eclipse$resetWearableLocalPose(model.rightPants);
+        eclipse$resetWearableLocalPose(model.leftPants);
+        eclipse$setNestedVisible(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.rightSleeve.visible);
+        eclipse$setNestedVisible(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.rightSleeve.visible);
+        eclipse$setNestedVisible(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.leftSleeve.visible);
+        eclipse$setNestedVisible(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.leftSleeve.visible);
+        eclipse$setNestedVisible(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", model.rightPants.visible);
+        eclipse$setNestedVisible(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", model.rightPants.visible);
+        eclipse$setNestedVisible(model.leftLeg, "eclipse_thigh", "eclipse_thigh_pants", model.leftPants.visible);
+        eclipse$setNestedVisible(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", model.leftPants.visible);
     }
 
     @Unique
-    private void oasis$resetWearableLocalPose(ModelPart part) {
+    private void eclipse$anchorUpperBodyAtHips(PlayerModel model) {
+        float pitch = eclipse$clamp(model.body.xRot, -0.78f, 0.78f);
+        float hipDistance = 12.0f;
+        float yCompensation = hipDistance * (1.0f - (float) Math.cos(pitch));
+        float zCompensation = -hipDistance * (float) Math.sin(pitch);
+
+        model.body.y += yCompensation;
+        model.body.z += zCompensation;
+        model.head.y += yCompensation;
+        model.head.z += zCompensation;
+        model.leftArm.y += yCompensation;
+        model.leftArm.z += zCompensation;
+        model.rightArm.y += yCompensation;
+        model.rightArm.z += zCompensation;
+    }
+
+    @Unique
+    private void eclipse$resetWearableLocalPose(ModelPart part) {
         if (part != null) {
             part.loadPose(part.getInitialPose());
         }
     }
 
     @Unique
-    private void oasis$copyPartPose(ModelPart target, ModelPart source) {
-        if (target == null || source == null) {
-            return;
+    private void eclipse$setNestedVisible(ModelPart root, String boneName, String layerName, boolean visible) {
+        ModelPart bone = eclipse$getChildOrNull(root, boneName);
+        ModelPart layer = eclipse$getChildOrNull(bone, layerName);
+        if (layer != null) {
+            layer.visible = visible;
         }
-        target.x = source.x;
-        target.y = source.y;
-        target.z = source.z;
-        target.xRot = source.xRot;
-        target.yRot = source.yRot;
-        target.zRot = source.zRot;
-        target.visible = source.visible;
     }
 
     @Unique
-    private void oasis$copyChildPose(ModelPart targetParent, ModelPart sourceParent, String sourceChild, String targetChild) {
-        ModelPart source = oasis$getChildOrNull(sourceParent, sourceChild);
-        ModelPart target = oasis$getChildOrNull(targetParent, targetChild);
-        oasis$copyPartPose(target, source);
-    }
-
-    @Unique
-    private void oasis$setLowerArm(ModelPart arm, ModelPart sleeve, float bend) {
-        ModelPart forearm = oasis$getChildOrNull(arm, "oasis_forearm");
+    private void eclipse$setLowerArm(ModelPart arm, ModelPart sleeve, float bend) {
+        ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
         if (forearm != null) {
             forearm.xRot = bend;
         }
-        ModelPart sleeveForearm = oasis$getChildOrNull(sleeve, "oasis_forearm_sleeve");
-        if (sleeveForearm != null) {
-            sleeveForearm.xRot = bend;
-        }
     }
 
     @Unique
-    private void oasis$setLowerLeg(ModelPart leg, ModelPart pants, float bend) {
-        ModelPart shin = oasis$getChildOrNull(leg, "oasis_shin");
+    private void eclipse$setLowerLeg(ModelPart leg, ModelPart pants, float bend) {
+        ModelPart shin = eclipse$getChildOrNull(leg, "eclipse_shin");
         if (shin != null) {
             shin.xRot = -bend;
         }
-        ModelPart pantsShin = oasis$getChildOrNull(pants, "oasis_shin_pants");
-        if (pantsShin != null) {
-            pantsShin.xRot = -bend;
-        }
     }
 
     @Unique
-    private void oasis$setFootPose(ModelPart leg, ModelPart pants, float pitch) {
-        ModelPart shin = oasis$getChildOrNull(leg, "oasis_shin");
-        ModelPart foot = oasis$getChildOrNull(shin, "oasis_foot");
-        if (foot != null) {
-            foot.xRot = pitch;
-        }
-        ModelPart pantsShin = oasis$getChildOrNull(pants, "oasis_shin_pants");
-        ModelPart pantsFoot = oasis$getChildOrNull(pantsShin, "oasis_foot_pants");
-        if (pantsFoot != null) {
-            pantsFoot.xRot = pitch;
-        }
+    private float eclipse$lerp(float from, float to, float amount) {
+        return from + (to - from) * eclipse$clamp(amount, 0.0f, 1.0f);
     }
 
     @Unique
-    private float oasis$lerp(float from, float to, float amount) {
-        return from + (to - from) * oasis$clamp(amount, 0.0f, 1.0f);
-    }
-
-    @Unique
-    private ModelPart oasis$getChildOrNull(ModelPart parent, String child) {
+    private ModelPart eclipse$getChildOrNull(ModelPart parent, String child) {
         try {
             return parent == null ? null : parent.getChild(child);
         } catch (RuntimeException ignored) {
@@ -686,7 +717,7 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private float oasis$wrapDegrees(float value) {
+    private float eclipse$wrapDegrees(float value) {
         value %= 360.0f;
         if (value >= 180.0f) {
             value -= 360.0f;
