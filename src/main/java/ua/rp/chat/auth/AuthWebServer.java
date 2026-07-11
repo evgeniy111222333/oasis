@@ -185,13 +185,13 @@ public class AuthWebServer {
             String token = queryParams.get("token");
 
             if (token == null || token.isEmpty()) {
-                sendJsonResponse(exchange, 400, createErrorJson("РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ С‚РѕРєРµРЅ Р°РІС‚РѕСЂРёР·Р°С†РёРё."));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0442\u043e\u043a\u0435\u043d \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438."));
                 return;
             }
 
             UUID uuid = authManager.getTokenToUuid().get(token);
             if (uuid == null) {
-                sendJsonResponse(exchange, 400, createErrorJson("РќРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅС‹Р№ РёР»Рё РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Р№ С‚РѕРєРµРЅ."));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u0438\u043b\u0438 \u043f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043d\u044b\u0439 \u0442\u043e\u043a\u0435\u043d."));
                 return;
             }
 
@@ -284,7 +284,7 @@ public class AuthWebServer {
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Р’СЂРµРјСЏ СЃРµСЃСЃРёРё РёСЃС‚РµРєР»Рѕ. РџРµСЂРµР·Р°Р№РґРёС‚Рµ РІ РёРіСЂСѓ."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u0412\u0440\u0435\u043c\u044f \u0441\u0435\u0441\u0441\u0438\u0438 \u0438\u0441\u0442\u0435\u043a\u043b\u043e. \u041f\u0435\u0440\u0435\u0437\u0430\u0439\u0434\u0438\u0442\u0435 \u0432 \u0438\u0433\u0440\u0443."));
                     return;
                 }
 
@@ -295,10 +295,10 @@ public class AuthWebServer {
                     responseJson.addProperty("rpName", rpName);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("РќРµРІРµСЂРЅС‹Р№ Р»РѕРіРёРЅ РёР»Рё РїР°СЂРѕР»СЊ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043b\u043e\u0433\u0438\u043d \u0438\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0435 \u0440\u0430\u0437."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё Р·Р°РїСЂРѕСЃР°: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438 \u0437\u0430\u043f\u0440\u043e\u0441\u0430: " + e.getMessage()));
             }
         }
     }
@@ -369,10 +369,10 @@ public class AuthWebServer {
                     responseJson.addProperty("success", true);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
-                    sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° СЂРµРіРёСЃС‚СЂР°С†РёРё. РџСЂРѕРІРµСЂСЊС‚Рµ РІРІРµРґРµРЅРЅС‹Рµ РґР°РЅРЅС‹Рµ."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0432\u0432\u0435\u0434\u0435\u043d\u043d\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438: " + e.getMessage()));
             }
         }
     }
@@ -397,10 +397,10 @@ public class AuthWebServer {
                 // Mock recovery logic
                 JsonObject responseJson = new JsonObject();
                 responseJson.addProperty("success", true);
-                responseJson.addProperty("message", "РљРѕРґ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РѕС‚РїСЂР°РІР»РµРЅ РЅР° РїРѕС‡С‚Сѓ " + email + "!");
+                responseJson.addProperty("message", "\u041a\u043e\u0434 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043d\u0430 \u043f\u043e\u0447\u0442\u0443 " + email + "!");
                 sendJsonResponse(exchange, 200, responseJson);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("РћС€РёР±РєР°: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430: " + e.getMessage()));
             }
         }
     }
