@@ -738,7 +738,7 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
         escapeSessions.put(player.getUniqueId(), session);
         state.escapeMode = "STRUGGLE";
         captivityDirty = true;
-        sendEscapeState(player, session, "Найдите ритм узла и нажимайте пробел в отмеченной зоне.");
+        sendEscapeState(player, session, "Быстро нажимайте A и D поочередно.");
         plugin.getRpChatService().sendAction(player, "напрягает связанные запястья, осторожно проверяя узел на прочность.");
     }
 
@@ -748,27 +748,28 @@ public class AcquaintanceManager implements PluginMessageListener, Listener {
             return;
         }
         long now = System.currentTimeMillis();
-        double phase = Math.min(1.0, Math.max(0.0, (now - session.cycleStartedAt) / (double) session.cycleDurationMs));
-        boolean success = !session.hitConsumed && Math.abs(phase - session.windowCenter) <= session.windowWidth * 0.5;
-        session.hitConsumed = true;
-        if (success && plugin.getStaminaManager().consumeEscapeEffort(player, 7.0, 2.8)) {
-            double precision = 1.0 - Math.min(1.0, Math.abs(phase - session.windowCenter) / Math.max(0.01, session.windowWidth * 0.5));
-            state.restraintHealth = Math.max(0.0, state.restraintHealth - state.restraintMax * (0.075 + precision * 0.055));
+        
+        // A/D mashing successful pull verification:
+        // Consume stamina for the pull
+        if (plugin.getStaminaManager().consumeEscapeEffort(player, 12.0, 3.5)) {
+            // Deduct rope health by a fixed amount per pull (e.g., 12.5% of max durability, so 8 pulls are needed)
+            double damage = state.restraintMax * 0.125;
+            state.restraintHealth = Math.max(0.0, state.restraintHealth - damage);
             captivityDirty = true;
-            player.playSound(player.getLocation(), Sound.BLOCK_WOOL_BREAK, 0.45f, 0.72f);
+            player.getWorld().playSound(player.getLocation(), Sound.BLOCK_WOOL_BREAK, 0.55f, 0.72f);
+            
             if (state.restraintHealth <= 0.01) {
                 completeEscape(player, player, EscapeMode.STRUGGLE);
                 return;
             }
-            session.nextCycle(now + 420L);
-            sendEscapeState(player, session, precision > 0.72 ? "Точный рывок — волокна заметно поддались." : "Узел понемногу ослабевает.");
-            return;
+            
+            // Send back success state to update overall progress
+            sendEscapeState(player, session, "Один узел поддался! Продолжайте расшатывать.");
+        } else {
+            sendToast(player, "Вы слишком истощены, чтобы продолжать бороться.", "muted");
+            // Stop escape session if completely out of stamina
+            completeEscape(player, player, EscapeMode.STRUGGLE);
         }
-        plugin.getStaminaManager().consumeEscapeEffort(player, 4.5, 3.5);
-        emitEscapeNoise(player, true);
-        escapeCooldowns.put(player.getUniqueId(), now + 2_800L);
-        session.nextCycle(now + 1_050L);
-        sendEscapeState(player, session, "Рывок сорвался. Боль в запястьях сбила дыхание.");
     }
 
     private void startBladeEscape(Player player, CaptiveState state) {
