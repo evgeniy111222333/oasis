@@ -321,7 +321,7 @@ public class AuthWebServer {
 
                 String token = json.get("token").getAsString();
                 String loginName = json.get("loginName").getAsString().trim();
-                String rpName = json.get("rpName").getAsString().trim();
+                String rpName = json.get("rpName").getAsString().trim().replaceAll("\\s+", " ");
                 String email = json.get("email").getAsString().trim();
                 String password = json.get("password").getAsString();
                 String appearanceData = json.has("appearanceData") && !json.get("appearanceData").isJsonNull()
@@ -349,7 +349,7 @@ public class AuthWebServer {
                 }
 
                 // Cyrillic Firstname Lastname validation
-                if (!rpName.matches("^[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+\\s+[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+$")) {
+                if (!rpName.matches("^([A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+(-[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+)*)(\\s+([A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+(-[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+)*))+$")) {
                     sendJsonResponse(exchange, 400, createErrorJson("\u0418\u043c\u044f \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436\u0430 \u0434\u043e\u043b\u0436\u043d\u043e \u0431\u044b\u0442\u044c \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435: \u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432."));
                     return;
                 }

@@ -306,12 +306,13 @@ public class AuthGuiManager implements Listener {
                 break;
 
             case REG_RPNAME:
-                if (!input.matches("^[A-ZА-ЯІЄЇ][a-zа-яієї']+\\s+[A-ZА-ЯІЄЇ][a-zа-яієї']+$")) {
+                String cleanedInput = input.trim().replaceAll("\\s+", " ");
+                if (!cleanedInput.matches("^([A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+(-[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+)*)(\\s+([A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+(-[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+)*))+$")) {
                     player.sendMessage("§cФормат має бути: Іван Петренко або Иван Петренко.");
                     reopenStage(player, stage);
                     return;
                 }
-                rpNameCache.put(uuid, input);
+                rpNameCache.put(uuid, cleanedInput);
                 playerStages.put(uuid, AuthStage.REG_EMAIL);
                 openSignInput(player, "§7Введіть ваш Email:", "§8↓↓↓");
                 break;
