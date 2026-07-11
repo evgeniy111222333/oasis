@@ -629,6 +629,11 @@ public class PlayerModelMixin {
 
         float rightKnee = 0.18f * calm + walk * (0.10f + Math.max(0.0f, step) * 0.38f);
         float leftKnee = 0.18f * calm + walk * (0.10f + Math.max(0.0f, oppositeStep) * 0.38f);
+
+        // Apply thigh compensation for standing/walking knee bend
+        model.rightLeg.xRot -= rightKnee * 0.5f;
+        model.leftLeg.xRot -= leftKnee * 0.5f;
+
         if (state.isCrouching) {
             rightKnee += 0.22f;
             leftKnee += 0.22f;

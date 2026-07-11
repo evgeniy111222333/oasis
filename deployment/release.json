@@ -1,9 +1,9 @@
 {
-  "id": "20260711-204511",
+  "id": "20260711-210402",
   "published": true,
-  "publishedAt": "2026-07-11T20:45:11.927994Z",
-  "title": "Fix Visuals, Radial Menu, and State Leaks",
-  "summary": "Add nameplate HUD offsets, increase radial menu spacing, and fix player head state leak.",
+  "publishedAt": "2026-07-11T21:04:02.768338Z",
+  "title": "Fix Knee Bend Thigh Compensation",
+  "summary": "Adjusted thigh rotation to compensate for knee bending, keeping the posture natural.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
