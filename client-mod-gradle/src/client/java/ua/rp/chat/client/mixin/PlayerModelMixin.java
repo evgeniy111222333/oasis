@@ -377,8 +377,8 @@ public class PlayerModelMixin {
         model.rightLeg.yRot = eclipse$lerp(model.rightLeg.yRot, -0.10f, amount);
         model.leftLeg.zRot = eclipse$lerp(model.leftLeg.zRot, 0.055f, amount);
         model.rightLeg.zRot = eclipse$lerp(model.rightLeg.zRot, -0.055f, amount);
-        eclipse$setLowerLeg(model.leftLeg, model.leftPants, -1.30f * amount);
-        eclipse$setLowerLeg(model.rightLeg, model.rightPants, -1.23f * amount);
+        eclipse$setLowerLeg(model.leftLeg, model.leftPants, 1.30f * amount);
+        eclipse$setLowerLeg(model.rightLeg, model.rightPants, 1.23f * amount);
 
         model.leftArm.xRot += (0.20f + pulse) * amount;
         model.rightArm.xRot += (0.20f - pulse) * amount;
@@ -698,7 +698,7 @@ public class PlayerModelMixin {
     private void eclipse$setLowerLeg(ModelPart leg, ModelPart pants, float bend) {
         ModelPart shin = eclipse$getChildOrNull(leg, "eclipse_shin");
         if (shin != null) {
-            shin.xRot = -bend;
+            shin.xRot = bend;
         }
     }
 

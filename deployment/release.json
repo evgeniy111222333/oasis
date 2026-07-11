@@ -1,9 +1,9 @@
 {
-  "id": "20260711-200510",
+  "id": "20260711-201606",
   "published": true,
-  "publishedAt": "2026-07-11T20:05:10.619635Z",
-  "title": "Fix First Person Head Rendering",
-  "summary": "Ensure head is invisible in all first-person body render passes",
+  "publishedAt": "2026-07-11T20:16:06.461307Z",
+  "title": "Fix Knee Joint Bend Direction",
+  "summary": "Corrected the knee rotation sign so legs bend backward naturally in all states.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
