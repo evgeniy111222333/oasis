@@ -14,13 +14,13 @@ public class LevelRendererMixin {
     @Inject(method = "extractLevel", at = @At("HEAD"))
     private void oasis$beforeExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
         SmartCameraManager cameraManager = SmartCameraManager.getInstance();
-        cameraManager.setRenderingFirstPersonPlayer(cameraManager.isFirstPersonBodyEnabled());
+        cameraManager.setRenderingFirstPersonPlayer(cameraManager.isFullBodyFirstPersonEnabled());
     }
 
     @Inject(method = "extractLevel", at = @At("RETURN"))
     private void oasis$afterExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
         SmartCameraManager cameraManager = SmartCameraManager.getInstance();
-        if (!cameraManager.isFirstPersonBodyEnabled()) {
+        if (!cameraManager.isFullBodyFirstPersonEnabled()) {
             cameraManager.setRenderingFirstPersonPlayer(false);
         }
     }

@@ -10,6 +10,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import ua.rp.chat.client.AcquaintanceClientState;
 
 public class SmartCameraManager {
     private static final SmartCameraManager INSTANCE = new SmartCameraManager();
@@ -71,7 +72,11 @@ public class SmartCameraManager {
     }
 
     public boolean isWorldFirstPersonBodyRender() {
-        return isFirstPersonBodyEnabled() && renderingFirstPersonPlayer;
+        return isFullBodyFirstPersonEnabled() && renderingFirstPersonPlayer;
+    }
+
+    public boolean isFullBodyFirstPersonEnabled() {
+        return isFirstPersonBodyEnabled();
     }
 
     public void setSubmittingFirstPersonPlayer(boolean state) {
@@ -107,7 +112,7 @@ public class SmartCameraManager {
     }
 
     public boolean shouldApplyFirstPersonBodyPose() {
-        return isFirstPersonBodyEnabled() && (renderingFirstPersonPlayer || submittingFirstPersonPlayer);
+        return isFullBodyFirstPersonEnabled() && (renderingFirstPersonPlayer || submittingFirstPersonPlayer);
     }
 
     public void clientTick(Minecraft client) {
@@ -205,6 +210,13 @@ public class SmartCameraManager {
         double x = -Math.sin(yawRad) * forwardAmount;
         double y = -downAmount;
         double z = Math.cos(yawRad) * forwardAmount;
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.player != null) {
+            AcquaintanceClientState.RoleplayPose pose = AcquaintanceClientState.poseFor(client.player);
+            double kneel = pose.kneeling() ? 1.0
+                    : pose.active() && !pose.actor() && "KNEEL".equals(pose.action()) ? smoothStep(0.0, 1.0, pose.progress()) : 0.0f;
+            y -= 0.34 * kneel;
+        }
         float danger = getStaminaDanger01();
         if (danger > 0.0f) {
             double pulse = Math.sin(idlePhase * 8.5) * 0.004 + Math.sin(idlePhase * 3.1) * 0.008;

@@ -1,5 +1,7 @@
 package ua.rp.chat.client;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -80,12 +82,12 @@ public class OasisAuthMod implements ClientModInitializer {
             return;
         }
 
-        if (client.screen instanceof AuthScreen || SESSION_CHECK_IN_FLIGHT.get()) {
+        if (SESSION_CHECK_IN_FLIGHT.get()) {
             return;
         }
 
         sessionPollTicks++;
-        if (sessionPollTicks < 5) {
+        if (sessionPollTicks < 20) {
             return;
         }
         sessionPollTicks = 0;
@@ -110,7 +112,11 @@ public class OasisAuthMod implements ClientModInitializer {
     }
 
     private static void openAuthScreen(Minecraft client, String authUrl) {
-        if (client.screen instanceof AuthScreen || authUrl == null || authUrl.isBlank()) {
+        if (!isValidAuthUrl(authUrl)) {
+            LOGGER.warn("Ignored invalid Oasis auth URL: " + authUrl);
+            return;
+        }
+        if (client.screen instanceof AuthScreen current && current.usesAuthUrl(authUrl)) {
             return;
         }
         OasisApiClient.rememberFromUrl(authUrl);
@@ -136,8 +142,11 @@ public class OasisAuthMod implements ClientModInitializer {
             }
 
             String body = new String(connection.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            return extractJsonString(body, "authUrl");
-        } catch (IOException e) {
+            JsonObject response = JsonParser.parseString(body).getAsJsonObject();
+            return response.has("authUrl") && !response.get("authUrl").isJsonNull()
+                    ? response.get("authUrl").getAsString()
+                    : null;
+        } catch (IOException | RuntimeException e) {
             LOGGER.debug("Unable to poll Oasis auth session.", e);
             return null;
         } finally {
@@ -147,26 +156,20 @@ public class OasisAuthMod implements ClientModInitializer {
         }
     }
 
-    private static String extractJsonString(String body, String propertyName) {
-        String marker = "\"" + propertyName + "\":\"";
-        int start = body.indexOf(marker);
-        if (start < 0) {
-            return null;
+    private static boolean isValidAuthUrl(String authUrl) {
+        if (authUrl == null || authUrl.isBlank()) {
+            return false;
         }
-
-        StringBuilder value = new StringBuilder();
-        for (int i = start + marker.length(); i < body.length(); i++) {
-            char current = body.charAt(i);
-            if (current == '"') {
-                return value.toString();
-            }
-            if (current == '\\' && i + 1 < body.length()) {
-                char escaped = body.charAt(++i);
-                value.append(escaped);
-            } else {
-                value.append(current);
-            }
+        try {
+            URI uri = URI.create(authUrl);
+            String query = uri.getRawQuery();
+            return ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    && uri.getHost() != null
+                    && query != null
+                    && ("&" + query + "&").contains("&token=")
+                    && !query.matches(".*(?:^|&)token=(?:&|$).*");
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
-        return null;
     }
 }

@@ -8,6 +8,7 @@
     "EntityRenderDispatcherMixin",
     "EntityEyePositionMixin",
     "LevelRendererMixin",
+    "PlayerTabOverlayMixin",
     "PlayerRendererMixin",
     "PlayerModelMixin",
     "HumanoidArmorLayerMixin",

@@ -92,6 +92,78 @@ public class StaminaManager implements Listener {
         return vitals.computeIfAbsent(player.getUniqueId(), id -> new Vitals());
     }
 
+    public boolean isUnconscious(Player player) {
+        return player != null && getVitals(player).unconsciousTicks > 0;
+    }
+
+    public int restraintPenalty(Player player) {
+        if (player == null) {
+            return 0;
+        }
+        Vitals v = getVitals(player);
+        int penalty = 0;
+        BodyPartState leftArm = v.zone(BodyZone.LEFT_ARM);
+        BodyPartState rightArm = v.zone(BodyZone.RIGHT_ARM);
+        BodyPartState leftLeg = v.zone(BodyZone.LEFT_LEG);
+        BodyPartState rightLeg = v.zone(BodyZone.RIGHT_LEG);
+        if (leftArm.isBroken()) penalty += 4;
+        if (rightArm.isBroken()) penalty += 4;
+        if (leftLeg.isBroken()) penalty += 3;
+        if (rightLeg.isBroken()) penalty += 3;
+        if (v.stamina < 25.0) penalty += 3;
+        if (v.totalPain() > 55.0) penalty += 3;
+        if (v.blood < 45.0) penalty += 2;
+        if (v.unconsciousTicks > 0) penalty += 20;
+        return penalty;
+    }
+
+    public String woundInspectionSummary(Player player, boolean trained) {
+        if (player == null) {
+            return "Осмотреть некого.";
+        }
+        Vitals v = getVitals(player);
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (BodyZone zone : BodyZone.values()) {
+            BodyPartState part = v.zone(zone);
+            if (part.condition >= 88.0 && part.bleeding <= 0.2 && part.pain <= 8.0 && !part.fracture && !part.openWound && !part.embeddedArrow) {
+                continue;
+            }
+            StringBuilder line = new StringBuilder(zone.label).append(": ");
+            if (part.bleeding > 10.0) {
+                line.append("заметное кровотечение");
+            } else if (part.openWound) {
+                line.append("открытая рана");
+            } else if (part.fracture || part.isBroken()) {
+                line.append("кость выглядит поврежденной");
+            } else if (part.condition < 65.0) {
+                line.append("травма и болезненность");
+            } else {
+                line.append("легкое повреждение");
+            }
+            if (trained) {
+                line.append(" (состояние ").append(Math.round(part.condition)).append("%");
+                if (part.bleeding > 0.2) {
+                    line.append(", кровь ").append(Math.round(part.bleeding));
+                }
+                if (part.pain > 8.0) {
+                    line.append(", боль ").append(Math.round(part.pain));
+                }
+                line.append(")");
+            }
+            lines.add(line.toString());
+        }
+        if (lines.isEmpty()) {
+            return "Видимых серьезных повреждений не заметно.";
+        }
+        if (v.unconsciousTicks > 0) {
+            lines.add(0, "Человек без сознания или почти не реагирует.");
+        }
+        if (v.blood < 55.0) {
+            lines.add("Кожа бледная, заметны признаки кровопотери.");
+        }
+        return String.join(" | ", lines);
+    }
+
     public JsonObject toJson(Player player) {
         Vitals v = getVitals(player);
         JsonObject json = new JsonObject();

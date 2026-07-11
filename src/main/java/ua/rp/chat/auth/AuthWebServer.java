@@ -195,8 +195,15 @@ public class AuthWebServer {
                 return;
             }
 
+            Player sessionPlayer = plugin.getServer().getPlayer(uuid);
+            if (sessionPlayer == null || !sessionPlayer.isOnline() || !authManager.isPendingAuth(uuid)) {
+                authManager.getTokenToUuid().remove(token, uuid);
+                sendJsonResponse(exchange, 410, createErrorJson("Сессия авторизации завершена или игрок вышел с сервера."));
+                return;
+            }
+
             boolean registered = authManager.getDatabase().isRegistered(uuid);
-            String username = plugin.getServer().getPlayer(uuid).getName();
+            String username = sessionPlayer.getName();
             String loginName = registered ? authManager.getLoginName(uuid) : null;
 
             JsonObject responseJson = new JsonObject();
@@ -742,7 +749,8 @@ public class AuthWebServer {
             File modsJsonFile = new File(clientDir, "mods.json");
 
             if (!modsJsonFile.exists()) {
-                writeDefaultModsJson(modsJsonFile);
+                sendJsonResponse(exchange, 404, createErrorJson("Client manifest mods.json is missing."));
+                return;
             }
 
             byte[] bytes = new byte[(int) modsJsonFile.length()];
@@ -757,26 +765,4 @@ public class AuthWebServer {
         }
     }
 
-    private void writeDefaultModsJson(File file) {
-        try {
-            file.getParentFile().mkdirs();
-            String defaultContent = "[\n" +
-                    "  { \"name\": \"oasisauth-1.0.0.jar\", \"path\": \"mods/oasisauth-1.0.0.jar\", \"sha1\": \"45a30e87ed942d8fc0373701c1d5d971a72e1df2\", \"size\": 567507 },\n" +
-                    "  { \"name\": \"mcef_fabric_2.2.0_MC_26.1.1.jar\", \"path\": \"mods/mcef_fabric_2.2.0_MC_26.1.1.jar\", \"sha1\": \"3168366b5cfce5302a53635674dcee443bb7eeca\", \"size\": 453664 },\n" +
-                    "  { \"name\": \"fabric-api-0.153.0+26.1.2.jar\", \"path\": \"mods/fabric-api-0.153.0+26.1.2.jar\", \"sha1\": \"5d984764e54f1f1db397d3f76429a0f15e591845\", \"size\": 2504357 },\n" +
-                    "  { \"name\": \"fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"path\": \"mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar\", \"sha1\": \"2bc17bb4275cc70a12e4ac35d139a71a30845720\", \"size\": 8076848 },\n" +
-                    "  { \"name\": \"yet_another_config_lib_v3-3.9.5+26.1-fabric.jar\", \"path\": \"mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar\", \"sha1\": \"dd0b7f266eced755bb48d5213df309f07d71de5b\", \"size\": 1121083 },\n" +
-                    "  { \"name\": \"sodium-fabric-0.8.12+mc26.1.2.jar\", \"path\": \"mods/sodium-fabric-0.8.12+mc26.1.2.jar\", \"sha1\": \"cd6c6236f0dcff03c7148414db220de32c934b5a\", \"size\": 1844226 },\n" +
-                    "  { \"name\": \"iris-fabric-1.10.9+mc26.1.1.jar\", \"path\": \"mods/iris-fabric-1.10.9+mc26.1.1.jar\", \"sha1\": \"c30e04509a1b284372cb9037b07714d4223ae91a\", \"size\": 2803860 },\n" +
-                    "  { \"name\": \"zoomify-2.16.1+26.1.jar\", \"path\": \"mods/zoomify-2.16.1+26.1.jar\", \"sha1\": \"c180ae8cf90da1abd67c26b5c5e7bf5d795c3b1d\", \"size\": 561967 },\n" +
-                    "  { \"name\": \"entity_texture_features_26.1-fabric-7.1.jar\", \"path\": \"mods/entity_texture_features_26.1-fabric-7.1.jar\", \"sha1\": \"ff6284b53ad23e06bc082d1e05e8828e47455126\", \"size\": 740706 },\n" +
-                    "  { \"name\": \"entity_model_features-3.2.4-26.1-fabric.jar\", \"path\": \"mods/entity_model_features-3.2.4-26.1-fabric.jar\", \"sha1\": \"7a43e5c92b87e360bfa0156870f2097549e3732d\", \"size\": 577617 }\n" +
-                    "]";
-            try (FileWriter writer = new FileWriter(file)) {
-                writer.write(defaultContent);
-            }
-        } catch (IOException e) {
-            plugin.getLogger().warning("Failed to write default mods.json: " + e.getMessage());
-        }
-    }
 }

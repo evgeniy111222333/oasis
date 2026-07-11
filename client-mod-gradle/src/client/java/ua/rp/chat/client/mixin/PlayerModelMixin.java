@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.OasisPoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
@@ -29,7 +30,15 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 public class PlayerModelMixin {
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
     private static void oasis$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
-        // Custom segmented limbs are disabled until the model layer pipeline is rebuilt safely.
+        MeshDefinition mesh = cir.getReturnValue();
+        if (mesh == null) {
+            return;
+        }
+        PartDefinition root = mesh.getRoot();
+        oasis$replaceArm(root, "right_arm", "right_sleeve", -5.0f, true, slim, 40, 16, 40, 32, deformation);
+        oasis$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
+        oasis$replaceLeg(root, "right_leg", "right_pants", -1.9f, 0, 16, 0, 32, deformation);
+        oasis$replaceLeg(root, "left_leg", "left_pants", 1.9f, 16, 48, 0, 48, deformation);
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
@@ -40,6 +49,7 @@ public class PlayerModelMixin {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
         Player player = oasis$getRenderedPlayer(state);
+        oasis$applyPhysicalInteractionPose(model, state, player);
         OasisPoseDebugExporter.capture(model, state, player, oasis$isLocalFirstPersonState(state));
     }
 
@@ -168,6 +178,165 @@ public class PlayerModelMixin {
     }
 
     @Unique
+    private void oasis$applyPhysicalInteractionPose(PlayerModel model, AvatarRenderState state, Player player) {
+        if (player == null || model == null || state == null || state.isFallFlying || state.isVisuallySwimming) {
+            return;
+        }
+        AcquaintanceClientState.RoleplayPose pose = AcquaintanceClientState.poseFor(player);
+        if (pose == AcquaintanceClientState.RoleplayPose.NONE) {
+            return;
+        }
+
+        float progress = oasis$clamp(pose.progress(), 0.0f, 1.0f);
+        float ease = progress * progress * (3.0f - 2.0f * progress);
+        float pulse = (float) Math.sin(state.ageInTicks * 0.38f) * 0.035f;
+
+        if (pose.active()) {
+            if (pose.actor()) {
+                oasis$applyActorInteractionPose(model, pose.action(), ease, pulse);
+            } else {
+                oasis$applyTargetInteractionPose(model, pose.action(), ease, pulse);
+            }
+        }
+
+        if (pose.carried()) {
+            oasis$applyEscortedPose(model, 1.0f, pulse);
+        }
+        if (pose.escorting()) {
+            oasis$applyEscortingPose(model, 1.0f, pulse);
+        }
+        if (pose.kneeling()) {
+            oasis$applyKneelingPose(model, 1.0f, pulse);
+        }
+        if (pose.bound()) {
+            oasis$applyBoundHandsPose(model, 1.0f, pulse);
+        }
+        oasis$syncWearableLayers(model);
+    }
+
+    @Unique
+    private void oasis$applyActorInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+        boolean search = action.startsWith("SEARCH") || action.equals("INSPECT");
+        boolean bind = action.equals("BIND");
+        boolean disarm = action.equals("DISARM");
+        boolean carry = action.equals("CARRY");
+        boolean kneel = action.equals("KNEEL");
+
+        float lean = (search ? 0.22f : bind ? 0.18f : disarm ? 0.14f : carry ? 0.16f : kneel ? 0.16f : 0.10f) * ease;
+        oasis$applyCoherentUpperLean(model, lean);
+        model.leftLeg.zRot += 0.05f * ease;
+        model.rightLeg.zRot -= 0.05f * ease;
+
+        if (search || bind) {
+            float work = 0.18f + Math.abs(pulse) * 1.7f;
+            model.leftArm.xRot -= (0.78f + work) * ease;
+            model.rightArm.xRot -= (0.72f + work * 0.85f) * ease;
+            model.leftArm.yRot += (0.22f + pulse) * ease;
+            model.rightArm.yRot -= (0.22f - pulse) * ease;
+            model.leftArm.zRot += 0.10f * ease;
+            model.rightArm.zRot -= 0.10f * ease;
+        } else if (disarm) {
+            model.rightArm.xRot -= (0.95f + pulse) * ease;
+            model.rightArm.yRot -= 0.34f * ease;
+            model.leftArm.xRot -= 0.34f * ease;
+        } else if (carry) {
+            oasis$applyEscortingPose(model, ease, pulse);
+        } else if (kneel) {
+            model.rightArm.xRot -= 0.82f * ease;
+            model.rightArm.yRot -= 0.25f * ease;
+            model.leftArm.xRot -= 0.22f * ease;
+        }
+    }
+
+    @Unique
+    private void oasis$applyTargetInteractionPose(PlayerModel model, String action, float ease, float pulse) {
+        if (action.equals("BIND") || action.startsWith("SEARCH") || action.equals("DISARM")) {
+            oasis$applyBoundHandsPose(model, Math.min(1.0f, 0.35f + ease * 0.65f), pulse);
+            model.body.xRot += 0.08f * ease;
+        }
+        if (action.equals("KNEEL")) {
+            oasis$applyKneelingPose(model, ease, pulse);
+        }
+        if (action.equals("CARRY")) {
+            oasis$applyEscortedPose(model, ease, pulse);
+        }
+    }
+
+    @Unique
+    private void oasis$applyCoherentUpperLean(PlayerModel model, float lean) {
+        model.body.xRot += lean;
+        model.head.xRot -= lean * 0.35f;
+        model.leftArm.xRot += lean * 0.35f;
+        model.rightArm.xRot += lean * 0.35f;
+    }
+
+    @Unique
+    private void oasis$applyEscortingPose(PlayerModel model, float amount, float pulse) {
+        model.body.yRot += 0.08f * amount;
+        model.body.xRot += 0.06f * amount;
+        model.rightArm.xRot -= (0.38f + pulse) * amount;
+        model.rightArm.yRot += 0.58f * amount;
+        model.rightArm.zRot -= 0.18f * amount;
+        model.leftArm.xRot -= 0.10f * amount;
+        model.leftLeg.zRot += 0.025f * amount;
+        model.rightLeg.zRot -= 0.025f * amount;
+    }
+
+    @Unique
+    private void oasis$applyEscortedPose(PlayerModel model, float amount, float pulse) {
+        oasis$applyBoundHandsPose(model, amount, pulse);
+        model.body.xRot += 0.05f * amount;
+        model.body.yRot -= 0.04f * amount;
+        model.leftLeg.xRot += 0.04f * amount;
+        model.rightLeg.xRot += 0.03f * amount;
+    }
+
+    @Unique
+    private void oasis$applyBoundHandsPose(PlayerModel model, float amount, float pulse) {
+        model.leftArm.xRot = model.leftArm.xRot * (1.0f - amount) + (0.70f + pulse) * amount;
+        model.rightArm.xRot = model.rightArm.xRot * (1.0f - amount) + (0.70f - pulse) * amount;
+        model.leftArm.yRot = model.leftArm.yRot * (1.0f - amount) + (-0.72f) * amount;
+        model.rightArm.yRot = model.rightArm.yRot * (1.0f - amount) + (0.72f) * amount;
+        model.leftArm.zRot = model.leftArm.zRot * (1.0f - amount) + (0.18f) * amount;
+        model.rightArm.zRot = model.rightArm.zRot * (1.0f - amount) + (-0.18f) * amount;
+        oasis$setLowerArm(model.leftArm, model.leftSleeve, 0.34f * amount);
+        oasis$setLowerArm(model.rightArm, model.rightSleeve, 0.34f * amount);
+    }
+
+    @Unique
+    private void oasis$applyKneelingPose(PlayerModel model, float amount, float pulse) {
+        float upperDrop = 5.5f * amount;
+        float hipDrop = 3.0f * amount;
+
+        model.head.y += upperDrop;
+        model.body.y += upperDrop;
+        model.leftArm.y += upperDrop;
+        model.rightArm.y += upperDrop;
+        model.leftLeg.y += hipDrop;
+        model.rightLeg.y += hipDrop;
+
+        model.body.xRot += 0.17f * amount;
+        model.head.xRot -= 0.13f * amount;
+        model.leftLeg.xRot = oasis$lerp(model.leftLeg.xRot, -1.27f, amount);
+        model.rightLeg.xRot = oasis$lerp(model.rightLeg.xRot, -1.19f, amount);
+        model.leftLeg.yRot = oasis$lerp(model.leftLeg.yRot, 0.10f, amount);
+        model.rightLeg.yRot = oasis$lerp(model.rightLeg.yRot, -0.10f, amount);
+        model.leftLeg.zRot = oasis$lerp(model.leftLeg.zRot, 0.055f, amount);
+        model.rightLeg.zRot = oasis$lerp(model.rightLeg.zRot, -0.055f, amount);
+        oasis$setLowerLeg(model.leftLeg, model.leftPants, -1.30f * amount);
+        oasis$setLowerLeg(model.rightLeg, model.rightPants, -1.23f * amount);
+        oasis$setFootPose(model.leftLeg, model.leftPants, -0.03f * amount);
+        oasis$setFootPose(model.rightLeg, model.rightPants, -0.04f * amount);
+
+        model.leftArm.xRot += (0.20f + pulse) * amount;
+        model.rightArm.xRot += (0.20f - pulse) * amount;
+        model.leftArm.yRot -= 0.06f * amount;
+        model.rightArm.yRot += 0.06f * amount;
+        model.leftArm.zRot += 0.075f * amount;
+        model.rightArm.zRot -= 0.075f * amount;
+    }
+
+    @Unique
     private void oasis$applySharedRoleplayPose(PlayerModel model, AvatarRenderState state) {
         if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
             return;
@@ -248,7 +417,7 @@ public class PlayerModelMixin {
         arm.addOrReplaceChild("oasis_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
 
         CubeDeformation sleeve = deformation.extend(0.25f);
-        PartDefinition sleeveRoot = root.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
+        PartDefinition sleeveRoot = arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
         sleeveRoot.addOrReplaceChild("oasis_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
         sleeveRoot.addOrReplaceChild("oasis_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.offset(0.0f, 3.8f, 0.0f));
     }
@@ -261,7 +430,7 @@ public class PlayerModelMixin {
         shin.addOrReplaceChild("oasis_foot", CubeListBuilder.create().texOffs(texX, texY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, deformation), PartPose.ZERO);
 
         CubeDeformation pants = deformation.extend(0.25f);
-        PartDefinition pantsRoot = root.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
+        PartDefinition pantsRoot = leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
         pantsRoot.addOrReplaceChild("oasis_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 5.9f, 4, pants), PartPose.ZERO);
         PartDefinition pantsShin = pantsRoot.addOrReplaceChild("oasis_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 5.7f, 4, pants), PartPose.offset(0.0f, 5.9f, 0.0f));
         pantsShin.addOrReplaceChild("oasis_foot_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 10).addBox(-2.0f, 4.2f, -2.6f, 4, 1.8f, 4.8f, pants), PartPose.ZERO);
@@ -425,19 +594,43 @@ public class PlayerModelMixin {
     @Unique
     private void oasis$syncWearableLayers(PlayerModel model) {
         oasis$resetWearableLocalPose(model.hat);
+        oasis$resetWearableLocalPose(model.jacket);
         oasis$resetWearableLocalPose(model.rightSleeve);
         oasis$resetWearableLocalPose(model.leftSleeve);
         oasis$resetWearableLocalPose(model.rightPants);
         oasis$resetWearableLocalPose(model.leftPants);
-        oasis$resetWearableLocalPose(model.jacket);
+        oasis$copyChildPose(model.rightSleeve, model.rightArm, "oasis_forearm", "oasis_forearm_sleeve");
+        oasis$copyChildPose(model.leftSleeve, model.leftArm, "oasis_forearm", "oasis_forearm_sleeve");
+        oasis$copyChildPose(model.rightPants, model.rightLeg, "oasis_shin", "oasis_shin_pants");
+        oasis$copyChildPose(model.leftPants, model.leftLeg, "oasis_shin", "oasis_shin_pants");
     }
 
     @Unique
     private void oasis$resetWearableLocalPose(ModelPart part) {
-        if (part == null) {
+        if (part != null) {
+            part.loadPose(part.getInitialPose());
+        }
+    }
+
+    @Unique
+    private void oasis$copyPartPose(ModelPart target, ModelPart source) {
+        if (target == null || source == null) {
             return;
         }
-        part.loadPose(part.getInitialPose());
+        target.x = source.x;
+        target.y = source.y;
+        target.z = source.z;
+        target.xRot = source.xRot;
+        target.yRot = source.yRot;
+        target.zRot = source.zRot;
+        target.visible = source.visible;
+    }
+
+    @Unique
+    private void oasis$copyChildPose(ModelPart targetParent, ModelPart sourceParent, String sourceChild, String targetChild) {
+        ModelPart source = oasis$getChildOrNull(sourceParent, sourceChild);
+        ModelPart target = oasis$getChildOrNull(targetParent, targetChild);
+        oasis$copyPartPose(target, source);
     }
 
     @Unique
@@ -462,6 +655,25 @@ public class PlayerModelMixin {
         if (pantsShin != null) {
             pantsShin.xRot = -bend;
         }
+    }
+
+    @Unique
+    private void oasis$setFootPose(ModelPart leg, ModelPart pants, float pitch) {
+        ModelPart shin = oasis$getChildOrNull(leg, "oasis_shin");
+        ModelPart foot = oasis$getChildOrNull(shin, "oasis_foot");
+        if (foot != null) {
+            foot.xRot = pitch;
+        }
+        ModelPart pantsShin = oasis$getChildOrNull(pants, "oasis_shin_pants");
+        ModelPart pantsFoot = oasis$getChildOrNull(pantsShin, "oasis_foot_pants");
+        if (pantsFoot != null) {
+            pantsFoot.xRot = pitch;
+        }
+    }
+
+    @Unique
+    private float oasis$lerp(float from, float to, float amount) {
+        return from + (to - from) * oasis$clamp(amount, 0.0f, 1.0f);
     }
 
     @Unique

@@ -65,8 +65,8 @@ public class AuthManager {
     public void handleJoin(Player player) {
         UUID uuid = player.getUniqueId();
 
-        // Optional legacy IP-session auto-login. Disabled by default because
-        // "remember me" should prefill the auth form, not skip authentication.
+        // Explicit web authentication is the default. The optional IP shortcut stays
+        // behind configuration for private deployments and is disabled for Oasis.
         String currentIp = getPlayerIp(player);
         if (plugin.getConfig().getBoolean("auth.auto-login-by-ip", false) && database.isRegistered(uuid)) {
             String lastIp = database.getLastIp(uuid);
@@ -89,21 +89,27 @@ public class AuthManager {
         // Store original location
         originalLocations.put(uuid, player.getLocation().clone());
 
+        // Publish the web token before any delayed camera/UI work. The client can
+        // query /api/client-session immediately after joining, so registering the
+        // token inside the delayed task created a reproducible "session not found" race.
+        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+        String token = UUID.randomUUID().toString().replace("-", "");
+        tokenToUuid.put(token, uuid);
+
         // Setup cinematic camera (delayed 5 ticks so player is fully loaded)
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (!player.isOnline()) return;
+                if (!player.isOnline()) {
+                    tokenToUuid.remove(token, uuid);
+                    return;
+                }
 
                 // Set spectator mode (CEF overlay works on spectator as well, or adventure)
                 player.setGameMode(GameMode.SPECTATOR);
 
                 // Setup camera
                 cameraManager.setupCinematicView(player);
-
-                // Generate one-time token for web login
-                String token = UUID.randomUUID().toString().substring(0, 8);
-                tokenToUuid.put(token, uuid);
 
                 // Open client-side visual auth overlay.
                 openAuthOverlay(player, token);
@@ -361,12 +367,12 @@ public class AuthManager {
     }
 
     public String getAuthUrl(String token) {
-        return advertisedWebUrl() + "/auth?token=" + token + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token;
     }
 
     public String getAuthUrl(String token, String username) {
         String encodedName = java.net.URLEncoder.encode(username == null ? "" : username, java.nio.charset.StandardCharsets.UTF_8);
-        return advertisedWebUrl() + "/auth?token=" + token + "&username=" + encodedName + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token + "&username=" + encodedName;
     }
 
     private String advertisedWebUrl() {
@@ -543,17 +549,29 @@ public class AuthManager {
      */
     public void handleQuit(Player player) {
         UUID uuid = player.getUniqueId();
-        pendingAuth.remove(uuid);
-        originalLocations.remove(uuid);
-        cameraManager.cleanup(player);
-        removeRpIdentity(player);
+        // Duplicate-login replacement fires quit and join for the same UUID almost
+        // together. Defer cleanup so the old connection cannot erase the new
+        // connection's token, timeout, camera location, or pending-auth state.
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Player current = plugin.getServer().getPlayer(uuid);
+            if (current != null && current != player && current.isOnline()) {
+                plugin.getLogger().info("Preserved replacement auth session for " + current.getName());
+                cameraManager.cleanup(player);
+                removeRpIdentity(player);
+                return;
+            }
 
-        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+            pendingAuth.remove(uuid);
+            originalLocations.remove(uuid);
+            cameraManager.cleanup(player);
+            removeRpIdentity(player);
+            tokenToUuid.values().removeIf(id -> id.equals(uuid));
 
-        Integer taskId = timeoutTasks.remove(uuid);
-        if (taskId != null) {
-            plugin.getServer().getScheduler().cancelTask(taskId);
-        }
+            Integer taskId = timeoutTasks.remove(uuid);
+            if (taskId != null) {
+                plugin.getServer().getScheduler().cancelTask(taskId);
+            }
+        });
     }
 
     public String getRpName(UUID uuid) {

@@ -29,8 +29,8 @@ web:
 #             Auth Session Settings
 # ==========================================
 auth:
-  # Legacy behavior: skip the auth window when the player's IP matches the last login.
-  # Keep disabled for RP servers; "remember me" should only prefill the form.
+  # Every connection requires explicit confirmation in the auth window.
+  # Saved credentials may fill the fields, but never submit the form automatically.
   auto-login-by-ip: false
 
 # ==========================================

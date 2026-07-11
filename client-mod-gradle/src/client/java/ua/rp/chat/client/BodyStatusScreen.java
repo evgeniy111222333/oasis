@@ -74,6 +74,12 @@ public class BodyStatusScreen extends Screen {
     }
 
     @Override
+    public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        // The medical panel is an in-world overlay. Leaving this empty prevents
+        // Screen from drawing the profile-dependent menu panorama behind MCEF.
+    }
+
+    @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (browser != null) {
             browser.sendMousePress(scaleMouseX(event.x()), scaleMouseY(event.y()), event.button());

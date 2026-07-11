@@ -37,7 +37,7 @@ public abstract class CameraMixin {
 
     @Inject(method = "isDetached", at = @At("HEAD"), cancellable = true)
     private void oasis$isDetached(CallbackInfoReturnable<Boolean> cir) {
-        if (SmartCameraManager.getInstance().isRenderingFirstPersonPlayer() && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
+        if (SmartCameraManager.getInstance().isWorldFirstPersonBodyRender()) {
             cir.setReturnValue(true);
         }
     }

@@ -3,7 +3,7 @@ let isRegisteredUser = false;
 let mcUsername = "";
 let mcUuid = "";
 let appearanceData = "";
-let sessionRecoveryTried = false;
+let sessionRecoveryInFlight = null;
 const savedCredentialsKey = "oasisAuth.savedCredentials.v1";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -26,7 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
     restoreSavedCredentials();
 
     if (!authToken) {
-        recoverAuthSession("Восстанавливаем сессию авторизации...");
+        recoverAuthSession("Восстанавливаем сессию авторизации...").then((recovered) => {
+            if (!recovered) {
+                showGlobalError("Сессия авторизации не найдена. Перезайдите на сервер.");
+            }
+        });
         return;
     }
 
@@ -71,33 +75,42 @@ async function fetchStatus() {
 }
 
 async function recoverAuthSession(message) {
-    if (sessionRecoveryTried) {
-        return false;
+    if (sessionRecoveryInFlight) {
+        return sessionRecoveryInFlight;
     }
-    sessionRecoveryTried = true;
-    const username = mcUsername || new URLSearchParams(window.location.search).get("username") || "";
-    if (!username) {
-        showGlobalError("Сессия авторизации не найдена. Перезайдите на сервер.");
-        return false;
-    }
-
-    showGlobalError(message);
-    try {
-        const response = await fetch(`/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
-            cache: "no-store"
-        });
-        if (response.status === 204) {
+    sessionRecoveryInFlight = (async () => {
+        const username = mcUsername || new URLSearchParams(window.location.search).get("username") || "";
+        if (!username) {
             return false;
         }
-        const data = await response.json();
-        if (data.success && data.authUrl) {
-            window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
-            return true;
+
+        switchTab("login");
+        showError(document.getElementById("loginError"), message);
+        for (let attempt = 0; attempt < 16; attempt++) {
+            try {
+                const response = await fetch(`/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
+                    cache: "no-store"
+                });
+                if (response.status === 200) {
+                    const data = await response.json();
+                    if (data.success && data.authUrl) {
+                        window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
+                        return true;
+                    }
+                }
+            } catch (error) {
+                // The server or token may still be starting; retry inside the bounded window.
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, attempt < 5 ? 350 : 650));
         }
-    } catch (error) {
         return false;
+    })();
+
+    try {
+        return await sessionRecoveryInFlight;
+    } finally {
+        sessionRecoveryInFlight = null;
     }
-    return false;
 }
 
 function hydratePlayerCard(appearanceUrl = "") {
@@ -248,7 +261,7 @@ function restoreSavedCredentials(expectedLogin = "") {
         const loginInput = document.getElementById("loginName");
         const passwordInput = document.getElementById("loginPassword");
         if (!rememberInput || !loginInput || !passwordInput || !saved.remember) {
-            return;
+            return false;
         }
         if (saved.loginName && (!expectedLogin || saved.loginName.toLowerCase() === expectedLogin.toLowerCase())) {
             if (!loginInput.value) {
@@ -256,10 +269,16 @@ function restoreSavedCredentials(expectedLogin = "") {
             }
             passwordInput.value = saved.password || "";
             rememberInput.checked = true;
+            return Boolean(saved.password);
+        }
+        if (expectedLogin) {
+            passwordInput.value = "";
+            rememberInput.checked = false;
         }
     } catch (error) {
         localStorage.removeItem(savedCredentialsKey);
     }
+    return false;
 }
 
 function persistSavedCredentials(loginName, password) {

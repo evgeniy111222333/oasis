@@ -32,6 +32,10 @@ public class AuthScreen extends Screen {
         this.authUrl = authUrl;
     }
 
+    boolean usesAuthUrl(String candidate) {
+        return authUrl.equals(candidate);
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -163,11 +167,14 @@ public class AuthScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (browser != null) {
-            browser.close();
-            browser = null;
-        }
+        closeBrowser();
         super.onClose();
+    }
+
+    @Override
+    public void removed() {
+        closeBrowser();
+        super.removed();
     }
 
     @Override
@@ -188,6 +195,13 @@ public class AuthScreen extends Screen {
         updateExitButtonBounds();
         int scale = Math.max(1, minecraft.getWindow().getGuiScale());
         browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
+    }
+
+    private void closeBrowser() {
+        if (browser != null) {
+            browser.close();
+            browser = null;
+        }
     }
 
     private void drawExitButton(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {

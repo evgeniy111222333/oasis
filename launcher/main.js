@@ -20,21 +20,7 @@ const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPCha
 const JAVA_RUNTIME_MAJOR = 25;
 const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
 
-const REQUIRED_MODS = [
-    { name: 'oasisauth-1.0.0.jar', path: 'mods/oasisauth-1.0.0.jar', sha1: '45a30e87ed942d8fc0373701c1d5d971a72e1df2', size: 567507 },
-    { name: 'mcef_fabric_2.2.0_MC_26.1.1.jar', path: 'mods/mcef_fabric_2.2.0_MC_26.1.1.jar', sha1: '3168366b5cfce5302a53635674dcee443bb7eeca', size: 453664 },
-    { name: 'fabric-api-0.153.0+26.1.2.jar', path: 'mods/fabric-api-0.153.0+26.1.2.jar', sha1: '5d984764e54f1f1db397d3f76429a0f15e591845', size: 2504357 },
-    { name: 'fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', path: 'mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar', sha1: '2bc17bb4275cc70a12e4ac35d139a71a30845720', size: 8076848 },
-    { name: 'yet_another_config_lib_v3-3.9.5+26.1-fabric.jar', path: 'mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar', sha1: 'dd0b7f266eced755bb48d5213df309f07d71de5b', size: 1121083 },
-    { name: 'sodium-fabric-0.8.12+mc26.1.2.jar', path: 'mods/sodium-fabric-0.8.12+mc26.1.2.jar', sha1: 'cd6c6236f0dcff03c7148414db220de32c934b5a', size: 1844226 },
-    { name: 'iris-fabric-1.10.9+mc26.1.1.jar', path: 'mods/iris-fabric-1.10.9+mc26.1.1.jar', sha1: 'c30e04509a1b284372cb9037b07714d4223ae91a', size: 2803860 },
-    { name: 'zoomify-2.16.1+26.1.jar', path: 'mods/zoomify-2.16.1+26.1.jar', sha1: 'c180ae8cf90da1abd67c26b5c5e7bf5d795c3b1d', size: 561967 },
-    { name: 'entity_texture_features_26.1-fabric-7.1.jar', path: 'mods/entity_texture_features_26.1-fabric-7.1.jar', sha1: 'ff6284b53ad23e06bc082d1e05e8828e47455126', size: 740706 },
-    { name: 'entity_model_features-3.2.4-26.1-fabric.jar', path: 'mods/entity_model_features-3.2.4-26.1-fabric.jar', sha1: '7a43e5c92b87e360bfa0156870f2097549e3732d', size: 577617 }
-];
-
-const MANAGED_MOD_FILENAMES = [
-    ...REQUIRED_MODS.map(mod => mod.name),
+const LEGACY_MANAGED_MOD_FILENAMES = [
     'fabric-api-0.106.1+1.21.2.jar',
     'fabric-api-0.114.1+1.21.3.jar',
     'sodium-fabric-0.6.13+mc1.21.3.jar',
@@ -157,6 +143,15 @@ function getLocalClientSource(relativePath) {
     return path.join(LOCAL_CLIENT_SOURCE_ROOT, relativePath);
 }
 
+function readLocalClientManifest() {
+    const manifestPath = getLocalClientSource('mods.json');
+    if (!fs.existsSync(manifestPath)) {
+        return null;
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    return Array.isArray(manifest) ? manifest : null;
+}
+
 function fileSha1(filePath) {
     return crypto.createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
 }
@@ -263,7 +258,8 @@ function isClientProfileValid(profilePath) {
 function hasObsoleteManagedMods(gamePath, requiredMods) {
     const requiredNames = new Set(requiredMods.map(mod => mod.name));
     const modsPath = path.join(gamePath, 'mods');
-    return MANAGED_MOD_FILENAMES.some(filename => {
+    const managedNames = new Set([...requiredNames, ...LEGACY_MANAGED_MOD_FILENAMES]);
+    return [...managedNames].some(filename => {
         return !requiredNames.has(filename) && fs.existsSync(path.join(modsPath, filename));
     });
 }
@@ -271,7 +267,8 @@ function hasObsoleteManagedMods(gamePath, requiredMods) {
 function removeObsoleteManagedMods(gamePath, requiredMods) {
     const requiredNames = new Set(requiredMods.map(mod => mod.name));
     const modsPath = path.join(gamePath, 'mods');
-    for (const filename of MANAGED_MOD_FILENAMES) {
+    const managedNames = new Set([...requiredNames, ...LEGACY_MANAGED_MOD_FILENAMES]);
+    for (const filename of managedNames) {
         if (requiredNames.has(filename)) {
             continue;
         }
@@ -325,6 +322,16 @@ function getServerSettings(config = readConfig()) {
 }
 
 async function fetchRequiredModsFromSources(apiUrl) {
+    try {
+        const apiList = await requestJson(`${normalizeApiUrl(apiUrl)}/api/required-mods?ts=${Date.now()}`, 5000);
+        if (Array.isArray(apiList)) {
+            logLauncher(`Loaded client manifest from server API ${apiUrl}`);
+            return apiList;
+        }
+    } catch (error) {
+        logLauncher(`Server client manifest unavailable: ${error.message}`);
+    }
+
     const manifestUrl = `${joinUrl(REMOTE_CLIENT_BASE_URL, 'mods.json')}?ts=${Date.now()}`;
     try {
         const remoteList = await requestJson(manifestUrl, 5000);
@@ -337,23 +344,22 @@ async function fetchRequiredModsFromSources(apiUrl) {
     }
 
     try {
-        const apiList = await requestJson(`${normalizeApiUrl(apiUrl)}/api/required-mods?ts=${Date.now()}`, 2500);
-        if (Array.isArray(apiList)) {
-            logLauncher(`Loaded client manifest from server API ${apiUrl}`);
-            return apiList;
+        const localList = readLocalClientManifest();
+        if (Array.isArray(localList)) {
+            logLauncher(`Loaded client manifest from local source ${getLocalClientSource('mods.json')}`);
+            return localList;
         }
     } catch (error) {
-        logLauncher(`Server client manifest unavailable: ${error.message}`);
+        logLauncher(`Local client manifest unavailable: ${error.message}`);
     }
 
-    logLauncher('Using embedded client manifest fallback.');
-    return REQUIRED_MODS;
+    throw new Error('Client manifest unavailable from remote, server API, and local source.');
 }
 
 async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
     const candidates = [
-        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath),
-        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`)
+        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`),
+        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath)
     ];
     let lastError;
 
@@ -384,8 +390,8 @@ async function repairManagedMod(mod, dest, apiUrl, onProgress) {
     if (mod.url) {
         candidates.push(mod.url);
     }
-    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
     candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
+    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
 
     let lastError;
     for (const url of candidates) {
@@ -561,7 +567,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
     const { apiUrl } = getServerSettings();
     
     try {
-        // Fetch dynamic mods list from remote manifest first, then server API.
+        // Fetch dynamic mods list from the live server first, then public fallbacks.
         const requiredMods = await fetchRequiredModsFromSources(apiUrl);
         
         let totalSteps = 1 + requiredMods.length;

@@ -3,6 +3,10 @@ plugins {
 	id 'maven-publish'
 }
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
 version = project.mod_version
 group = project.maven_group
 
@@ -68,6 +72,53 @@ jar {
 	from("LICENSE") {
 		rename { "${it}_$projectName"}
 	}
+}
+
+tasks.register("syncClientDistribution") {
+	dependsOn tasks.named("remapJar")
+
+	def remappedJar = tasks.named("remapJar").flatMap { it.archiveFile }
+	def clientRoot = layout.projectDirectory.dir("../plugins/RPChat/client")
+	def modsDir = clientRoot.dir("mods")
+	def manifestFile = clientRoot.file("mods.json")
+	def modFileName = "oasisauth-${project.version}.jar"
+
+	inputs.file(remappedJar)
+	outputs.file(modsDir.file(modFileName))
+	outputs.file(manifestFile)
+
+	doLast {
+		def sourceJar = remappedJar.get().asFile
+		def targetJar = modsDir.file(modFileName).asFile
+		targetJar.parentFile.mkdirs()
+		targetJar.bytes = sourceJar.bytes
+
+		def sha1 = MessageDigest.getInstance("SHA-1")
+			.digest(targetJar.bytes)
+			.collect { String.format("%02x", it) }
+			.join()
+
+		def manifest = []
+		if (manifestFile.asFile.exists()) {
+			manifest = new JsonSlurper().parse(manifestFile.asFile) as List
+		}
+
+		def entry = manifest.find { it.name == modFileName }
+		if (entry == null) {
+			entry = [name: modFileName, path: "mods/${modFileName}"]
+			manifest.add(0, entry)
+		}
+		entry.path = "mods/${modFileName}"
+		entry.sha1 = sha1
+		entry.size = targetJar.length()
+
+		manifestFile.asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), "UTF-8")
+		println "Synced ${modFileName} to ${targetJar} (${sha1}, ${targetJar.length()} bytes)"
+	}
+}
+
+tasks.named("build") {
+	finalizedBy tasks.named("syncClientDistribution")
 }
 
 // configure the maven publication

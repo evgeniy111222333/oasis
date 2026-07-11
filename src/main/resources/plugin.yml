@@ -55,3 +55,8 @@ commands:
   rpdemo:
     description: Shows interactive previews of the 10 proposed chat styles.
     usage: /rpdemo [1-10]
+  rpcombatdebug:
+    description: Debug combat profiles and damage calculation.
+    usage: /rpcombatdebug
+    permission: rpchat.admin
+
