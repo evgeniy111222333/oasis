@@ -72,9 +72,6 @@ public class PlayerRendererMixin {
                 eclipse$restoreVisibility(model, state);
             }
             cameraManager.setSubmittingFirstPersonPlayer(false);
-            if (cameraManager.isRenderingFirstPersonPlayer()) {
-                cameraManager.setRenderingFirstPersonPlayer(false);
-            }
         }
     }
 

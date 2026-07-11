@@ -1,9 +1,9 @@
 {
-  "id": "20260711-195058",
+  "id": "20260711-195947",
   "published": true,
-  "publishedAt": "2026-07-11T19:50:58.037693Z",
-  "title": "Fix Player Rendering",
-  "summary": "Fix headless rendering, limb offsets, and inverted elbows",
+  "publishedAt": "2026-07-11T19:59:47.019488Z",
+  "title": "Fix First Person Head Rendering",
+  "summary": "Ensure head is invisible in all first-person body render passes",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
