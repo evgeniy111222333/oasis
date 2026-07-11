@@ -333,29 +333,29 @@ public class AuthWebServer {
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Р’СЂРµРјСЏ СЃРµСЃСЃРёРё РёСЃС‚РµРєР»Рѕ. РџРµСЂРµР·Р°Р№РґРёС‚Рµ РІ РёРіСЂСѓ."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u0412\u0440\u0435\u043c\u044f \u0441\u0435\u0441\u0441\u0438\u0438 \u0438\u0441\u0442\u0435\u043a\u043b\u043e. \u041f\u0435\u0440\u0435\u0437\u0430\u0439\u0434\u0438\u0442\u0435 \u0432 \u0438\u0433\u0440\u0443."));
                     return;
                 }
 
                 // Check patterns on backend as well for security
                 if (!loginName.matches("^[a-zA-Z0-9_]{4,16}$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Р›РѕРіРёРЅ РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ 4-16 СЃРёРјРІРѕР»РѕРІ: Р»Р°С‚РёРЅРёС†Р°, С†РёС„СЂС‹ РёР»Рё РїРѕРґС‡РµСЂРєРёРІР°РЅРёРµ."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u041b\u043e\u0433\u0438\u043d \u0434\u043e\u043b\u0436\u0435\u043d \u0441\u043e\u0434\u0435\u0440\u0436\u0430\u0442\u044c 4-16 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432: \u043b\u0430\u0442\u0438\u043d\u0438\u0446\u0430, \u0446\u0438\u0444\u0440\u044b \u0438\u043b\u0438 \u043f\u043e\u0434\u0447\u0435\u0440\u043a\u0438\u0432\u0430\u043d\u0438\u0435."));
                     return;
                 }
 
                 if (appearanceData == null || appearanceData.isBlank()) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Загрузите облик персонажа перед созданием профиля."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043e\u0431\u043b\u0438\u043a \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436\u0430 \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u0435\u043c \u043f\u0440\u043e\u0444\u0438\u043b\u044f."));
                     return;
                 }
 
                 // Cyrillic Firstname Lastname validation
-                if (!rpName.matches("^[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+\\s+[A-ZРђ-РЇРЃ][a-zР°-СЏС‘']+$")) {
-                    sendJsonResponse(exchange, 400, createErrorJson("РРјСЏ РїРµСЂСЃРѕРЅР°Р¶Р° РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ: РРІР°РЅ РџРµС‚СЂРѕРІ."));
+                if (!rpName.matches("^[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+\\s+[A-Z\\u0410-\\u042F\\u0401\\u0406\\u0404\\u0407][a-z\\u0430-\\u044F\\u0451\\u0456\\u0454\\u0457']+$")) {
+                    sendJsonResponse(exchange, 400, createErrorJson("\u0418\u043c\u044f \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436\u0430 \u0434\u043e\u043b\u0436\u043d\u043e \u0431\u044b\u0442\u044c \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435: \u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432."));
                     return;
                 }
 
                 if (authManager.getDatabase().isLoginNameTaken(loginName)) {
-                    sendJsonResponse(exchange, 400, createErrorJson("Р­С‚РѕС‚ Р»РѕРіРёРЅ СѓР¶Рµ Р·Р°РЅСЏС‚ РґСЂСѓРіРёРј РёРіСЂРѕРєРѕРј."));
+                    sendJsonResponse(exchange, 400, createErrorJson("\u042d\u0442\u043e\u0442 \u043b\u043e\u0433\u0438\u043d \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442 \u0434\u0440\u0443\u0433\u0438\u043c \u0438\u0433\u0440\u043e\u043a\u043e\u043c."));
                     return;
                 }
 
