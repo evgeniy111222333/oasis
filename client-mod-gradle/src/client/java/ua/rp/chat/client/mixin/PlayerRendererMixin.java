@@ -29,6 +29,15 @@ public class PlayerRendererMixin {
     @Unique private boolean eclipse$jacketVisible;
     @Unique private boolean eclipse$firstPersonSnapshot;
 
+    @Unique private float eclipse$bodyY;
+    @Unique private float eclipse$bodyZ;
+    @Unique private float eclipse$headY;
+    @Unique private float eclipse$headZ;
+    @Unique private float eclipse$leftArmY;
+    @Unique private float eclipse$leftArmZ;
+    @Unique private float eclipse$rightArmY;
+    @Unique private float eclipse$rightArmZ;
+
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V", at = @At("RETURN"))
     private void eclipse$onExtract(LivingEntity entity, LivingEntityRenderState state, float partialTick, CallbackInfo ci) {
         if (state instanceof LocalPlayerRenderState lprs) {
@@ -91,6 +100,15 @@ public class PlayerRendererMixin {
         eclipse$hatSkipDraw = model.hat.skipDraw;
         eclipse$bodyVisible = model.body.visible;
         eclipse$jacketVisible = model.jacket.visible;
+
+        eclipse$bodyY = model.body.y;
+        eclipse$bodyZ = model.body.z;
+        eclipse$headY = model.head.y;
+        eclipse$headZ = model.head.z;
+        eclipse$leftArmY = model.leftArm.y;
+        eclipse$leftArmZ = model.leftArm.z;
+        eclipse$rightArmY = model.rightArm.y;
+        eclipse$rightArmZ = model.rightArm.z;
     }
 
     @Unique
@@ -100,8 +118,22 @@ public class PlayerRendererMixin {
         }
 
         if (eclipse$firstPersonSnapshot) {
+            model.head.visible = eclipse$headVisible;
+            model.hat.visible = eclipse$hatVisible;
+            model.head.skipDraw = eclipse$headSkipDraw;
+            model.hat.skipDraw = eclipse$hatSkipDraw;
             model.body.visible = eclipse$bodyVisible;
             model.jacket.visible = eclipse$jacketVisible;
+
+            model.body.y = eclipse$bodyY;
+            model.body.z = eclipse$bodyZ;
+            model.head.y = eclipse$headY;
+            model.head.z = eclipse$headZ;
+            model.leftArm.y = eclipse$leftArmY;
+            model.leftArm.z = eclipse$leftArmZ;
+            model.rightArm.y = eclipse$rightArmY;
+            model.rightArm.z = eclipse$rightArmZ;
+
             eclipse$snapshotActive = false;
             eclipse$firstPersonSnapshot = false;
             return;
@@ -114,6 +146,16 @@ public class PlayerRendererMixin {
             model.hat.skipDraw = false;
             model.body.visible = true;
             model.jacket.visible = avatar.showJacket;
+
+            model.body.y = eclipse$bodyY;
+            model.body.z = eclipse$bodyZ;
+            model.head.y = eclipse$headY;
+            model.head.z = eclipse$headZ;
+            model.leftArm.y = eclipse$leftArmY;
+            model.leftArm.z = eclipse$leftArmZ;
+            model.rightArm.y = eclipse$rightArmY;
+            model.rightArm.z = eclipse$rightArmZ;
+
             eclipse$snapshotActive = false;
             return;
         }
@@ -124,6 +166,16 @@ public class PlayerRendererMixin {
         model.hat.skipDraw = eclipse$hatSkipDraw;
         model.body.visible = eclipse$bodyVisible;
         model.jacket.visible = eclipse$jacketVisible;
+
+        model.body.y = eclipse$bodyY;
+        model.body.z = eclipse$bodyZ;
+        model.head.y = eclipse$headY;
+        model.head.z = eclipse$headZ;
+        model.leftArm.y = eclipse$leftArmY;
+        model.leftArm.z = eclipse$leftArmZ;
+        model.rightArm.y = eclipse$rightArmY;
+        model.rightArm.z = eclipse$rightArmZ;
+
         eclipse$snapshotActive = false;
     }
 

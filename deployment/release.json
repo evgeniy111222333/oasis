@@ -1,9 +1,9 @@
 {
-  "id": "draft",
-  "published": false,
-  "publishedAt": null,
-  "title": "Доступно обновление",
-  "summary": "Подготовлено новое обновление клиента.",
+  "id": "20260711-195058",
+  "published": true,
+  "publishedAt": "2026-07-11T19:50:58.037693Z",
+  "title": "Fix Player Rendering",
+  "summary": "Fix headless rendering, limb offsets, and inverted elbows",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

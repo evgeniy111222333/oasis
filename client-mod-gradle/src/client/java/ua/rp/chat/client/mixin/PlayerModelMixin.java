@@ -690,7 +690,7 @@ public class PlayerModelMixin {
     private void eclipse$setLowerArm(ModelPart arm, ModelPart sleeve, float bend) {
         ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
         if (forearm != null) {
-            forearm.xRot = bend;
+            forearm.xRot = -bend;
         }
     }
 
