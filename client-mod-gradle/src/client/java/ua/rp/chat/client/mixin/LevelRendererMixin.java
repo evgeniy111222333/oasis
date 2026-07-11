@@ -17,9 +17,8 @@ public class LevelRendererMixin {
         cameraManager.setRenderingFirstPersonPlayer(cameraManager.isFullBodyFirstPersonEnabled());
     }
 
-    @Inject(method = "extractLevel", at = @At("RETURN"))
-    private void eclipse$afterExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
-        SmartCameraManager cameraManager = SmartCameraManager.getInstance();
-        cameraManager.setRenderingFirstPersonPlayer(false);
+    @Inject(method = "renderLevel", at = @At("RETURN"))
+    private void eclipse$afterRender(CallbackInfo ci) {
+        SmartCameraManager.getInstance().setRenderingFirstPersonPlayer(false);
     }
 }

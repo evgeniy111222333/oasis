@@ -1,7 +1,7 @@
 {
-  "id": "20260711-195947",
+  "id": "20260711-200510",
   "published": true,
-  "publishedAt": "2026-07-11T19:59:47.019488Z",
+  "publishedAt": "2026-07-11T20:05:10.619635Z",
   "title": "Fix First Person Head Rendering",
   "summary": "Ensure head is invisible in all first-person body render passes",
   "notes": [],
