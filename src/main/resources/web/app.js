@@ -126,13 +126,18 @@ function setSkinPreview(src) {
         return;
     }
 
+    skinModel.classList.add("skin-model-loading");
     const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "high";
     image.onload = () => {
         skinModel.style.setProperty("--skin-url", toCssUrl(src));
         skinModel.classList.remove("skin-model-empty");
+        skinModel.classList.remove("skin-model-loading");
     };
     image.onerror = () => {
         if (src.includes("/Steve")) {
+            skinModel.classList.remove("skin-model-loading");
             skinModel.classList.add("skin-model-empty");
             return;
         }

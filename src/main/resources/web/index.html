@@ -7,7 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="preload" as="image" href="bg_village.jpg?v=5">
+    <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
     <main class="auth-shell">
@@ -32,7 +33,7 @@
                 <div class="stage-arch"></div>
                 <div class="stage-light"></div>
                 <div class="skin-frame" aria-label="Облик персонажа">
-                    <div id="skinModel" class="skin-model">
+                    <div id="skinModel" class="skin-model skin-model-loading">
                         <span class="skin-part skin-head"></span>
                         <span class="skin-part skin-hat"></span>
                         <span class="skin-part skin-body"></span>
@@ -200,6 +201,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>

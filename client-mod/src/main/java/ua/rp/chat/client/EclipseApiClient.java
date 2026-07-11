@@ -7,6 +7,8 @@ import java.net.URI;
 
 public final class EclipseApiClient {
     private static final String DEFAULT_BASE_URL = "http://localhost:25580";
+    private static final String PRODUCTION_GAME_HOST = "13.51.232.191";
+    private static final String PRODUCTION_API_URL = "https://eclipse-rp.13-51-232-191.sslip.io";
     private static volatile String rememberedBaseUrl = "";
 
     private EclipseApiClient() {
@@ -39,6 +41,10 @@ public final class EclipseApiClient {
                     host = host.substring(0, colon);
                 }
                 if (!host.isBlank()) {
+                    if (PRODUCTION_GAME_HOST.equalsIgnoreCase(host)
+                            || "eclipse-rp.13-51-232-191.sslip.io".equalsIgnoreCase(host)) {
+                        return PRODUCTION_API_URL;
+                    }
                     return "http://" + host + ":25580";
                 }
             }

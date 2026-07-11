@@ -883,7 +883,11 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             memory: {
                 max: "4G",
                 min: "2G"
-            }
+            },
+            // Make the public HTTPS API available before the first world render.
+            // Without this, the client guesses http://<game-host>:25580 and every
+            // initial skin request waits for a connection timeout.
+            customArgs: [`-Declipse.apiUrl=${normalizeApiUrl(apiUrl)}`]
         };
 
         const minecraftProcess = await launcher.launch(opts);

@@ -128,9 +128,10 @@ public final class R2AppearanceStorage {
         String amzDate = AMZ_DATE.format(now);
         String dateStamp = DATE_STAMP.format(now);
         String credentialScope = dateStamp + "/" + region + "/s3/aws4_request";
-        String signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date";
+        String signedHeaders = "cache-control;content-type;host;x-amz-content-sha256;x-amz-date";
 
         String canonicalHeaders = ""
+                + "cache-control:public, max-age=31536000, immutable\n"
                 + "content-type:image/png\n"
                 + "host:" + host + "\n"
                 + "x-amz-content-sha256:" + payloadHash + "\n"
@@ -159,6 +160,7 @@ public final class R2AppearanceStorage {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofByteArray(pngBytes))
                 .header("Authorization", authorization)
+                .header("Cache-Control", "public, max-age=31536000, immutable")
                 .header("Content-Type", "image/png")
                 .header("x-amz-content-sha256", payloadHash)
                 .header("x-amz-date", amzDate)

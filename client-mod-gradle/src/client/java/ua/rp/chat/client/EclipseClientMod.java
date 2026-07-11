@@ -4,9 +4,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.platform.InputConstants;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,7 +30,7 @@ public class EclipseClientMod implements ClientModInitializer {
     public static final String MOD_ID = "eclipseclient";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
-    private static boolean bodyStatusKeyDown = false;
+    private static KeyMapping bodyStatusKey;
     private static int sessionPollTicks = 0;
     private static String lastOpenedUrl = "";
 
@@ -35,6 +38,12 @@ public class EclipseClientMod implements ClientModInitializer {
     public void onInitializeClient() {
         LOGGER.info("Eclipse RolePlay Client initialized! Waiting for server packages...");
         EclipseHudOverlay.register();
+        bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.eclipseclient.body_status",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_B,
+                KeyMapping.Category.GAMEPLAY
+        ));
 
         // Register custom payload codec
         PayloadTypeRegistry.clientboundPlay().register(AuthPayload.TYPE, AuthPayload.CODEC);
@@ -65,14 +74,16 @@ public class EclipseClientMod implements ClientModInitializer {
     }
 
     private void handleBodyStatusKey(Minecraft client) {
-        if (client == null || client.getWindow() == null) {
+        if (client == null || bodyStatusKey == null) {
             return;
         }
-        boolean down = GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_B) == GLFW.GLFW_PRESS;
-        if (down && !bodyStatusKeyDown && client.player != null && client.level != null && client.screen == null) {
+        while (bodyStatusKey.consumeClick()) {
+            if (client.player == null || client.level == null || client.screen != null) {
+                continue;
+            }
+            LOGGER.debug("Opening Eclipse body status screen.");
             client.setScreen(new BodyStatusScreen(VitalsClientState.bodyStatusUrl()));
         }
-        bodyStatusKeyDown = down;
     }
 
     private void pollAuthSession(Minecraft client) {

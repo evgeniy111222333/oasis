@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class EclipseAppearanceManager {
     private static final long FIRST_LOAD_RETRY_MS = 2500L;
-    private static final long PROFILE_REFRESH_MS = 30000L;
+    private static final long PROFILE_REFRESH_MS = 120000L;
     private static final Map<UUID, Entry> CACHE = new ConcurrentHashMap<>();
     private static long lastSweepMs = 0L;
 
@@ -87,7 +87,7 @@ public final class EclipseAppearanceManager {
     }
 
     private static void fetchAndRegisterTexture(Minecraft client, UUID uuid, AppearanceProfile profile, Entry entry) {
-        CompletableFuture.supplyAsync(() -> getBytes(EclipseApiClient.resolve(profile.textureUrl)))
+        CompletableFuture.supplyAsync(() -> loadTextureBytes(client, profile))
                 .whenComplete((bytes, throwable) -> {
                     if (throwable != null || bytes == null || bytes.length == 0) {
                         EclipseClientMod.LOGGER.debug("Appearance texture request failed for " + uuid, throwable);
@@ -100,9 +100,13 @@ public final class EclipseAppearanceManager {
                             NativeImage image = NativeImage.read(new ByteArrayInputStream(bytes));
                             Identifier id = Identifier.fromNamespaceAndPath("eclipseclient", "appearance/" + uuid.toString().replace("-", "_") + "_" + profile.hash);
                             DynamicTexture texture = new DynamicTexture(() -> "Eclipse appearance " + uuid, image);
+                            if (entry.textureId != null && !entry.textureId.equals(id)) {
+                                client.getTextureManager().release(entry.textureId);
+                            }
                             client.getTextureManager().register(id, texture);
                             PlayerModelType model = "slim".equalsIgnoreCase(profile.model) ? PlayerModelType.SLIM : PlayerModelType.WIDE;
                             entry.skin = PlayerSkin.insecure(new EclipseTextureAsset(id), null, null, model);
+                            entry.textureId = id;
                             entry.hash = profile.hash;
                             entry.model = profile.model;
                             entry.debugSkinPath = exportDebugTexture(client, uuid, profile, bytes);
@@ -140,6 +144,42 @@ public final class EclipseAppearanceManager {
                 connection.disconnect();
             }
         }
+    }
+
+    private static byte[] loadTextureBytes(Minecraft client, AppearanceProfile profile) {
+        Path cacheFile = textureCacheFile(client, profile.hash);
+        if (cacheFile != null && Files.isRegularFile(cacheFile)) {
+            try {
+                byte[] cached = Files.readAllBytes(cacheFile);
+                if (cached.length > 0) {
+                    return cached;
+                }
+            } catch (IOException ignored) {
+                // A damaged cache entry is replaced by a fresh download below.
+            }
+        }
+
+        byte[] downloaded = getBytes(EclipseApiClient.resolve(profile.textureUrl));
+        if (downloaded == null || downloaded.length == 0 || cacheFile == null) {
+            return downloaded;
+        }
+        try {
+            Files.createDirectories(cacheFile.getParent());
+            Files.write(cacheFile, downloaded);
+        } catch (IOException e) {
+            EclipseClientMod.LOGGER.debug("Could not cache Eclipse appearance " + profile.hash, e);
+        }
+        return downloaded;
+    }
+
+    private static Path textureCacheFile(Minecraft client, String hash) {
+        if (client == null || hash == null || !hash.matches("[a-fA-F0-9]{40}")) {
+            return null;
+        }
+        return client.gameDirectory.toPath()
+                .resolve("eclipse-cache")
+                .resolve("skins")
+                .resolve(hash.toLowerCase() + ".png");
     }
 
     private static String extractJsonString(String body, String propertyName) {
@@ -214,6 +254,7 @@ public final class EclipseAppearanceManager {
     private static final class Entry {
         private final AtomicBoolean loading = new AtomicBoolean(false);
         private volatile PlayerSkin skin;
+        private volatile Identifier textureId;
         private volatile String hash = "";
         private volatile String model = "classic";
         private volatile String debugSkinPath;

@@ -17,6 +17,8 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +34,7 @@ public class AuthWebServer {
     private final AuthManager authManager;
     private final StaminaManager staminaManager;
     private HttpServer server;
+    private ExecutorService webExecutor;
     private final Gson gson = new Gson();
 
     private static final class ApiJsonResult {
@@ -80,7 +83,12 @@ public class AuthWebServer {
             server.createContext("/api/required-mods", new ApiRequiredModsHandler());
             server.createContext("/client", new ClientDownloadHandler());
 
-            server.setExecutor(null); // default executor
+            webExecutor = Executors.newFixedThreadPool(6, runnable -> {
+                Thread thread = new Thread(runnable, "eclipse-web");
+                thread.setDaemon(true);
+                return thread;
+            });
+            server.setExecutor(webExecutor);
             server.start();
             plugin.getLogger().info("Auth Web Server started on port " + port);
         } catch (IOException e) {
@@ -91,6 +99,10 @@ public class AuthWebServer {
     public void stop() {
         if (server != null) {
             server.stop(1);
+            if (webExecutor != null) {
+                webExecutor.shutdownNow();
+                webExecutor = null;
+            }
             plugin.getLogger().info("Auth Web Server stopped.");
         }
     }
@@ -109,9 +121,20 @@ public class AuthWebServer {
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
-            exchange.getResponseHeaders().set("Pragma", "no-cache");
-            exchange.getResponseHeaders().set("Expires", "0");
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")
+                    && !exchange.getRequestMethod().equalsIgnoreCase("HEAD")) {
+                sendResponse(exchange, 405, "text/plain", "Method Not Allowed");
+                return;
+            }
+            if (filename.endsWith(".html")) {
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
+                exchange.getResponseHeaders().set("Pragma", "no-cache");
+                exchange.getResponseHeaders().set("Expires", "0");
+            } else if (filename.endsWith(".jpg") || filename.endsWith(".png")) {
+                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400, immutable");
+            } else {
+                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600, must-revalidate");
+            }
             
             File webDir = new File(plugin.getDataFolder(), "web");
             File file = new File(webDir, filename);
@@ -121,10 +144,7 @@ public class AuthWebServer {
                 return;
             }
 
-            byte[] bytes = new byte[(int) file.length()];
-            try (FileInputStream fis = new FileInputStream(file)) {
-                fis.read(bytes);
-            }
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
 
             sendResponse(exchange, 200, contentType, bytes);
         }
@@ -133,13 +153,12 @@ public class AuthWebServer {
     private class WebAssetHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")
+                    && !exchange.getRequestMethod().equalsIgnoreCase("HEAD")) {
                 sendResponse(exchange, 405, "text/plain", "Method Not Allowed");
                 return;
             }
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
-            exchange.getResponseHeaders().set("Pragma", "no-cache");
-            exchange.getResponseHeaders().set("Expires", "0");
+            exchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600, must-revalidate");
 
             String path = exchange.getRequestURI().getPath();
             String relPath = path.startsWith("/assets/") ? path.substring("/assets/".length()) : "";
@@ -158,13 +177,7 @@ public class AuthWebServer {
                 return;
             }
 
-            byte[] bytes = new byte[(int) file.length()];
-            try (FileInputStream fis = new FileInputStream(file)) {
-                int readBytes = fis.read(bytes);
-                if (readBytes < bytes.length) {
-                    plugin.getLogger().warning("Could not read entire web asset: " + file.getName());
-                }
-            }
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
 
             sendResponse(exchange, 200, contentTypeFor(file.getName()), bytes);
         }
@@ -516,6 +529,12 @@ public class AuthWebServer {
         exchange.getResponseHeaders().set("Content-Type", contentType);
         // Enable CORS in development if needed
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        if (exchange.getRequestMethod().equalsIgnoreCase("HEAD")) {
+            exchange.getResponseHeaders().set("Content-Length", Integer.toString(content.length));
+            exchange.sendResponseHeaders(statusCode, -1);
+            exchange.close();
+            return;
+        }
         exchange.sendResponseHeaders(statusCode, content.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(content);

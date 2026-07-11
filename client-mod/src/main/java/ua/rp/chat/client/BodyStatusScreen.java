@@ -15,11 +15,10 @@ import net.minecraft.util.Util;
 import java.net.URI;
 
 public class BodyStatusScreen extends Screen {
-    private static MCEFBrowser sharedBrowser;
-    private static String sharedUrl;
-
     private final String url;
     private MCEFBrowser browser;
+    private int ticksWithoutTexture;
+    private boolean browserClosed;
     private String fallbackStatus = "Открываем состояние персонажа...";
     private int panelX;
     private int panelY;
@@ -38,14 +37,8 @@ public class BodyStatusScreen extends Screen {
             if (!MCEF.isInitialized()) {
                 MCEF.initialize();
             }
-            if (sharedBrowser == null) {
-                sharedBrowser = MCEF.createBrowser(url, true);
-                sharedUrl = url;
-            } else if (!url.equals(sharedUrl)) {
-                sharedBrowser.loadURL(url);
-                sharedUrl = url;
-            }
-            browser = sharedBrowser;
+            browser = MCEF.createBrowser(url, true);
+            browserClosed = false;
             resizeBrowser();
             if (browser != null) {
                 browser.setFocus(true);
@@ -60,6 +53,7 @@ public class BodyStatusScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
@@ -71,6 +65,19 @@ public class BodyStatusScreen extends Screen {
         graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
         graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (browser != null && !browser.isTextureReady()) {
+            ticksWithoutTexture++;
+            if (ticksWithoutTexture == 100) {
+                EclipseClientMod.LOGGER.warn("MCEF body browser has not produced a texture after 5 seconds: " + url);
+            }
+        } else {
+            ticksWithoutTexture = 0;
+        }
     }
 
     @Override
@@ -153,13 +160,16 @@ public class BodyStatusScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (browser != null) {
-            browser.setFocus(false);
-            browser = null;
-        }
+        closeBrowser();
         if (minecraft != null) {
             minecraft.setScreen(null);
         }
+    }
+
+    @Override
+    public void removed() {
+        closeBrowser();
+        super.removed();
     }
 
     @Override
@@ -193,6 +203,16 @@ public class BodyStatusScreen extends Screen {
 
     private int getGuiScale() {
         return minecraft == null ? 1 : Math.max(1, minecraft.getWindow().getGuiScale());
+    }
+
+    private void closeBrowser() {
+        if (browser == null || browserClosed) {
+            return;
+        }
+        browserClosed = true;
+        browser.setFocus(false);
+        browser.close();
+        browser = null;
     }
 
     private void openExternalFallback() {

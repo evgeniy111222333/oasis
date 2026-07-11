@@ -46,7 +46,9 @@ public class AuthScreen extends Screen {
             }
 
             if (browser == null) {
-                browser = MCEF.createBrowser(authUrl, true);
+                // The auth page is fully opaque. Avoiding a transparent OSR surface
+                // keeps CEF on the stable texture path and prevents missing composited layers.
+                browser = MCEF.createBrowser(authUrl, false);
             }
 
             resizeBrowser();
