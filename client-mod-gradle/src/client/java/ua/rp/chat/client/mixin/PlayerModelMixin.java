@@ -44,6 +44,11 @@ public class PlayerModelMixin {
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
     private void eclipse$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
+        model.head.visible = true;
+        model.head.skipDraw = false;
+        model.hat.visible = state.showHat;
+        model.hat.skipDraw = false;
+
         eclipse$applyStableRoleplayPose(model, state);
         boolean localFirstPerson = eclipse$isLocalFirstPersonState(state)
                 && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose();
@@ -615,15 +620,15 @@ public class PlayerModelMixin {
         float step = (float) Math.sin(state.walkAnimationPos * 0.6662f);
         float oppositeStep = (float) Math.sin(state.walkAnimationPos * 0.6662f + Math.PI);
         float walk = eclipse$clamp(moving, 0.0f, 1.0f);
-        float idleArmBend = 0.18f * calm;
+        float idleArmBend = 0.32f * calm;
         float lookBend = 0.24f * lookDownLean;
         float runTuck = walk * (state.speedValue > 0.12f ? 0.08f : 0.0f);
 
         eclipse$setLowerArm(model.rightArm, model.rightSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -step) * 0.22f));
         eclipse$setLowerArm(model.leftArm, model.leftSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -oppositeStep) * 0.22f));
 
-        float rightKnee = 0.06f * calm + walk * (0.10f + Math.max(0.0f, step) * 0.38f);
-        float leftKnee = 0.06f * calm + walk * (0.10f + Math.max(0.0f, oppositeStep) * 0.38f);
+        float rightKnee = 0.18f * calm + walk * (0.10f + Math.max(0.0f, step) * 0.38f);
+        float leftKnee = 0.18f * calm + walk * (0.10f + Math.max(0.0f, oppositeStep) * 0.38f);
         if (state.isCrouching) {
             rightKnee += 0.22f;
             leftKnee += 0.22f;

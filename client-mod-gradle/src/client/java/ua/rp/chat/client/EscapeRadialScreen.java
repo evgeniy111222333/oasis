@@ -43,8 +43,8 @@ public final class EscapeRadialScreen extends Screen {
         List<Option> options = options(c);
         for (int i = 0; i < options.size(); i++) {
             double angle = -Math.PI / 2.0 + i * Math.PI * 2.0 / options.size();
-            int x = cx + (int) Math.round(Math.cos(angle) * 155.0);
-            int y = cy + (int) Math.round(Math.sin(angle) * 108.0);
+            int x = cx + (int) Math.round(Math.cos(angle) * 172.0);
+            int y = cy + (int) Math.round(Math.sin(angle) * 105.0);
             Bounds b = Bounds.centered(x, y, 142, 38);
             Option option = options.get(i);
             boolean hover = b.contains(mouseX, mouseY);
@@ -64,7 +64,7 @@ public final class EscapeRadialScreen extends Screen {
         int cy = height / 2;
         for (int i = 0; i < options.size(); i++) {
             double angle = -Math.PI / 2.0 + i * Math.PI * 2.0 / options.size();
-            Bounds b = Bounds.centered(cx + (int) Math.round(Math.cos(angle) * 155.0), cy + (int) Math.round(Math.sin(angle) * 108.0), 142, 38);
+            Bounds b = Bounds.centered(cx + (int) Math.round(Math.cos(angle) * 172.0), cy + (int) Math.round(Math.sin(angle) * 105.0), 142, 38);
             Option option = options.get(i);
             if (b.contains(event.x(), event.y())) {
                 if (option.enabled) {

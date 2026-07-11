@@ -1,9 +1,9 @@
 {
-  "id": "20260711-201606",
+  "id": "20260711-204511",
   "published": true,
-  "publishedAt": "2026-07-11T20:16:06.461307Z",
-  "title": "Fix Knee Joint Bend Direction",
-  "summary": "Corrected the knee rotation sign so legs bend backward naturally in all states.",
+  "publishedAt": "2026-07-11T20:45:11.927994Z",
+  "title": "Fix Visuals, Radial Menu, and State Leaks",
+  "summary": "Add nameplate HUD offsets, increase radial menu spacing, and fix player head state leak.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
