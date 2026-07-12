@@ -27,7 +27,6 @@ public class BodyStatusScreen extends Screen {
     private final String traceId = McefDiagnostics.nextTraceId("body");
     private final long createdNanos = System.nanoTime();
     private MCEFBrowser browser;
-    private boolean pageLoaded = false;
     private int ticksWithoutTexture;
     private int ticksOpen;
     private boolean browserClosed;
@@ -62,17 +61,6 @@ public class BodyStatusScreen extends Screen {
             String targetUrl = getLocalBodyUrl(url);
             log("Opening local body URL: " + targetUrl);
             browser = MCEF.createBrowser(targetUrl, true);
-            if (browser != null && browser.getClient() != null) {
-                browser.getClient().addLoadHandler(new org.cef.handler.CefLoadHandlerAdapter() {
-                    @Override
-                    public void onLoadingStateChange(org.cef.browser.CefBrowser b, boolean isLoading, boolean canGoBack, boolean canGoForward) {
-                        if (!isLoading) {
-                            pageLoaded = true;
-                            log("Local body status page loading completed successfully.");
-                        }
-                    }
-                });
-            }
             log("browser created: " + McefDiagnostics.browserState(browser));
             browserClosed = false;
             resizeBrowser();
@@ -164,7 +152,7 @@ public class BodyStatusScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
-        if (browser != null && pageLoaded && browser.isTextureReady()) {
+        if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
             if (texture != null) {
                 if (!firstBlitLogged) {
@@ -176,11 +164,11 @@ public class BodyStatusScreen extends Screen {
                 return;
             }
         }
-        if (!firstFallbackLogged) {
-            firstFallbackLogged = true;
-            log("rendering fallback because browser texture is unavailable: " + McefDiagnostics.browserState(browser));
-        }
-        if (ticksOpen > 10) {
+        if (browser == null) {
+            if (!firstFallbackLogged) {
+                firstFallbackLogged = true;
+                log("rendering fallback because browser is null");
+            }
             graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
             graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
             graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);

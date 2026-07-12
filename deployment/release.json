@@ -1,11 +1,11 @@
 {
-  "id": "20260712-145451",
+  "id": "20260712-145817",
   "published": true,
-  "publishedAt": "2026-07-12T14:54:51.871265Z",
-  "title": "Body UI Local Flash Fix",
-  "summary": "Fixed a brief visual flash of the fallback background when opening the body status screen. Delayed the fallback screen render until after 10 ticks.",
+  "publishedAt": "2026-07-12T14:58:17.892609Z",
+  "title": "Body UI Local PageLoaded Fix",
+  "summary": "Updated BodyStatusScreen to prevent texture rendering until the CEF load handler triggers pageLoaded = true, eliminating white loading flashes.",
   "notes": [
-    "Ensures a completely seamless, transparent transition when pressing B"
+    "CefLoadHandlerAdapter monitors loading state changes on local file:// load paths"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
