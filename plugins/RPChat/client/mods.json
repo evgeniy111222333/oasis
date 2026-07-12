@@ -2,7 +2,7 @@
     {
         "name": "eclipse-client-1.1.1.jar",
         "path": "mods/eclipse-client-1.1.1.jar",
-        "url": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.1.1.jar",
+        "url": "https://api.eclipse-roleplay.online/dist/client/mods/eclipse-client-1.1.1.jar",
         "sha1": "61d002cc01b93348c748e49b5255825b93426bab",
         "size": 636146
     },

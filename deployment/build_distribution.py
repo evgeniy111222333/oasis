@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-PUBLIC_BASE_URL = "https://dist.eclipse-roleplay.online"
+PUBLIC_BASE_URL = "https://api.eclipse-roleplay.online/dist"
 
 
 def digest(path: Path, algorithm: str) -> str:

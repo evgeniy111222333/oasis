@@ -40,6 +40,7 @@ def main() -> None:
     )
     subprocess.run([sys.executable, str(deployment_dir / "build_distribution.py")], cwd=repo, check=True)
     subprocess.run([sys.executable, str(deployment_dir / "upload_r2_distribution.py")], cwd=repo, check=True)
+    subprocess.run([sys.executable, str(deployment_dir / "upload_vps_distribution.py")], cwd=repo, check=True)
     print(f"Published release push {release['id']}")
 
 
