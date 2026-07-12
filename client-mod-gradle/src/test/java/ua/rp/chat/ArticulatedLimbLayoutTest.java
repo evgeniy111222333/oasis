@@ -66,11 +66,10 @@ public final class ArticulatedLimbLayoutTest {
 
         assertTrue("elbow cylinder is inset inside the base arm",
                 ArticulatedLimbLayout.ELBOW_CORE_RADIUS < 2.0f);
-        assertClose("second layer keeps a radial anti-z-fighting gap",
-                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
-                ArticulatedLimbLayout.ELBOW_SLEEVE_RADIUS - ArticulatedLimbLayout.ELBOW_CORE_RADIUS);
         assertTrue("elbow cylinder has enough facets for a smooth block-scale silhouette",
                 ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS >= 8);
+        assertClose("elbow bridge samples exactly one stable texture row", 1.0f,
+                ArticulatedLimbLayout.ELBOW_TEXTURE_V_SPAN);
         assertClose("elbow core bisects the joint angle", -0.5f,
                 ArticulatedLimbLayout.jointCoreRotation(-1.0f));
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");

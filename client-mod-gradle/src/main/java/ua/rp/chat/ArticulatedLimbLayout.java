@@ -22,8 +22,8 @@ public final class ArticulatedLimbLayout {
 
     public static final int ELBOW_CYLINDER_SEGMENTS = 8;
     public static final float ELBOW_CORE_RADIUS = 1.82f;
-    public static final float ELBOW_SLEEVE_RADIUS = ELBOW_CORE_RADIUS + OUTER_LAYER_GROW_XZ;
     public static final float ELBOW_CORE_X_INSET = 0.10f;
+    public static final float ELBOW_TEXTURE_V_SPAN = 1.0f;
 
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
     public static final int SKIN_TEXTURE_HEIGHT = 64;

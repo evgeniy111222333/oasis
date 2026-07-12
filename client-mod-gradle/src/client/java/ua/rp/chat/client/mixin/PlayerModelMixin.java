@@ -43,8 +43,8 @@ public class PlayerModelMixin {
         eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", false);
         eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", false);
         int armWidth = slim ? 3 : 4;
-        eclipse$installElbowGeometry(model.rightArm, armWidth, slim ? -2.0f : -3.0f, 40, 16, 40, 32);
-        eclipse$installElbowGeometry(model.leftArm, armWidth, -1.0f, 32, 48, 48, 48);
+        eclipse$installElbowGeometry(model.rightArm, armWidth, slim ? -2.0f : -3.0f, 40, 16);
+        eclipse$installElbowGeometry(model.leftArm, armWidth, -1.0f, 32, 48);
         eclipse$removeWearableEndCaps(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
@@ -551,11 +551,6 @@ public class PlayerModelMixin {
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, sleeve),
                 PartPose.ZERO);
 
-        arm.addOrReplaceChild("eclipse_elbow_sleeve",
-                CubeListBuilder.create()
-                        .texOffs(sleeveTexX, sleeveTexY).addBox(minX, -1.0f, -1.0f, width, 2, 2, sleeve),
-                PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
-        
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
     }
 
@@ -649,19 +644,13 @@ public class PlayerModelMixin {
 
     @Unique
     private void eclipse$installElbowGeometry(
-            ModelPart arm, int width, float minX, int texX, int texY, int sleeveTexX, int sleeveTexY) {
+            ModelPart arm, int width, float minX, int texX, int texY) {
         eclipse$replaceWithElbowCylinder(
                 eclipse$getChildOrNull(arm, "eclipse_elbow_core"),
                 minX + ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
                 minX + width - ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
                 ArticulatedLimbLayout.ELBOW_CORE_RADIUS,
-                texX + 4.0f, texY + 10.0f, width, 4.0f);
-        eclipse$replaceWithElbowCylinder(
-                eclipse$getChildOrNull(arm, "eclipse_elbow_sleeve"),
-                minX - ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ + ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
-                minX + width + ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ - ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
-                ArticulatedLimbLayout.ELBOW_SLEEVE_RADIUS,
-                sleeveTexX + 4.0f, sleeveTexY + 8.0f, width, 4.0f);
+                texX + 4.0f, texY + 10.0f, width, ArticulatedLimbLayout.ELBOW_TEXTURE_V_SPAN);
     }
 
     @Unique
@@ -686,8 +675,8 @@ public class PlayerModelMixin {
             float z0 = radius * (float) Math.sin(angle0);
             float y1 = radius * (float) Math.cos(angle1);
             float z1 = radius * (float) Math.sin(angle1);
-            float v0 = (textureV + textureSpanV * segment / segments) / 64.0f;
-            float v1 = (textureV + textureSpanV * (segment + 1) / segments) / 64.0f;
+            float v0 = textureV / 64.0f;
+            float v1 = (textureV + textureSpanV) / 64.0f;
             ModelPart.Vertex[] vertices = {
                     new ModelPart.Vertex(minX, y0, z0, u0, v0),
                     new ModelPart.Vertex(minX, y1, z1, u0, v1),
@@ -923,10 +912,8 @@ public class PlayerModelMixin {
         eclipse$resetWearableLocalPose(model.leftPants);
         eclipse$setNestedVisible(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.rightSleeve.visible);
         eclipse$setNestedVisible(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.rightSleeve.visible);
-        eclipse$setDirectVisible(model.rightArm, "eclipse_elbow_sleeve", model.rightSleeve.visible);
         eclipse$setNestedVisible(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.leftSleeve.visible);
         eclipse$setNestedVisible(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.leftSleeve.visible);
-        eclipse$setDirectVisible(model.leftArm, "eclipse_elbow_sleeve", model.leftSleeve.visible);
         eclipse$setNestedVisible(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", model.rightPants.visible);
         eclipse$setNestedVisible(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", model.rightPants.visible);
         eclipse$setNestedVisible(model.leftLeg, "eclipse_thigh", "eclipse_thigh_pants", model.leftPants.visible);
@@ -976,18 +963,6 @@ public class PlayerModelMixin {
         ModelPart elbowCore = eclipse$getChildOrNull(arm, "eclipse_elbow_core");
         if (elbowCore != null) {
             elbowCore.xRot = jointRotation;
-        }
-        ModelPart elbowSleeve = eclipse$getChildOrNull(arm, "eclipse_elbow_sleeve");
-        if (elbowSleeve != null) {
-            elbowSleeve.xRot = jointRotation;
-        }
-    }
-
-    @Unique
-    private void eclipse$setDirectVisible(ModelPart root, String childName, boolean visible) {
-        ModelPart child = eclipse$getChildOrNull(root, childName);
-        if (child != null) {
-            child.visible = visible;
         }
     }
 
