@@ -1,6 +1,6 @@
 {
   "name": "eclipse-launcher",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Eclipse RolePlay Desktop Launcher",
   "author": "Eclipse RolePlay",
   "main": "main.js",
@@ -41,7 +41,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh"
     }
   },
   "dependencies": {

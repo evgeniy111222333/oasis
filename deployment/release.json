@@ -1,14 +1,13 @@
 {
-  "id": "20260712-131450",
+  "id": "20260712-132512",
   "published": true,
-  "publishedAt": "2026-07-12T13:14:50.330558Z",
-  "title": "Reliable skin delivery - client 1.1.1",
-  "summary": "Custom skins now use a new immutable client build with automatic AWS API fallback when the Cloudflare/R2 route fails.",
+  "publishedAt": "2026-07-12T13:25:12.392163Z",
+  "title": "Launcher self-update 1.0.8",
+  "summary": "Fixed the launcher update loop: verified detached installer, legacy 1.0.6 bridge, and automatic silent replacement.",
   "notes": [
-    "New eclipse-client-1.1.1 URL prevents stale CDN cache collisions.",
-    "CDN download retries safely, then switches to the API-hosted copy.",
-    "SHA-1/PNG verification and atomic disk cache prevent corrupted skins.",
-    "Launcher 1.0.7 supplies the production API URL before first render."
+    "Launcher 1.0.6 can now hand off safely to the 1.0.8 installer.",
+    "Installer size and SHA-256 are verified before execution.",
+    "Future updates run detached with /S --updated and survive launcher shutdown."
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

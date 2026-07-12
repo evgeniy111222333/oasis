@@ -226,6 +226,54 @@ function fileSha1(filePath) {
     return crypto.createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function fileSha256(filePath) {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function verifyDownloadedFile(filePath, descriptor) {
+    if (!fs.existsSync(filePath)) {
+        throw new Error('Downloaded installer is missing.');
+    }
+
+    const stat = fs.statSync(filePath);
+    if (descriptor.size && stat.size !== Number(descriptor.size)) {
+        throw new Error(`Installer size mismatch: expected ${descriptor.size}, received ${stat.size}.`);
+    }
+
+    const expectedSha256 = String(descriptor.sha256 || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(expectedSha256)) {
+        throw new Error('Distribution manifest does not contain a valid installer SHA-256.');
+    }
+
+    const actualSha256 = fileSha256(filePath);
+    if (actualSha256 !== expectedSha256) {
+        throw new Error(`Installer SHA-256 mismatch: expected ${expectedSha256}, received ${actualSha256}.`);
+    }
+
+    return actualSha256;
+}
+
+function startDetachedInstaller(installerPath) {
+    return new Promise((resolve, reject) => {
+        const installer = childProcess.spawn(
+            installerPath,
+            ['/S', '--updated'],
+            {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: false
+            }
+        );
+
+        installer.once('error', reject);
+        installer.once('spawn', () => {
+            const pid = installer.pid;
+            installer.unref();
+            resolve(pid);
+        });
+    });
+}
+
 function parseJavaMajor(versionOutput) {
     const match = String(versionOutput || '').match(/(?:openjdk|java)\s+version\s+"([^"]+)"/i)
         || String(versionOutput || '').match(/version\s+"([^"]+)"/i);
@@ -719,9 +767,9 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
                     summary: `Доступна новая версия лаунчера ${remoteLauncherVersion} (текущая: ${currentLauncherVersion}). Для продолжения игры необходимо обновить лаунчер.`,
                     buttonLabel: 'ОБНОВИТЬ ЛАУНЧЕР',
                     notes: [
-                        'Автоматическое скачивание и установка поверх старой версии',
-                        'Исправлены зависания загрузки',
-                        'Добавлена детальная сетевая диагностика'
+                        'Установщик запускается независимо от старого лаунчера',
+                        'Перед запуском проверяются размер и SHA-256 файла',
+                        'Тихая установка выполняется поверх текущей версии'
                     ]
                 }
             });
@@ -769,20 +817,19 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
                 const mbTotal = (total / (1024 * 1024)).toFixed(1);
                 updateProgress(`Скачивание установщика лаунчера: ${percent}% [${mbReceived} MB / ${mbTotal} MB]...`, Math.round(10 + percent * 0.8));
             });
+
+            const installerSha256 = verifyDownloadedFile(installerDest, distribution.launcher);
+            logLauncher(`Launcher setup verified: size=${fs.statSync(installerDest).size}, sha256=${installerSha256}`);
             
             updateProgress('Запуск установщика...', 95);
-            logLauncher(`Executing launcher setup: ${installerDest}`);
-            
-            const exec = require('child_process').exec;
-            exec(`"${installerDest}"`, (err) => {
-                if (err) {
-                    logLauncher(`Failed to execute launcher setup: ${err.message}`);
-                }
-            });
-            
+            const installerPid = await startDetachedInstaller(installerDest);
+            logLauncher(`Detached launcher setup started: path=${installerDest}, pid=${installerPid}, args=/S --updated`);
+            updateProgress('Установщик запущен. Лаунчер будет перезапущен после обновления.', 100);
+
             setTimeout(() => {
-                app.quit();
-            }, 1000);
+                logLauncher('Exiting old launcher so the detached installer can replace it.');
+                app.exit(0);
+            }, 300);
             return;
         }
 
