@@ -20,8 +20,19 @@ public final class ArticulatedLimbLayout {
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
 
+    public static final float ELBOW_CORE_HEIGHT = 2.5f;
+    public static final float ELBOW_CORE_TOP_Y = -ELBOW_CORE_HEIGHT / 2.0f;
+    public static final float ELBOW_CORE_INSET_XZ = 0.20f;
+    public static final float MAX_SUPPORTED_FOREARM_BEND = 1.0f;
+
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
+    public static final int ELBOW_CORE_TEXTURE_ROW_OFFSET = 6;
     public static final int SKIN_TEXTURE_HEIGHT = 64;
+
+    public static final int ORIGINAL_CAP_V_SHIFT_PIXELS = -6;
+    public static final int HAND_TOP_CAP_V_SHIFT_PIXELS = 4;
+    public static final int HAND_BOTTOM_CAP_V_SHIFT_PIXELS = 6;
+    public static final int ELBOW_CORE_CAP_V_SHIFT_PIXELS = 4;
 
     private ArticulatedLimbLayout() {
     }
@@ -42,8 +53,8 @@ public final class ArticulatedLimbLayout {
         return LEG_FOOT_Y - LEG_KNEE_Y;
     }
 
-    public static float lowerEndCapsVShift() {
-        return -(float) LOWER_SEGMENT_TEXTURE_ROW_OFFSET / SKIN_TEXTURE_HEIGHT;
+    public static float normalizedVShift(int pixels) {
+        return (float) pixels / SKIN_TEXTURE_HEIGHT;
     }
 
     public static float intervalOverlap(float firstMin, float firstMax, float secondMin, float secondMax) {
@@ -65,5 +76,13 @@ public final class ArticulatedLimbLayout {
         float relativeY = ARM_HAND_Y - ARM_ELBOW_Y;
         return relativeY * (float) Math.sin(forearmXRotation)
                 + originalHandZ * (float) Math.cos(forearmXRotation);
+    }
+
+    public static float requiredJointHalfHeight(float halfDepth, float bendRadians) {
+        return halfDepth * (float) Math.tan(Math.abs(bendRadians) / 2.0f);
+    }
+
+    public static float jointCoreRotation(float forearmRotation) {
+        return forearmRotation * 0.5f;
     }
 }

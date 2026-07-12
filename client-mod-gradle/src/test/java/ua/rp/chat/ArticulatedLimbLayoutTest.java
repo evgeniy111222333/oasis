@@ -31,8 +31,12 @@ public final class ArticulatedLimbLayoutTest {
                 ArticulatedLimbLayout.LEG_FOOT_Y));
 
         assertClose("wearable Y growth", 0.0f, ArticulatedLimbLayout.OUTER_LAYER_GROW_Y);
-        assertClose("lower end-caps V shift", -6.0f / 64.0f,
-                ArticulatedLimbLayout.lowerEndCapsVShift());
+        assertClose("original end-cap V shift", -6.0f / 64.0f,
+                ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.ORIGINAL_CAP_V_SHIFT_PIXELS));
+        assertClose("hand top cap samples upper forearm side", 4.0f / 64.0f,
+                ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.HAND_TOP_CAP_V_SHIFT_PIXELS));
+        assertClose("hand bottom cap samples lower hand side", 6.0f / 64.0f,
+                ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.HAND_BOTTOM_CAP_V_SHIFT_PIXELS));
         assertTrue("right arm end cap returns to its original texture row",
                 ArticulatedLimbLayout.correctedLowerEndCapRow(16 + 6) == 16);
         assertTrue("left arm end cap returns to its original texture row",
@@ -59,6 +63,16 @@ public final class ArticulatedLimbLayoutTest {
                 + square(originalHandZ);
         float bentRadiusSquared = square(bentY - ArticulatedLimbLayout.ARM_ELBOW_Y) + square(bentZ);
         assertClose("held item rotation preserves elbow-to-hand distance", originalRadiusSquared, bentRadiusSquared);
+
+        float requiredJointHalfHeight = ArticulatedLimbLayout.requiredJointHalfHeight(
+                2.0f, ArticulatedLimbLayout.MAX_SUPPORTED_FOREARM_BEND);
+        assertTrue("elbow core covers the maximum supported bend",
+                ArticulatedLimbLayout.ELBOW_CORE_HEIGHT / 2.0f >= requiredJointHalfHeight);
+        assertTrue("elbow core remains inset inside the straight arm",
+                ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ > 0.0f
+                        && ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ < 0.5f);
+        assertClose("elbow core bisects the joint angle", -0.5f,
+                ArticulatedLimbLayout.jointCoreRotation(-1.0f));
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");
     }
 

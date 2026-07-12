@@ -35,10 +35,10 @@ public class PlayerModelMixin {
     @Inject(method = "<init>(Lnet/minecraft/client/model/geom/ModelPart;Z)V", at = @At("RETURN"))
     private void eclipse$remapSegmentEndCaps(ModelPart root, boolean slim, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
-        eclipse$remapLowerSegment(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve");
-        eclipse$remapLowerSegment(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve");
-        eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants");
-        eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants");
+        eclipse$remapLowerSegment(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve", true);
+        eclipse$remapLowerSegment(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", true);
+        eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", false);
+        eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", false);
     }
 
     @Inject(
@@ -518,6 +518,19 @@ public class PlayerModelMixin {
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
 
+        // This core is fully inset inside a straight arm. It becomes visible only
+        // in the wedge opened by the two rectangular segments while bending.
+        CubeDeformation elbowCore = deformation.extend(
+                -ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ,
+                0.0f,
+                -ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ);
+        arm.addOrReplaceChild("eclipse_elbow_core",
+                CubeListBuilder.create()
+                        .texOffs(texX, texY + ArticulatedLimbLayout.ELBOW_CORE_TEXTURE_ROW_OFFSET)
+                        .addBox(minX, ArticulatedLimbLayout.ELBOW_CORE_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.ELBOW_CORE_HEIGHT, 4, elbowCore),
+                PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
+
         // Grow the wearable only across the arm. Y growth would make both sleeve segments intersect.
         CubeDeformation sleeve = deformation.extend(
                 ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
@@ -576,17 +589,30 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void eclipse$remapLowerSegment(ModelPart limb, String lowerName, String wearableName) {
+    private void eclipse$remapLowerSegment(
+            ModelPart limb, String lowerName, String wearableName, boolean deriveCapsFromSideTexture) {
         ModelPart lower = eclipse$getChildOrNull(limb, lowerName);
         if (lower == null) {
             return;
         }
-        eclipse$remapEndCaps(lower);
-        eclipse$remapEndCaps(eclipse$getChildOrNull(lower, wearableName));
+        int topShift = deriveCapsFromSideTexture
+                ? ArticulatedLimbLayout.HAND_TOP_CAP_V_SHIFT_PIXELS
+                : ArticulatedLimbLayout.ORIGINAL_CAP_V_SHIFT_PIXELS;
+        int bottomShift = deriveCapsFromSideTexture
+                ? ArticulatedLimbLayout.HAND_BOTTOM_CAP_V_SHIFT_PIXELS
+                : ArticulatedLimbLayout.ORIGINAL_CAP_V_SHIFT_PIXELS;
+        eclipse$remapEndCaps(lower, topShift, bottomShift);
+        eclipse$remapEndCaps(eclipse$getChildOrNull(lower, wearableName), topShift, bottomShift);
+        if (deriveCapsFromSideTexture) {
+            eclipse$remapEndCaps(
+                    eclipse$getChildOrNull(limb, "eclipse_elbow_core"),
+                    ArticulatedLimbLayout.ELBOW_CORE_CAP_V_SHIFT_PIXELS,
+                    ArticulatedLimbLayout.ELBOW_CORE_CAP_V_SHIFT_PIXELS);
+        }
     }
 
     @Unique
-    private void eclipse$remapEndCaps(ModelPart part) {
+    private void eclipse$remapEndCaps(ModelPart part, int topShiftPixels, int bottomShiftPixels) {
         if (part == null) {
             return;
         }
@@ -605,13 +631,14 @@ public class PlayerModelMixin {
                     averageY += vertex.y();
                 }
                 averageY /= polygon.vertices().length;
-                boolean isTopOrBottomCap = Math.abs(averageY - minY) <= 0.001f
-                        || Math.abs(averageY - maxY) <= 0.001f;
-                if (isTopOrBottomCap) {
+                boolean isTopCap = Math.abs(averageY - minY) <= 0.001f;
+                boolean isBottomCap = Math.abs(averageY - maxY) <= 0.001f;
+                if (isTopCap || isBottomCap) {
+                    float shift = ArticulatedLimbLayout.normalizedVShift(
+                            isTopCap ? topShiftPixels : bottomShiftPixels);
                     for (int i = 0; i < polygon.vertices().length; i++) {
                         ModelPart.Vertex vertex = polygon.vertices()[i];
-                        polygon.vertices()[i] = vertex.remap(
-                                vertex.u(), vertex.v() + ArticulatedLimbLayout.lowerEndCapsVShift());
+                        polygon.vertices()[i] = vertex.remap(vertex.u(), vertex.v() + shift);
                     }
                 }
             }
@@ -828,6 +855,10 @@ public class PlayerModelMixin {
         ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
         if (forearm != null) {
             forearm.xRot = -bend;
+        }
+        ModelPart elbowCore = eclipse$getChildOrNull(arm, "eclipse_elbow_core");
+        if (elbowCore != null) {
+            elbowCore.xRot = ArticulatedLimbLayout.jointCoreRotation(-bend);
         }
     }
 
