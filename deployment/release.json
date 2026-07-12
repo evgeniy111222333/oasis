@@ -1,9 +1,9 @@
 {
-  "id": "20260712-083509",
+  "id": "20260712-083708",
   "published": true,
-  "publishedAt": "2026-07-12T08:35:09.416896Z",
-  "title": "Shift crouching camera forward by another 0.60 blocks",
-  "summary": "Shifted crouching camera forward by another 0.60 blocks (total +1.02 blocks offset).",
+  "publishedAt": "2026-07-12T08:37:08.745819Z",
+  "title": "Set crouching camera forward offset shift to 0.28 blocks",
+  "summary": "Set crouching camera forward offset shift to 0.28 blocks.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
