@@ -455,6 +455,9 @@ function normalizeGameHost(host) {
 
 function normalizeStoredApiUrl(url) {
     const value = normalizeApiUrl(url);
+    if (value === 'https://eclipse-rp.13-51-232-191.sslip.io') {
+        return DEFAULT_API_URL;
+    }
     if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.[^/:]+|192\.168\.[^/:]+|172\.(1[6-9]|2\d|3[01])\.[^/:]+)(?::\d+)?$/i.test(value)) {
         return DEFAULT_API_URL;
     }
