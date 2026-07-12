@@ -44,6 +44,7 @@ public class PlayerModelMixin {
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
     private void eclipse$afterSetupAnim(AvatarRenderState state, CallbackInfo ci) {
         PlayerModel model = (PlayerModel) (Object) this;
+        eclipse$resetModelTranslations(model, state);
         model.head.visible = true;
         model.head.skipDraw = false;
         model.hat.visible = state.showHat;
@@ -724,6 +725,27 @@ public class PlayerModelMixin {
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    @Unique
+    private void eclipse$resetModelTranslations(PlayerModel model, AvatarRenderState state) {
+        model.body.y = state.isCrouching ? 3.2f : 0.0f;
+        model.body.z = 0.0f;
+        
+        model.head.y = state.isCrouching ? 4.2f : 0.0f;
+        model.head.z = 0.0f;
+        
+        model.leftArm.y = state.isCrouching ? 5.2f : 2.0f;
+        model.leftArm.z = 0.0f;
+        
+        model.rightArm.y = state.isCrouching ? 5.2f : 2.0f;
+        model.rightArm.z = 0.0f;
+        
+        model.leftLeg.y = state.isCrouching ? 12.2f : 12.0f;
+        model.leftLeg.z = state.isCrouching ? 4.0f : 0.0f;
+        
+        model.rightLeg.y = state.isCrouching ? 12.2f : 12.0f;
+        model.rightLeg.z = state.isCrouching ? 4.0f : 0.0f;
     }
 
     @Unique

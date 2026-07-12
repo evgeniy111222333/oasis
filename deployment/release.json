@@ -1,9 +1,9 @@
 {
-  "id": "20260712-082044",
+  "id": "20260712-082708",
   "published": true,
-  "publishedAt": "2026-07-12T08:20:44.828144Z",
-  "title": "First Person Crouch & Balance struggle game",
-  "summary": "Fixed first person crouch eye level misalignment by translating the first-person player model when crouching, lowered target nameplate interaction HUD further, and fully implemented the balance game mechanics for struggling.",
+  "publishedAt": "2026-07-12T08:27:08.680830Z",
+  "title": "Fix Crouching Camera Torso Clipping and state leak",
+  "summary": "Fixed crouching camera torso clipping by resetting shared PlayerModel translations at the start of setupAnim, and adjusted crouching camera offset to move forward past the chest in first-person view.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
