@@ -153,15 +153,19 @@ public class BodyStatusScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
         if (browser != null && browser.isTextureReady()) {
-            Identifier texture = browser.getTextureIdentifier();
-            if (texture != null) {
-                if (!firstBlitLogged) {
-                    firstBlitLogged = true;
-                    log("first browser blit: texture=" + texture + ", panel=" + panelWidth + "x" + panelHeight
-                            + "@" + panelX + "," + panelY + ", " + McefDiagnostics.browserState(browser));
+            int texWidth = browser.getRenderer().getTextureWidth();
+            int texHeight = browser.getRenderer().getTextureHeight();
+            if (texWidth > 1 && texHeight > 1) {
+                Identifier texture = browser.getTextureIdentifier();
+                if (texture != null) {
+                    if (!firstBlitLogged) {
+                        firstBlitLogged = true;
+                        log("first browser blit: texture=" + texture + ", panel=" + panelWidth + "x" + panelHeight
+                                + "@" + panelX + "," + panelY + ", " + McefDiagnostics.browserState(browser));
+                    }
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, texture, panelX, panelY, 0.0f, 0.0f, panelWidth, panelHeight, panelWidth, panelHeight);
+                    return;
                 }
-                graphics.blit(RenderPipelines.GUI_TEXTURED, texture, panelX, panelY, 0.0f, 0.0f, panelWidth, panelHeight, panelWidth, panelHeight);
-                return;
             }
         }
         if (browser == null) {

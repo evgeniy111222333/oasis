@@ -197,16 +197,20 @@ public class AuthScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         if (browser != null && browser.isTextureReady()) {
-            Identifier texture = browser.getTextureIdentifier();
-            if (texture != null) {
-                if (!firstBlitLogged) {
-                    firstBlitLogged = true;
-                    log("first browser blit: texture=" + texture + ", target=" + width + "x" + height
-                            + ", " + McefDiagnostics.browserState(browser));
+            int texWidth = browser.getRenderer().getTextureWidth();
+            int texHeight = browser.getRenderer().getTextureHeight();
+            if (texWidth > 1 && texHeight > 1) {
+                Identifier texture = browser.getTextureIdentifier();
+                if (texture != null) {
+                    if (!firstBlitLogged) {
+                        firstBlitLogged = true;
+                        log("first browser blit: texture=" + texture + ", target=" + width + "x" + height
+                                + ", " + McefDiagnostics.browserState(browser));
+                    }
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f, width, height, width, height);
+                    drawExitButton(graphics, mouseX, mouseY);
+                    return;
                 }
-                graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f, width, height, width, height);
-                drawExitButton(graphics, mouseX, mouseY);
-                return;
             }
         }
 

@@ -1,11 +1,11 @@
 {
-  "id": "20260712-150238",
+  "id": "20260712-150900",
   "published": true,
-  "publishedAt": "2026-07-12T15:02:38.398285Z",
-  "title": "Body UI Final Local Sync Fix",
-  "summary": "Removed asynchronous pageLoaded checks from BodyStatusScreen. Added inline transparent background styling to body.html.",
+  "publishedAt": "2026-07-12T15:09:00.916665Z",
+  "title": "Body UI Cooldown Update",
+  "summary": "Added 500ms cooldown to BodyStatusScreen to prevent rapid open-close spam texture corruption.",
   "notes": [
-    "Restores immediate rendering of the local CEF browser"
+    "Restricts spamming of key B which causes CEF/OpenGL texture conflicts"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
