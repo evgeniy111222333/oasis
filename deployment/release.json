@@ -1,9 +1,9 @@
 {
-  "id": "20260712-085300",
+  "id": "20260712-085734",
   "published": true,
-  "publishedAt": "2026-07-12T08:53:00.093823Z",
-  "title": "Fix joint Z-fighting and smooth out elbow tooth",
-  "summary": "Reduced joint filler box size by 0.02 pixels to eliminate Z-fighting, and lowered forearm/shin Y-pivots by 0.2 pixels while extending boxes upward to completely smooth out elbow and knee joints.",
+  "publishedAt": "2026-07-12T08:57:34.362008Z",
+  "title": "Optimize joint pivots and increase sleeve thickness",
+  "summary": "Optimized joint pivots to Y=4.1/6.3 and Z=1.0/-1.0, and increased sleeve/pants thickness to 0.32f to completely eliminate joint tooth and skin clipping/Z-fighting.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

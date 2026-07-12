@@ -479,12 +479,12 @@ public class PlayerModelMixin {
                         .texOffs(texX, texY + 4).addBox(minX + 0.01f, 3.8f, 0.0f, width - 0.02f, 1.0f, 1.98f, deformation), 
                 PartPose.ZERO);
         
-        // Forearm with pivot shifted down and backward (Y=4.0, Z=1.2) to prevent the "tooth"
+        // Forearm with pivot shifted down and backward (Y=4.1, Z=1.0) to prevent the "tooth"
         PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
-                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, -0.2f, -3.2f, width, 6.4f, 4, deformation), 
-                PartPose.offset(0.0f, 4.0f, 1.2f));
+                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, -0.3f, -3.0f, width, 6.5f, 4, deformation), 
+                PartPose.offset(0.0f, 4.1f, 1.0f));
 
-        CubeDeformation sleeve = deformation.extend(0.25f);
+        CubeDeformation sleeve = deformation.extend(0.32f); // Increased from 0.25f to prevent skin clipping and Z-fighting
         
         // Upper sleeve with joint filler
         upperArm.addOrReplaceChild("eclipse_upper_sleeve", 
@@ -495,7 +495,7 @@ public class PlayerModelMixin {
         
         // Forearm sleeve with shifted pivot
         forearm.addOrReplaceChild("eclipse_forearm_sleeve", 
-                CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, -0.2f, -3.2f, width, 6.4f, 4, sleeve), 
+                CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, -0.3f, -3.0f, width, 6.5f, 4, sleeve), 
                 PartPose.ZERO);
         
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
@@ -512,12 +512,12 @@ public class PlayerModelMixin {
                         .texOffs(texX, texY + 4).addBox(-1.99f, 6.0f, -1.99f, 3.98f, 1.0f, 1.98f, deformation), 
                 PartPose.ZERO);
         
-        // Shin with pivot shifted down and forward (Y=6.2, Z=-1.2) to prevent the "tooth"
+        // Shin with pivot shifted down and forward (Y=6.3, Z=-1.0) to prevent the "tooth"
         PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", 
-                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, -0.2f, -0.8f, 4, 6.2f, 4, deformation), 
-                PartPose.offset(0.0f, 6.2f, -1.2f));
+                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, -0.3f, -1.0f, 4, 6.5f, 4, deformation), 
+                PartPose.offset(0.0f, 6.3f, -1.0f));
 
-        CubeDeformation pants = deformation.extend(0.25f);
+        CubeDeformation pants = deformation.extend(0.32f); // Increased from 0.25f to prevent skin clipping and Z-fighting
         
         // Thigh pants with joint filler
         thigh.addOrReplaceChild("eclipse_thigh_pants", 
@@ -528,7 +528,7 @@ public class PlayerModelMixin {
         
         // Shin pants with shifted pivot
         shin.addOrReplaceChild("eclipse_shin_pants", 
-                CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -0.8f, 4, 6.0f, 4, pants), 
+                CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, -0.3f, -1.0f, 4, 6.5f, 4, pants), 
                 PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
