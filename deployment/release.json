@@ -1,12 +1,14 @@
 {
-  "id": "20260712-190509",
+  "id": "20260712-195756",
   "published": true,
-  "publishedAt": "2026-07-12T19:05:09.325927Z",
-  "title": "Limb Bottom Cap UV Fix (Descriptor Fix)",
-  "summary": "Fixed the mixin signature descriptor for ModelPart.Cube constructor injection.",
+  "publishedAt": "2026-07-12T19:57:56.062066Z",
+  "title": "Исправление рендера скина 1.1.2",
+  "summary": "Исправлена геометрия рук и ног, UV-развертка и синхронизация предмета с кистью.",
   "notes": [
-    "Corrects expected vs found parameters (removed extra boolean)"
+    "Убрана глобальная подмена UV, повреждавшая нижние грани скина.",
+    "Устранено пересечение геометрии руки в локте и дублирование внешнего слоя.",
+    "Предмет в руке теперь следует за сгибом предплечья."
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
-  "successMessage": "Обновление загружено и установлено."
+  "successMessage": "Обновление 1.1.2 загружено и установлено."
 }
