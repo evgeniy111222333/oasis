@@ -1,11 +1,12 @@
 {
-  "id": "20260712-172512",
+  "id": "20260712-184725",
   "published": true,
-  "publishedAt": "2026-07-12T17:25:12.103134Z",
-  "title": "Launcher 1.0.12: GitHub manifest fallback",
-  "summary": "Added GitHub CDN fallback for client manifest download to fix timeout issues for players with slow VPS connections",
+  "publishedAt": "2026-07-12T18:47:25.245909Z",
+  "title": "Limb Bottom Cap UV Fix",
+  "summary": "Corrected texture UV coordinates on the bottom cap of forearms and shins to fix mismatched green textures on wrists/soles",
   "notes": [
-    "Fixes launch failure when api.eclipse-roleplay.online is unreachable"
+    "Aligns forearm bottom caps with original wrist texture",
+    "Aligns shin bottom caps with original boot sole texture"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
