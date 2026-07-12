@@ -1,9 +1,9 @@
 {
-  "id": "20260712-101658",
+  "id": "20260712-102136",
   "published": true,
-  "publishedAt": "2026-07-12T10:16:58.969796Z",
-  "title": "Migrate to custom domain eclipse-roleplay.online",
-  "summary": "Fully migrated the distribution URL and auth API URL to the new custom domains (dist.eclipse-roleplay.online and api.eclipse-roleplay.online).",
+  "publishedAt": "2026-07-12T10:21:36.520845Z",
+  "title": "Correct mods manifest domains",
+  "summary": "Updated build.gradle and mods.json to fully reference custom domain dist.eclipse-roleplay.online.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
