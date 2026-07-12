@@ -81,7 +81,7 @@ function joinUrl(baseUrl, relativePath) {
     return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 }
 
-function downloadFile(url, dest, onProgress, redirectDepth = 0) {
+function downloadFile(url, dest, onProgress, timeoutMs = 20000, redirectDepth = 0) {
     return new Promise((resolve, reject) => {
         logLauncher(`[DOWNLOAD] Started: url=${url}, dest=${dest}`);
         const dir = path.dirname(dest);
@@ -103,7 +103,7 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
                 file.close();
                 fs.unlink(dest, () => {});
                 const redirectUrl = new URL(response.headers.location, url).toString();
-                downloadFile(redirectUrl, dest, onProgress, redirectDepth + 1).then(resolve).catch(reject);
+                downloadFile(redirectUrl, dest, onProgress, timeoutMs, redirectDepth + 1).then(resolve).catch(reject);
                 return;
             }
 
@@ -146,9 +146,9 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
             });
         });
 
-        // Set 20-second connection & activity timeout
-        request.setTimeout(20000, () => {
-            logLauncher(`[DOWNLOAD] Timeout triggered (20s inactivity) for ${url}`);
+        // Set connection & activity timeout
+        request.setTimeout(timeoutMs, () => {
+            logLauncher(`[DOWNLOAD] Timeout triggered (${timeoutMs / 1000}s inactivity) for ${url}`);
             request.destroy(new Error('Download timed out'));
         });
 
@@ -184,6 +184,21 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
             reject(err);
         });
     });
+}
+
+async function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 10000) {
+    let lastError;
+    const urlList = Array.isArray(urls) ? urls : [urls];
+    for (const url of urlList) {
+        try {
+            await downloadFile(url, dest, onProgress, timeoutMs);
+            return url;
+        } catch (error) {
+            lastError = error;
+            logLauncher(`[FALLBACK] Failed download from ${url}: ${error.message}. Trying next candidate...`);
+        }
+    }
+    throw lastError || new Error('All download sources failed');
 }
 
 function requestJson(url, timeoutMs = 3500, redirectDepth = 0) {
@@ -588,21 +603,20 @@ async function fetchRequiredModsFromSources(apiUrl) {
 }
 
 async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
+    const cleanPath = relativePath.replace(/\\/g, '/');
     const candidates = [
+        joinUrl(normalizeApiUrl(apiUrl), `client/${cleanPath}`),
         joinUrl(REMOTE_CLIENT_BASE_URL, relativePath),
-        joinUrl(normalizeApiUrl(apiUrl), `client/${relativePath.replace(/\\/g, '/')}`)
+        `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/${cleanPath}`
     ];
+    
     let lastError;
-
-    for (const url of candidates) {
-        try {
-            await downloadFile(url, dest, onProgress);
-            logLauncher(`Downloaded ${relativePath} from ${url}`);
-            return;
-        } catch (error) {
-            lastError = error;
-            logLauncher(`Failed to download ${relativePath} from ${url}: ${error.message}`);
-        }
+    try {
+        await downloadFileWithFallback(candidates, dest, onProgress, 10000);
+        logLauncher(`Downloaded ${relativePath} successfully`);
+        return;
+    } catch (error) {
+        lastError = error;
     }
 
     const localSource = getLocalClientSource(relativePath);
@@ -621,13 +635,14 @@ async function repairManagedMod(mod, dest, apiUrl, onProgress) {
     if (mod.url) {
         candidates.push(mod.url);
     }
-    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
     candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
+    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
+    candidates.push(`https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/${mod.path}`);
 
     let lastError;
     for (const url of candidates) {
         try {
-            await downloadFile(url, dest, onProgress);
+            await downloadFile(url, dest, onProgress, 10000);
             if (isManagedFileValid(dest, mod)) {
                 logLauncher(`Downloaded ${mod.name} from ${url}`);
                 return;
@@ -827,12 +842,16 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             updateProgress('Скачивание установщика лаунчера...', 10);
             const installerDest = path.join(app.getPath('temp'), `Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`);
             
-            await downloadFile(distribution.launcher.url, installerDest, (received, total) => {
+            const installerCandidates = [
+                distribution.launcher.url,
+                `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`
+            ];
+            await downloadFileWithFallback(installerCandidates, installerDest, (received, total) => {
                 const percent = Math.round((received / total) * 100);
                 const mbReceived = (received / (1024 * 1024)).toFixed(1);
                 const mbTotal = (total / (1024 * 1024)).toFixed(1);
                 updateProgress(`Скачивание установщика лаунчера: ${percent}% [${mbReceived} MB / ${mbTotal} MB]...`, Math.round(10 + percent * 0.8));
-            });
+            }, 10000);
 
             const installerSha256 = verifyDownloadedFile(installerDest, distribution.launcher);
             logLauncher(`Launcher setup verified: size=${fs.statSync(installerDest).size}, sha256=${installerSha256}`);
