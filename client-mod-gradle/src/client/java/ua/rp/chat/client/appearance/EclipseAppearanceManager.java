@@ -96,12 +96,14 @@ public final class EclipseAppearanceManager {
     }
 
     private static AppearanceProfile fetchProfile(UUID uuid) {
+        EclipseClientMod.LOGGER.info("Requesting appearance profile for player {}...", uuid);
         String body = getWithRetry(
                 EclipseApiClient.resolve("/api/appearance/profile?uuid=" + uuid),
                 "appearance profile " + uuid,
                 MAX_PROFILE_BYTES
         );
         if (body == null || body.isBlank()) {
+            EclipseClientMod.LOGGER.warn("Appearance profile response is empty for player {}", uuid);
             return null;
         }
 
@@ -111,8 +113,10 @@ public final class EclipseAppearanceManager {
         String textureUrl = extractJsonString(body, "textureUrl");
         String fallbackTextureUrl = extractJsonString(body, "fallbackTextureUrl");
         if (!hasAppearance || hash == null || textureUrl == null) {
+            EclipseClientMod.LOGGER.info("Player {} has no custom appearance configured", uuid);
             return new AppearanceProfile(false, "classic", "", "", "");
         }
+        EclipseClientMod.LOGGER.info("Player {} has custom appearance: model={}, hash={}", uuid, model, hash);
         if (fallbackTextureUrl == null || fallbackTextureUrl.isBlank()) {
             fallbackTextureUrl = "/api/appearance/texture/" + uuid + ".png?v=" + hash;
         }

@@ -11,7 +11,7 @@ from pathlib import Path
 SSH_KEY = "E:\\eclipse-stock.pem"
 VPS_HOST = "13.51.232.191"
 VPS_USER = "ubuntu"
-VPS_DEST_DIR = "/opt/eclipse-rp/dist"
+VPS_DEST_DIR = "/var/eclipse-dist"
 
 def make_tarfile(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:

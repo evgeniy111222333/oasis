@@ -1,14 +1,12 @@
 {
-  "id": "20260712-134157",
+  "id": "20260712-135801",
   "published": true,
-  "publishedAt": "2026-07-12T13:41:57.600259Z",
-  "title": "Safe launcher process cleanup 1.0.10",
-  "summary": "Launcher updates now terminate only Eclipse RolePlay Launcher processes, wait for file release, and preserve Minecraft, Java, and unrelated applications.",
+  "publishedAt": "2026-07-12T13:58:01.699733Z",
+  "title": "Direct VPS Distribution Mirror",
+  "summary": "Switched distribution base URL to VPS web folder (/var/eclipse-dist) to bypass Cloudflare IP blocks",
   "notes": [
-    "Single-instance lock prevents duplicate launcher process trees.",
-    "NSIS closes the exact Eclipse RolePlay Launcher executable before replacement.",
-    "Minecraft, Java, Discord, browsers, and unrelated Electron apps are untouched.",
-    "Verified end-to-end with six running launcher processes and installer exit code 0."
+    "Serving manifests, mods, and launcher setups directly from VPS via Caddy",
+    "Fixes launcher update timeouts and skin loading errors for players in blocked regions"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
