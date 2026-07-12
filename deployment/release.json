@@ -1,11 +1,11 @@
 {
-  "id": "20260712-145817",
+  "id": "20260712-150238",
   "published": true,
-  "publishedAt": "2026-07-12T14:58:17.892609Z",
-  "title": "Body UI Local PageLoaded Fix",
-  "summary": "Updated BodyStatusScreen to prevent texture rendering until the CEF load handler triggers pageLoaded = true, eliminating white loading flashes.",
+  "publishedAt": "2026-07-12T15:02:38.398285Z",
+  "title": "Body UI Final Local Sync Fix",
+  "summary": "Removed asynchronous pageLoaded checks from BodyStatusScreen. Added inline transparent background styling to body.html.",
   "notes": [
-    "CefLoadHandlerAdapter monitors loading state changes on local file:// load paths"
+    "Restores immediate rendering of the local CEF browser"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

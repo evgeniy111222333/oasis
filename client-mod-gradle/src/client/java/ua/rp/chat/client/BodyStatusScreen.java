@@ -296,6 +296,7 @@ public class BodyStatusScreen extends Screen {
         log("removed from Minecraft; currentScreen="
                 + (minecraft == null || minecraft.screen == null ? "none" : minecraft.screen.getClass().getSimpleName()));
         closeBrowser("removed");
+        ua.rp.chat.client.EclipseClientMod.lastBodyScreenCloseTime = System.currentTimeMillis();
         super.removed();
     }
 

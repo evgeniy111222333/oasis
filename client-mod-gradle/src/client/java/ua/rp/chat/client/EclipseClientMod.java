@@ -34,6 +34,7 @@ public class EclipseClientMod implements ClientModInitializer {
     private static KeyMapping bodyStatusKey;
     private static int sessionPollTicks = 0;
     private static String lastOpenedUrl = "";
+    public static long lastBodyScreenCloseTime = 0;
 
     @Override
     public void onInitializeClient() {
@@ -90,6 +91,10 @@ public class EclipseClientMod implements ClientModInitializer {
                     + ", gameMode=" + gameMode);
             if (client.player == null || client.level == null || client.screen != null) {
                 LOGGER.info("[BODY] B request ignored because the client is not in a screen-free playable state.");
+                continue;
+            }
+            if (System.currentTimeMillis() - lastBodyScreenCloseTime < 500) {
+                LOGGER.info("[BODY] B request ignored due to cooldown.");
                 continue;
             }
             String bodyUrl = VitalsClientState.bodyStatusUrl();
