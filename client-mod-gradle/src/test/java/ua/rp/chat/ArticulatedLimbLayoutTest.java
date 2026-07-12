@@ -29,6 +29,27 @@ public final class ArticulatedLimbLayoutTest {
                 ArticulatedLimbLayout.LEG_KNEE_Y,
                 ArticulatedLimbLayout.LEG_KNEE_Y + ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y,
                 ArticulatedLimbLayout.LEG_FOOT_Y));
+        assertClose("separate base legs leave a visible center gap", 0.4f,
+                ArticulatedLimbLayout.legBaseGap());
+        assertClose("separate pants layers preserve a center gap", 0.12f,
+                ArticulatedLimbLayout.pantsOuterGap());
+        assertClose("base legs never intersect at rest", 0.0f, ArticulatedLimbLayout.intervalOverlap(
+                -ArticulatedLimbLayout.LEG_HIP_X - ArticulatedLimbLayout.LEG_WIDTH / 2.0f,
+                -ArticulatedLimbLayout.LEG_HIP_X + ArticulatedLimbLayout.LEG_WIDTH / 2.0f,
+                ArticulatedLimbLayout.LEG_HIP_X - ArticulatedLimbLayout.LEG_WIDTH / 2.0f,
+                ArticulatedLimbLayout.LEG_HIP_X + ArticulatedLimbLayout.LEG_WIDTH / 2.0f));
+        assertClose("pants layers never intersect at rest", 0.0f, ArticulatedLimbLayout.intervalOverlap(
+                -ArticulatedLimbLayout.LEG_HIP_X - ArticulatedLimbLayout.LEG_WIDTH / 2.0f
+                        - ArticulatedLimbLayout.PANTS_LAYER_GROW_X,
+                -ArticulatedLimbLayout.LEG_HIP_X + ArticulatedLimbLayout.LEG_WIDTH / 2.0f
+                        + ArticulatedLimbLayout.PANTS_LAYER_GROW_X,
+                ArticulatedLimbLayout.LEG_HIP_X - ArticulatedLimbLayout.LEG_WIDTH / 2.0f
+                        - ArticulatedLimbLayout.PANTS_LAYER_GROW_X,
+                ArticulatedLimbLayout.LEG_HIP_X + ArticulatedLimbLayout.LEG_WIDTH / 2.0f
+                        + ArticulatedLimbLayout.PANTS_LAYER_GROW_X));
+        assertTrue("pants gap remains positive", ArticulatedLimbLayout.pantsOuterGap() > 0.0f);
+        assertTrue("pants gap remains narrower than the base gap",
+                ArticulatedLimbLayout.pantsOuterGap() < ArticulatedLimbLayout.legBaseGap());
 
         assertClose("wearable Y growth", 0.0f, ArticulatedLimbLayout.OUTER_LAYER_GROW_Y);
         assertClose("original end-cap V shift", -6.0f / 64.0f,
@@ -50,6 +71,8 @@ public final class ArticulatedLimbLayoutTest {
                 4.0f + ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ * 2.0f);
         assertClose("slim outer arm width", 3.5f,
                 3.0f + ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ * 2.0f);
+        assertClose("pants preserve vanilla depth", 4.5f,
+                ArticulatedLimbLayout.LEG_WIDTH + ArticulatedLimbLayout.PANTS_LAYER_GROW_Z * 2.0f);
 
         float originalHandZ = -2.0f;
         assertClose("zero bend preserves hand Y", ArticulatedLimbLayout.ARM_HAND_Y,

@@ -15,6 +15,8 @@ public final class ArticulatedLimbLayout {
     public static final float LEG_TOP_Y = 0.0f;
     public static final float LEG_KNEE_Y = 6.0f;
     public static final float LEG_FOOT_Y = 12.0f;
+    public static final float LEG_WIDTH = 4.0f;
+    public static final float LEG_HIP_X = 2.2f;
 
     public static final float JOINT_HALF_BAND = 0.25f;
     public static final int JOINT_SKINNING_RINGS = 5;
@@ -22,6 +24,8 @@ public final class ArticulatedLimbLayout {
     public static final float LOWER_LOCAL_TOP_Y = 0.0f;
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
+    public static final float PANTS_LAYER_GROW_X = 0.14f;
+    public static final float PANTS_LAYER_GROW_Z = OUTER_LAYER_GROW_XZ;
 
 
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
@@ -60,6 +64,14 @@ public final class ArticulatedLimbLayout {
 
     public static float legLowerHeight() {
         return LEG_FOOT_Y - LEG_KNEE_Y;
+    }
+
+    public static float legBaseGap() {
+        return LEG_HIP_X * 2.0f - LEG_WIDTH;
+    }
+
+    public static float pantsOuterGap() {
+        return LEG_HIP_X * 2.0f - (LEG_WIDTH + PANTS_LAYER_GROW_X * 2.0f);
     }
 
     public static float normalizedVShift(int pixels) {

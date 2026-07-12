@@ -87,8 +87,8 @@ public class PlayerModelMixin {
         PartDefinition root = mesh.getRoot();
         eclipse$replaceArm(root, "right_arm", "right_sleeve", -5.0f, true, slim, 40, 16, 40, 32, deformation);
         eclipse$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
-        eclipse$replaceLeg(root, "right_leg", "right_pants", -1.9f, 0, 16, 0, 32, deformation);
-        eclipse$replaceLeg(root, "left_leg", "left_pants", 1.9f, 16, 48, 0, 48, deformation);
+        eclipse$replaceLeg(root, "right_leg", "right_pants", -ArticulatedLimbLayout.LEG_HIP_X, 0, 16, 0, 32, deformation);
+        eclipse$replaceLeg(root, "left_leg", "left_pants", ArticulatedLimbLayout.LEG_HIP_X, 16, 48, 0, 48, deformation);
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
@@ -565,30 +565,30 @@ public class PlayerModelMixin {
         PartDefinition thigh = leg.addOrReplaceChild("eclipse_thigh", 
                 CubeListBuilder.create()
                         .texOffs(texX, texY).addBox(-2.0f, ArticulatedLimbLayout.LEG_TOP_Y, -2.0f,
-                                4, ArticulatedLimbLayout.legUpperHeight(), 4, deformation),
+                                ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legUpperHeight(), 4, deformation),
                 PartPose.ZERO);
 
         PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", 
                 CubeListBuilder.create().texOffs(texX, texY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
                         .addBox(-2.0f, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
-                                4, ArticulatedLimbLayout.legLowerHeight(), 4, deformation),
+                                ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legLowerHeight(), 4, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.LEG_KNEE_Y, 0.0f));
 
         CubeDeformation pants = deformation.extend(
-                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
+                ArticulatedLimbLayout.PANTS_LAYER_GROW_X,
                 ArticulatedLimbLayout.OUTER_LAYER_GROW_Y,
-                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ);
+                ArticulatedLimbLayout.PANTS_LAYER_GROW_Z);
 
         thigh.addOrReplaceChild("eclipse_thigh_pants", 
                 CubeListBuilder.create()
                         .texOffs(pantsTexX, pantsTexY).addBox(-2.0f, ArticulatedLimbLayout.LEG_TOP_Y, -2.0f,
-                                4, ArticulatedLimbLayout.legUpperHeight(), 4, pants),
+                                ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legUpperHeight(), 4, pants),
                 PartPose.ZERO);
 
         shin.addOrReplaceChild("eclipse_shin_pants", 
                 CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
                         .addBox(-2.0f, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
-                                4, ArticulatedLimbLayout.legLowerHeight(), 4, pants),
+                                ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legLowerHeight(), 4, pants),
                 PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
@@ -946,9 +946,11 @@ public class PlayerModelMixin {
         model.rightArm.y = state.isCrouching ? 5.2f : 2.0f;
         model.rightArm.z = 0.0f;
         
+        model.leftLeg.x = ArticulatedLimbLayout.LEG_HIP_X;
         model.leftLeg.y = state.isCrouching ? 12.2f : 12.0f;
         model.leftLeg.z = state.isCrouching ? 4.0f : 0.0f;
         
+        model.rightLeg.x = -ArticulatedLimbLayout.LEG_HIP_X;
         model.rightLeg.y = state.isCrouching ? 12.2f : 12.0f;
         model.rightLeg.z = state.isCrouching ? 4.0f : 0.0f;
     }
