@@ -211,7 +211,7 @@ public class SmartCameraManager {
         
         double forwardAmount = 0.20 + inspect * 0.05;
         if (crouching) {
-            forwardAmount += 0.28; // Shift camera forward past leaning chest (total 0.48)
+            forwardAmount += 0.30; // Shift camera forward past leaning chest (total 0.50)
         }
         
         double downAmount = 0.02 + inspect * 0.03;
