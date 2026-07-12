@@ -1,9 +1,9 @@
 {
-  "id": "20260712-092615",
+  "id": "20260712-101658",
   "published": true,
-  "publishedAt": "2026-07-12T09:26:15.239986Z",
-  "title": "Integrate launcher self-update",
-  "summary": "Fully integrated automatic launcher self-updates on startup, checking version mismatch against R2 manifest, downloading new setup, and executing it automatically.",
+  "publishedAt": "2026-07-12T10:16:58.969796Z",
+  "title": "Migrate to custom domain eclipse-roleplay.online",
+  "summary": "Fully migrated the distribution URL and auth API URL to the new custom domains (dist.eclipse-roleplay.online and api.eclipse-roleplay.online).",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

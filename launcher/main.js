@@ -12,10 +12,10 @@ let isGameRunning = false;
 
 const CLIENT_VERSION = '26.1.2';
 const CLIENT_PROFILE_PATH = path.join('versions', CLIENT_VERSION, `${CLIENT_VERSION}.json`);
-const DEFAULT_API_URL = process.env.ECLIPSE_API_URL || 'https://eclipse-rp.13-51-232-191.sslip.io';
+const DEFAULT_API_URL = process.env.ECLIPSE_API_URL || 'https://api.eclipse-roleplay.online';
 const DEFAULT_GAME_SERVER_HOST = process.env.ECLIPSE_GAME_SERVER_HOST || '13.51.232.191';
 const DEFAULT_GAME_SERVER_PORT = Number(process.env.ECLIPSE_GAME_SERVER_PORT || 25565);
-const DISTRIBUTION_BASE_URL = process.env.ECLIPSE_DISTRIBUTION_BASE_URL || 'https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev';
+const DISTRIBUTION_BASE_URL = process.env.ECLIPSE_DISTRIBUTION_BASE_URL || 'https://dist.eclipse-roleplay.online';
 const DISTRIBUTION_MANIFEST_URL = process.env.ECLIPSE_DISTRIBUTION_MANIFEST_URL || joinUrl(DISTRIBUTION_BASE_URL, 'manifests/production.json');
 const REMOTE_CLIENT_BASE_URL = process.env.ECLIPSE_CLIENT_BASE_URL || joinUrl(DISTRIBUTION_BASE_URL, 'client');
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
