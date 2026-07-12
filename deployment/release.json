@@ -1,9 +1,9 @@
 {
-  "id": "20260712-083322",
+  "id": "20260712-083509",
   "published": true,
-  "publishedAt": "2026-07-12T08:33:22.081559Z",
-  "title": "Adjust first person crouch camera forward shift",
-  "summary": "Increased first person crouch camera forward shift by 0.22 blocks to clear the chest from view.",
+  "publishedAt": "2026-07-12T08:35:09.416896Z",
+  "title": "Shift crouching camera forward by another 0.60 blocks",
+  "summary": "Shifted crouching camera forward by another 0.60 blocks (total +1.02 blocks offset).",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
