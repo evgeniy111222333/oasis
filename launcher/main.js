@@ -67,6 +67,7 @@ function joinUrl(baseUrl, relativePath) {
 
 function downloadFile(url, dest, onProgress, redirectDepth = 0) {
     return new Promise((resolve, reject) => {
+        logLauncher(`[DOWNLOAD] Started: url=${url}, dest=${dest}`);
         const dir = path.dirname(dest);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
@@ -75,9 +76,13 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
         const file = fs.createWriteStream(dest);
         let receivedBytes = 0;
         let totalBytes = 0;
+        let lastProgressLogTime = Date.now();
 
         const request = getTransport(url).get(url, (response) => {
+            logLauncher(`[DOWNLOAD] Response received: status=${response.statusCode}, contentLength=${response.headers['content-length']}`);
+
             if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectDepth < 4) {
+                logLauncher(`[DOWNLOAD] Redirecting to: ${response.headers.location}`);
                 response.resume();
                 file.close();
                 fs.unlink(dest, () => {});
@@ -87,6 +92,7 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
             }
 
             if (response.statusCode !== 200) {
+                logLauncher(`[DOWNLOAD] Error status ${response.statusCode} for ${url}`);
                 response.resume();
                 file.close();
                 fs.unlink(dest, () => {});
@@ -101,23 +107,62 @@ function downloadFile(url, dest, onProgress, redirectDepth = 0) {
                 if (onProgress && totalBytes > 0) {
                     onProgress(receivedBytes, totalBytes);
                 }
+                const now = Date.now();
+                if (now - lastProgressLogTime > 5000) {
+                    lastProgressLogTime = now;
+                    logLauncher(`[DOWNLOAD] Progress: ${receivedBytes}/${totalBytes} bytes (${totalBytes > 0 ? ((receivedBytes/totalBytes)*100).toFixed(1) : '?'}%)`);
+                }
             });
 
             response.pipe(file);
 
             file.on('finish', () => {
                 file.close();
+                logLauncher(`[DOWNLOAD] Finished successfully: ${dest}`);
                 resolve();
             });
 
             file.on('error', (err) => {
+                logLauncher(`[DOWNLOAD] File stream error for ${dest}: ${err.message}`);
                 file.close();
                 fs.unlink(dest, () => {});
                 reject(err);
             });
         });
 
+        // Set 20-second connection & activity timeout
+        request.setTimeout(20000, () => {
+            logLauncher(`[DOWNLOAD] Timeout triggered (20s inactivity) for ${url}`);
+            request.destroy(new Error('Download timed out'));
+        });
+
+        // Detailed socket tracing for DNS / TCP / TLS diagnostics
+        request.on('socket', (socket) => {
+            logLauncher(`[SOCKET] Assigned for ${url}`);
+            
+            socket.on('lookup', (err, address, family, host) => {
+                if (err) {
+                    logLauncher(`[DNS] Lookup failed for ${host}: ${err.message}`);
+                } else {
+                    logLauncher(`[DNS] Resolved ${host} -> ${address}`);
+                }
+            });
+            
+            socket.on('connect', () => {
+                logLauncher(`[TCP] Connected successfully to server`);
+            });
+            
+            socket.on('secureConnect', () => {
+                logLauncher(`[TLS] Secure handshake completed`);
+            });
+            
+            socket.on('error', (err) => {
+                logLauncher(`[SOCKET] Error: ${err.message}`);
+            });
+        });
+
         request.on('error', (err) => {
+            logLauncher(`[DOWNLOAD] HTTP request error for ${url}: ${err.message}`);
             file.close();
             fs.unlink(dest, () => {});
             reject(err);

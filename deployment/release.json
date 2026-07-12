@@ -1,9 +1,9 @@
 {
-  "id": "20260712-090846",
+  "id": "20260712-092245",
   "published": true,
-  "publishedAt": "2026-07-12T09:08:46.440241Z",
-  "title": "Integrate JCEF handlers and click coordinates logging",
-  "summary": "Fully integrated JCEF Load, Display, Request, and Lifespan handlers to trace redirects, console messages, load status, and blocked popups, and added comprehensive mouse coordinate/scaling log entries for click tracing.",
+  "publishedAt": "2026-07-12T09:22:45.158864Z",
+  "title": "Integrate launcher download timeout and diagnostics",
+  "summary": "Added 20-second download activity timeout and detailed socket/DNS/TLS events tracing to launcher/main.js to prevent infinite hangs and support automatic fallback.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
