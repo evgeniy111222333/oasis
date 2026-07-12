@@ -1,10 +1,15 @@
 {
-  "id": "20260712-102136",
+  "id": "20260712-131450",
   "published": true,
-  "publishedAt": "2026-07-12T10:21:36.520845Z",
-  "title": "Correct mods manifest domains",
-  "summary": "Updated build.gradle and mods.json to fully reference custom domain dist.eclipse-roleplay.online.",
-  "notes": [],
+  "publishedAt": "2026-07-12T13:14:50.330558Z",
+  "title": "Reliable skin delivery - client 1.1.1",
+  "summary": "Custom skins now use a new immutable client build with automatic AWS API fallback when the Cloudflare/R2 route fails.",
+  "notes": [
+    "New eclipse-client-1.1.1 URL prevents stale CDN cache collisions.",
+    "CDN download retries safely, then switches to the API-hosted copy.",
+    "SHA-1/PNG verification and atomic disk cache prevent corrupted skins.",
+    "Launcher 1.0.7 supplies the production API URL before first render."
+  ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
 }

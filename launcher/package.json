@@ -1,6 +1,6 @@
 {
   "name": "eclipse-launcher",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Eclipse RolePlay Desktop Launcher",
   "author": "Eclipse RolePlay",
   "main": "main.js",

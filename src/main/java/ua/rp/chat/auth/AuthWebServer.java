@@ -447,6 +447,8 @@ public class AuthWebServer {
                     responseJson.addProperty("hash", appearance.hash());
                     responseJson.addProperty("updatedAt", appearance.updatedAt());
                     responseJson.addProperty("textureUrl", authManager.getAppearanceManager().textureUrl(uuid, appearance));
+                    responseJson.addProperty("fallbackTextureUrl",
+                            "/api/appearance/texture/" + uuid + ".png?v=" + appearance.hash());
                 } else {
                     responseJson.addProperty("hasAppearance", false);
                 }
