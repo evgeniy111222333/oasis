@@ -64,14 +64,11 @@ public final class ArticulatedLimbLayoutTest {
         float bentRadiusSquared = square(bentY - ArticulatedLimbLayout.ARM_ELBOW_Y) + square(bentZ);
         assertClose("held item rotation preserves elbow-to-hand distance", originalRadiusSquared, bentRadiusSquared);
 
-        assertTrue("elbow cylinder is inset inside the base arm",
-                ArticulatedLimbLayout.ELBOW_CORE_RADIUS < 2.0f);
-        assertTrue("elbow cylinder has enough facets for a smooth block-scale silhouette",
-                ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS >= 8);
-        assertClose("elbow bridge samples exactly one stable texture row", 1.0f,
-                ArticulatedLimbLayout.ELBOW_TEXTURE_V_SPAN);
-        assertClose("elbow core bisects the joint angle", -0.5f,
-                ArticulatedLimbLayout.jointCoreRotation(-1.0f));
+        assertTrue("upper segment overlaps the elbow plane",
+                ArticulatedLimbLayout.UPPER_JOINT_OVERLAP > 0.0f);
+        assertTrue("overlapping upper segment is inset to prevent coplanar z-fighting",
+                ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ > 0.0f
+                        && ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ < 0.1f);
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");
     }
 

@@ -18,9 +18,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Arrays;
-import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -42,9 +40,6 @@ public class PlayerModelMixin {
         eclipse$remapLowerSegment(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", true);
         eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", false);
         eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", false);
-        int armWidth = slim ? 3 : 4;
-        eclipse$installElbowGeometry(model.rightArm, armWidth, slim ? -2.0f : -3.0f, 40, 16);
-        eclipse$installElbowGeometry(model.leftArm, armWidth, -1.0f, 32, 48);
         eclipse$removeArmJointCaps(model.rightArm);
         eclipse$removeArmJointCaps(model.leftArm);
         eclipse$removeWearableEndCaps(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
@@ -520,19 +515,20 @@ public class PlayerModelMixin {
         // The elbow is a real bone boundary: the two boxes share one plane and never overlap.
         PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", 
                 CubeListBuilder.create()
-                        .texOffs(texX, texY).addBox(minX, ArticulatedLimbLayout.ARM_TOP_Y, -2.0f,
-                                width, ArticulatedLimbLayout.armUpperHeight(), 4, deformation),
+                        .texOffs(texX, texY).addBox(
+                                minX + ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ,
+                                ArticulatedLimbLayout.ARM_TOP_Y,
+                                -2.0f + ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ,
+                                width - ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ * 2.0f,
+                                ArticulatedLimbLayout.armUpperHeight() + ArticulatedLimbLayout.UPPER_JOINT_OVERLAP,
+                                4.0f - ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ * 2.0f,
+                                deformation),
                 PartPose.ZERO);
 
         PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
                 CubeListBuilder.create().texOffs(texX, texY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
                         .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, deformation),
-                PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
-
-        arm.addOrReplaceChild("eclipse_elbow_core",
-                CubeListBuilder.create()
-                        .texOffs(texX, texY).addBox(minX, -1.0f, -1.0f, width, 2, 2, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
 
         // Grow the wearable only across the arm. Y growth would make both sleeve segments intersect.
@@ -642,74 +638,6 @@ public class PlayerModelMixin {
                 }
             }
         }
-    }
-
-    @Unique
-    private void eclipse$installElbowGeometry(
-            ModelPart arm, int width, float minX, int texX, int texY) {
-        eclipse$replaceWithElbowCylinder(
-                eclipse$getChildOrNull(arm, "eclipse_elbow_core"),
-                minX + ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
-                minX + width - ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
-                ArticulatedLimbLayout.ELBOW_CORE_RADIUS,
-                texX + 4.0f, texY + 10.0f, width, ArticulatedLimbLayout.ELBOW_TEXTURE_V_SPAN);
-    }
-
-    @Unique
-    private void eclipse$replaceWithElbowCylinder(
-            ModelPart part, float minX, float maxX, float radius,
-            float textureU, float textureV, float textureWidth, float textureSpanV) {
-        if (part == null) {
-            return;
-        }
-        List<ModelPart.Cube> cubes = ((ModelPartAccessor) (Object) part).getCubes();
-        if (cubes.isEmpty()) {
-            return;
-        }
-        int segments = ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS;
-        List<ModelPart.Polygon> polygons = new ArrayList<>(segments + 2);
-        float u0 = textureU / 64.0f;
-        float u1 = (textureU + textureWidth) / 64.0f;
-        for (int segment = 0; segment < segments; segment++) {
-            double angle0 = Math.PI * 2.0 * segment / segments;
-            double angle1 = Math.PI * 2.0 * (segment + 1) / segments;
-            float y0 = radius * (float) Math.cos(angle0);
-            float z0 = radius * (float) Math.sin(angle0);
-            float y1 = radius * (float) Math.cos(angle1);
-            float z1 = radius * (float) Math.sin(angle1);
-            float v0 = textureV / 64.0f;
-            float v1 = (textureV + textureSpanV) / 64.0f;
-            ModelPart.Vertex[] vertices = {
-                    new ModelPart.Vertex(minX, y0, z0, u0, v0),
-                    new ModelPart.Vertex(minX, y1, z1, u0, v1),
-                    new ModelPart.Vertex(maxX, y1, z1, u1, v1),
-                    new ModelPart.Vertex(maxX, y0, z0, u1, v0)
-            };
-            float normalY = (float) Math.cos((angle0 + angle1) * 0.5);
-            float normalZ = (float) Math.sin((angle0 + angle1) * 0.5);
-            polygons.add(new ModelPart.Polygon(vertices, new Vector3f(0.0f, normalY, normalZ)));
-        }
-        polygons.add(eclipse$elbowCap(minX, radius, textureU, textureV, textureWidth, textureSpanV, false));
-        polygons.add(eclipse$elbowCap(maxX, radius, textureU, textureV, textureWidth, textureSpanV, true));
-        ((ModelPartCubeAccessor) (Object) cubes.get(0)).eclipse$setPolygons(polygons.toArray(ModelPart.Polygon[]::new));
-    }
-
-    @Unique
-    private ModelPart.Polygon eclipse$elbowCap(
-            float x, float radius, float textureU, float textureV,
-            float textureWidth, float textureSpanV, boolean positiveX) {
-        int segments = ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS;
-        ModelPart.Vertex[] vertices = new ModelPart.Vertex[segments];
-        for (int index = 0; index < segments; index++) {
-            int segment = positiveX ? index : segments - 1 - index;
-            double angle = Math.PI * 2.0 * segment / segments;
-            float y = radius * (float) Math.cos(angle);
-            float z = radius * (float) Math.sin(angle);
-            float u = (textureU + textureWidth * (z / radius + 1.0f) * 0.5f) / 64.0f;
-            float v = (textureV + textureSpanV * (y / radius + 1.0f) * 0.5f) / 64.0f;
-            vertices[index] = new ModelPart.Vertex(x, y, z, u, v);
-        }
-        return new ModelPart.Polygon(vertices, new Vector3f(positiveX ? 1.0f : -1.0f, 0.0f, 0.0f));
     }
 
     @Unique
@@ -973,11 +901,6 @@ public class PlayerModelMixin {
         ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
         if (forearm != null) {
             forearm.xRot = -bend;
-        }
-        float jointRotation = ArticulatedLimbLayout.jointCoreRotation(-bend);
-        ModelPart elbowCore = eclipse$getChildOrNull(arm, "eclipse_elbow_core");
-        if (elbowCore != null) {
-            elbowCore.xRot = jointRotation;
         }
     }
 

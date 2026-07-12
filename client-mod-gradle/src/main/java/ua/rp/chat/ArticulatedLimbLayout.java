@@ -20,10 +20,8 @@ public final class ArticulatedLimbLayout {
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
 
-    public static final int ELBOW_CYLINDER_SEGMENTS = 8;
-    public static final float ELBOW_CORE_RADIUS = 1.82f;
-    public static final float ELBOW_CORE_X_INSET = 0.10f;
-    public static final float ELBOW_TEXTURE_V_SPAN = 1.0f;
+    public static final float UPPER_JOINT_OVERLAP = 0.45f;
+    public static final float UPPER_SEGMENT_INSET_XZ = 0.02f;
 
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
     public static final int SKIN_TEXTURE_HEIGHT = 64;
@@ -76,7 +74,4 @@ public final class ArticulatedLimbLayout {
                 + originalHandZ * (float) Math.cos(forearmXRotation);
     }
 
-    public static float jointCoreRotation(float forearmRotation) {
-        return forearmRotation * 0.5f;
-    }
 }
