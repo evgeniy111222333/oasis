@@ -1,12 +1,11 @@
 {
-  "id": "20260712-190225",
+  "id": "20260712-190509",
   "published": true,
-  "publishedAt": "2026-07-12T19:02:25.052860Z",
-  "title": "Limb Bottom Cap UV Fix (Constructor Injection)",
-  "summary": "Moved the UV remapping logic to run inside the ModelPart.Cube constructor, guaranteeing early application before any vertex baking, caching, or model wrapping occurs.",
+  "publishedAt": "2026-07-12T19:05:09.325927Z",
+  "title": "Limb Bottom Cap UV Fix (Descriptor Fix)",
+  "summary": "Fixed the mixin signature descriptor for ModelPart.Cube constructor injection.",
   "notes": [
-    "Uses ModelPartCubeMixin targeting ModelPart.Cube constructor",
-    "Removes old post-init PlayerModel constructor injection"
+    "Corrects expected vs found parameters (removed extra boolean)"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

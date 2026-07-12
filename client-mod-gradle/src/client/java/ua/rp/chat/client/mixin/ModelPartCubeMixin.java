@@ -14,7 +14,7 @@ public class ModelPartCubeMixin {
     public ModelPart.Polygon[] polygons;
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void eclipse$onInit(int u, int v, float x, float y, float z, float sizeX, float sizeY, float sizeZ, float extraX, float extraY, float extraZ, boolean mirror, boolean extraBool, float textureWidth, float textureHeight, java.util.Set<?> directions, CallbackInfo ci) {
+    private void eclipse$onInit(int u, int v, float x, float y, float z, float sizeX, float sizeY, float sizeZ, float extraX, float extraY, float extraZ, boolean mirror, float textureWidth, float textureHeight, java.util.Set<?> directions, CallbackInfo ci) {
         if (polygons == null || polygons.length < 6) {
             return;
         }
