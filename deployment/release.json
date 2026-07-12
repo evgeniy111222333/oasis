@@ -1,12 +1,12 @@
 {
-  "id": "20260712-144322",
+  "id": "20260712-145218",
   "published": true,
-  "publishedAt": "2026-07-12T14:43:22.799020Z",
-  "title": "Auth Local Migration Update",
-  "summary": "Migrated the auth registration/login web overlay to a local embedded asset structure inside the client mod JAR. Resolved white screen issues on blocked network providers.",
+  "publishedAt": "2026-07-12T14:52:18.819098Z",
+  "title": "Body UI Local Migration Update",
+  "summary": "Migrated the body status web overlay to a local embedded asset structure inside the client mod JAR. Resolved loading issues for players on censored networks.",
   "notes": [
-    "Embeds Manrope fonts locally to bypass RKN connection throttling to fonts.googleapis.com",
-    "Initializes a file:// load path with dynamic CORS API calls to VPS"
+    "Initializes a file:// load path with transparent OSR background for body UI",
+    "AJAX calls for vitals and treatment point to VPS with CORS"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

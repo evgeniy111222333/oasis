@@ -168,9 +168,11 @@ public class BodyStatusScreen extends Screen {
             firstFallbackLogged = true;
             log("rendering fallback because browser texture is unavailable: " + McefDiagnostics.browserState(browser));
         }
-        graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
-        graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
-        graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
+        if (ticksOpen > 10) {
+            graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
+            graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
+            graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
+        }
     }
 
     @Override
