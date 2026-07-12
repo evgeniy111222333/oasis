@@ -69,6 +69,7 @@ export type BodyPartDetails = Record<Exclude<BodyPart, null>, VitalsPart>;
 
 const params = new URLSearchParams(window.location.search);
 const username = params.get('username') || '';
+const apiUrl = params.get('apiUrl') || 'https://api.eclipse-roleplay.online';
 const NORMAL = 'Нормально';
 
 const EMPTY_PARTS: BodyPartDetails = {
@@ -132,7 +133,7 @@ function App() {
     const loadVitals = async () => {
       if (!username) return;
       try {
-        const response = await fetch(`/api/vitals?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
+        const response = await fetch(`${apiUrl}/api/vitals?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
           cache: 'no-store',
         });
         if (!response.ok) return;
@@ -185,7 +186,7 @@ function App() {
 
     setTreatmentNotice('');
     try {
-      const response = await fetch('/api/vitals/treat', {
+      const response = await fetch(`${apiUrl}/api/vitals/treat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, partId: part.id, action }),

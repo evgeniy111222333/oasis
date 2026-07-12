@@ -11,8 +11,16 @@ import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
-
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.FileNotFoundException;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class BodyStatusScreen extends Screen {
     private final String url;
@@ -50,7 +58,9 @@ public class BodyStatusScreen extends Screen {
                 MCEF.initialize();
                 log("MCEF.initialize complete");
             }
-            browser = MCEF.createBrowser(url, true);
+            String targetUrl = getLocalBodyUrl(url);
+            log("Opening local body URL: " + targetUrl);
+            browser = MCEF.createBrowser(targetUrl, true);
             log("browser created: " + McefDiagnostics.browserState(browser));
             browserClosed = false;
             resizeBrowser();
@@ -65,6 +75,77 @@ public class BodyStatusScreen extends Screen {
             openExternalFallback();
         }
         log("init complete: " + McefDiagnostics.browserState(browser));
+    }
+
+    private String getLocalBodyUrl(String remoteUrl) {
+        String username = "";
+        String apiHost = "https://api.eclipse-roleplay.online";
+        try {
+            URI uri = new URI(remoteUrl);
+            String query = uri.getQuery();
+            if (query != null) {
+                String[] pairs = query.split("&");
+                for (String pair : pairs) {
+                    int idx = pair.indexOf("=");
+                    if (idx > 0) {
+                        String key = pair.substring(0, idx);
+                        String val = URLDecoder.decode(pair.substring(idx + 1), "UTF-8");
+                        if (key.equals("username")) {
+                            username = val;
+                        }
+                    }
+                }
+            }
+            String scheme = uri.getScheme();
+            String authority = uri.getAuthority();
+            if (scheme != null && authority != null) {
+                apiHost = scheme + "://" + authority;
+            }
+        } catch (Exception e) {
+            EclipseClientMod.LOGGER.error("Failed to parse remote body URL", e);
+        }
+
+        try {
+            File webDir = new File(minecraft.gameDirectory, "web");
+            String[] webFiles = {
+                "body.html",
+                "body.css",
+                "body.js",
+                "assets/body-ui.css",
+                "assets/body-ui.js"
+            };
+            for (String file : webFiles) {
+                File target = new File(webDir, file);
+                copyResourceToFile("/assets/eclipseclient/web/" + file, target);
+            }
+            
+            File localIndexFile = new File(webDir, "body.html");
+            return "file:///" + localIndexFile.getAbsolutePath().replace("\\", "/") 
+                + "?username=" + URLEncoder.encode(username, "UTF-8")
+                + "&apiUrl=" + URLEncoder.encode(apiHost, "UTF-8");
+        } catch (Exception e) {
+            EclipseClientMod.LOGGER.error("Failed to extract local body web resources, fallback to remote", e);
+            return remoteUrl;
+        }
+    }
+
+    private static void copyResourceToFile(String resourcePath, File targetFile) throws IOException {
+        File parent = targetFile.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+        try (InputStream in = BodyStatusScreen.class.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                throw new FileNotFoundException("Resource not found in JAR: " + resourcePath);
+            }
+            try (OutputStream out = new FileOutputStream(targetFile)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+        }
     }
 
     @Override
