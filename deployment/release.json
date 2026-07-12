@@ -1,9 +1,9 @@
 {
-  "id": "20260712-092245",
+  "id": "20260712-092615",
   "published": true,
-  "publishedAt": "2026-07-12T09:22:45.158864Z",
-  "title": "Integrate launcher download timeout and diagnostics",
-  "summary": "Added 20-second download activity timeout and detailed socket/DNS/TLS events tracing to launcher/main.js to prevent infinite hangs and support automatic fallback.",
+  "publishedAt": "2026-07-12T09:26:15.239986Z",
+  "title": "Integrate launcher self-update",
+  "summary": "Fully integrated automatic launcher self-updates on startup, checking version mismatch against R2 manifest, downloading new setup, and executing it automatically.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

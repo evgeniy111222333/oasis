@@ -702,6 +702,29 @@ ipcMain.on('get-server-status', async (event) => {
 ipcMain.on('check-updates', async (event, { gamePath }) => {
     try {
         const distribution = await fetchDistributionManifest();
+        
+        // Check for launcher self-update first
+        const currentLauncherVersion = app.getVersion();
+        const remoteLauncherVersion = distribution.launcher && distribution.launcher.version;
+        if (remoteLauncherVersion && remoteLauncherVersion !== currentLauncherVersion) {
+            logLauncher(`Launcher update available: ${currentLauncherVersion} -> ${remoteLauncherVersion}`);
+            event.reply('update-status', {
+                updateRequired: true,
+                isLauncherUpdate: true,
+                release: {
+                    title: 'Обновление лаунчера',
+                    summary: `Доступна новая версия лаунчера ${remoteLauncherVersion} (текущая: ${currentLauncherVersion}). Для продолжения игры необходимо обновить лаунчер.`,
+                    buttonLabel: 'ОБНОВИТЬ ЛАУНЧЕР',
+                    notes: [
+                        'Автоматическое скачивание и установка поверх старой версии',
+                        'Исправлены зависания загрузки',
+                        'Добавлена детальная сетевая диагностика'
+                    ]
+                }
+            });
+            return;
+        }
+
         const release = distribution.release;
         const config = readConfig();
         const updateRequired = Boolean(
@@ -724,14 +747,46 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
     let activeRelease = null;
     
     try {
-        let requiredMods;
-        try {
-            const distribution = await fetchDistributionManifest();
-            requiredMods = distribution.client.mods;
-            activeRelease = distribution.release || null;
-        } catch (error) {
-            requiredMods = await fetchRequiredModsFromSources(apiUrl);
+        const distribution = await fetchDistributionManifest();
+        
+        // Handle launcher self-update download and execution
+        const currentLauncherVersion = app.getVersion();
+        const remoteLauncherVersion = distribution.launcher && distribution.launcher.version;
+        if (remoteLauncherVersion && remoteLauncherVersion !== currentLauncherVersion) {
+            const updateProgress = (message, progress) => {
+                event.reply('update-progress', { status: 'downloading', progress, message });
+            };
+            
+            updateProgress('Скачивание установщика лаунчера...', 10);
+            const installerDest = path.join(app.getPath('temp'), `Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`);
+            
+            await downloadFile(distribution.launcher.url, installerDest, (received, total) => {
+                const percent = Math.round((received / total) * 100);
+                const mbReceived = (received / (1024 * 1024)).toFixed(1);
+                const mbTotal = (total / (1024 * 1024)).toFixed(1);
+                updateProgress(`Скачивание установщика лаунчера: ${percent}% [${mbReceived} MB / ${mbTotal} MB]...`, Math.round(10 + percent * 0.8));
+            });
+            
+            updateProgress('Запуск установщика...', 95);
+            logLauncher(`Executing launcher setup: ${installerDest}`);
+            
+            const exec = require('child_process').exec;
+            exec(`"${installerDest}"`, (err) => {
+                if (err) {
+                    logLauncher(`Failed to execute launcher setup: ${err.message}`);
+                }
+            });
+            
+            setTimeout(() => {
+                app.quit();
+            }, 1000);
+            return;
         }
+
+        let requiredMods;
+        requiredMods = distribution.client.mods;
+        activeRelease = distribution.release || null;
+
         
         let totalSteps = 1 + requiredMods.length;
         let currentStep = 0;
