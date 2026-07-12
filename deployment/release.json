@@ -1,9 +1,9 @@
 {
-  "id": "20260712-082708",
+  "id": "20260712-083322",
   "published": true,
-  "publishedAt": "2026-07-12T08:27:08.680830Z",
-  "title": "Fix Crouching Camera Torso Clipping and state leak",
-  "summary": "Fixed crouching camera torso clipping by resetting shared PlayerModel translations at the start of setupAnim, and adjusted crouching camera offset to move forward past the chest in first-person view.",
+  "publishedAt": "2026-07-12T08:33:22.081559Z",
+  "title": "Adjust first person crouch camera forward shift",
+  "summary": "Increased first person crouch camera forward shift by 0.22 blocks to clear the chest from view.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
