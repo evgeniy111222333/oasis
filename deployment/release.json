@@ -1,12 +1,12 @@
 {
-  "id": "20260712-143255",
+  "id": "20260712-144322",
   "published": true,
-  "publishedAt": "2026-07-12T14:32:55.938491Z",
-  "title": "Launcher Fallback Update 1.0.11",
-  "summary": "Released launcher version 1.0.11 with timeout updates and GitHub CDN fallbacks. Set GitHub CDN as the primary download source for game updates.",
+  "publishedAt": "2026-07-12T14:43:22.799020Z",
+  "title": "Auth Local Migration Update",
+  "summary": "Migrated the auth registration/login web overlay to a local embedded asset structure inside the client mod JAR. Resolved white screen issues on blocked network providers.",
   "notes": [
-    "Sets raw.githubusercontent.com as primary mirror for mods and launcher installers",
-    "Fixes DPI resets and timeouts for players in Russia"
+    "Embeds Manrope fonts locally to bypass RKN connection throttling to fonts.googleapis.com",
+    "Initializes a file:// load path with dynamic CORS API calls to VPS"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
