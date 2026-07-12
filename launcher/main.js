@@ -10,6 +10,22 @@ const { Client, Authenticator } = require('minecraft-launcher-core');
 let mainWindow;
 let isGameRunning = false;
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+    app.exit(0);
+} else {
+    app.on('second-instance', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return;
+        }
+        if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+    });
+}
+
 const CLIENT_VERSION = '26.1.2';
 const CLIENT_PROFILE_PATH = path.join('versions', CLIENT_VERSION, `${CLIENT_VERSION}.json`);
 const DEFAULT_API_URL = process.env.ECLIPSE_API_URL || 'https://api.eclipse-roleplay.online';
@@ -767,9 +783,9 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
                     summary: `Доступна новая версия лаунчера ${remoteLauncherVersion} (текущая: ${currentLauncherVersion}). Для продолжения игры необходимо обновить лаунчер.`,
                     buttonLabel: 'ОБНОВИТЬ ЛАУНЧЕР',
                     notes: [
-                        'Установщик запускается независимо от старого лаунчера',
-                        'Перед запуском проверяются размер и SHA-256 файла',
-                        'Тихая установка выполняется поверх текущей версии'
+                        'Завершаются только процессы Eclipse RolePlay Launcher текущего пользователя',
+                        'Minecraft, Java и другие приложения не затрагиваются',
+                        'Перед запуском проверяются размер и SHA-256 установщика'
                     ]
                 }
             });
