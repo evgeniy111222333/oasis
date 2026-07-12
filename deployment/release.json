@@ -1,12 +1,13 @@
 {
-  "id": "20260712-184725",
+  "id": "20260712-185116",
   "published": true,
-  "publishedAt": "2026-07-12T18:47:25.245909Z",
-  "title": "Limb Bottom Cap UV Fix",
-  "summary": "Corrected texture UV coordinates on the bottom cap of forearms and shins to fix mismatched green textures on wrists/soles",
+  "publishedAt": "2026-07-12T18:51:16.366126Z",
+  "title": "Limb Bottom Cap UV Fix (Mixins Registry Patch)",
+  "summary": "Corrected texture UV coordinates on the bottom cap of forearms and shins to fix mismatched green textures on wrists/soles, and registered the new ModelPartAccessor in the mixins configuration.",
   "notes": [
     "Aligns forearm bottom caps with original wrist texture",
-    "Aligns shin bottom caps with original boot sole texture"
+    "Aligns shin bottom caps with original boot sole texture",
+    "Registers ModelPartAccessor in eclipseclient.mixins.json to prevent classload exceptions on startup"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
