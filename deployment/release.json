@@ -1,9 +1,9 @@
 {
-  "id": "20260712-084845",
+  "id": "20260712-085300",
   "published": true,
-  "publishedAt": "2026-07-12T08:48:45.760423Z",
-  "title": "Implement shifted joint pivots and joint filler blocks",
-  "summary": "Shifted joint pivots backward for arms and forward for legs, and added non-rotating joint filler blocks to upper arms and thighs to completely prevent gaps and texture tearing during bends.",
+  "publishedAt": "2026-07-12T08:53:00.093823Z",
+  "title": "Fix joint Z-fighting and smooth out elbow tooth",
+  "summary": "Reduced joint filler box size by 0.02 pixels to eliminate Z-fighting, and lowered forearm/shin Y-pivots by 0.2 pixels while extending boxes upward to completely smooth out elbow and knee joints.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
