@@ -3,8 +3,8 @@
         "name": "eclipse-client-1.1.1.jar",
         "path": "mods/eclipse-client-1.1.1.jar",
         "url": "https://api.eclipse-roleplay.online/dist/client/mods/eclipse-client-1.1.1.jar",
-        "sha1": "edd8f78008db19ad1f902a79efb4f3b828611646",
-        "size": 849387
+        "sha1": "0a2af292dbbb80252db310f75dd2a19d33df1167",
+        "size": 849403
     },
     {
         "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",

@@ -502,7 +502,7 @@ public class AuthManager {
         );
         String rpName = database.getRpName(player.getUniqueId());
         Title title = Title.title(
-            Component.text("Ласкаво просимо", SAND_GOLD),
+            Component.text("Добро пожаловать", SAND_GOLD),
             Component.text(rpName != null ? rpName : player.getName(), PEBBLE_GRAY),
             times
         );
@@ -522,9 +522,9 @@ public class AuthManager {
                     cameraManager.cleanup(player);
                     player.kick(
                         Component.text()
-                            .append(Component.text("Час авторизації вичерпано", TERRACOTTA))
+                            .append(Component.text("Время авторизации истекло", TERRACOTTA))
                             .append(Component.newline())
-                            .append(Component.text("Підключіться повторно та пройдіть авторизацію.", PEBBLE_GRAY))
+                            .append(Component.text("Подключитесь повторно и пройдите авторизацию.", PEBBLE_GRAY))
                             .build()
                     );
                     pendingAuth.remove(uuid);

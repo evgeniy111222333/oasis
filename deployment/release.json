@@ -1,11 +1,11 @@
 {
-  "id": "20260712-150900",
+  "id": "20260712-151431",
   "published": true,
-  "publishedAt": "2026-07-12T15:09:00.916665Z",
-  "title": "Body UI Cooldown Update",
-  "summary": "Added 500ms cooldown to BodyStatusScreen to prevent rapid open-close spam texture corruption.",
+  "publishedAt": "2026-07-12T15:14:31.845159Z",
+  "title": "Body UI Texture Size Fix",
+  "summary": "Prevented blitting 1x1 browser textures during CEF initialization. Resolves OpenGL state corruption that led to broken fonts and corrupted inventory textures.",
   "notes": [
-    "Restricts spamming of key B which causes CEF/OpenGL texture conflicts"
+    "Ensures textureWidth > 1 and textureHeight > 1 before invoking GuiGraphics.blit"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

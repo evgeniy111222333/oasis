@@ -243,17 +243,23 @@ function getStatusColor(status: string) {
     case 'відпочиває':
       return '#7BC67E';
     case 'легке пошкодження':
+    case 'легкое повреждение':
     case 'легке напруження':
     case 'втома':
     case 'перевтома':
     case 'травма':
     case 'кровотеча':
+    case 'кровотечение':
     case 'опік':
+    case 'ожог':
       return '#E8A55B';
     case 'поранення':
+    case 'ранение':
     case 'перелом':
     case 'інфекція':
+    case 'инфекция':
     case 'важка травма':
+    case 'тяжелая травма':
     case 'критично':
       return '#E85D5D';
     default:
