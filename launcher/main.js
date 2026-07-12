@@ -589,6 +589,28 @@ async function fetchRequiredModsFromSources(apiUrl) {
         logLauncher(`Remote client manifest unavailable: ${error.message}`);
     }
 
+    const ghDistUrl = `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?ts=${Date.now()}`;
+    try {
+        const ghDistribution = await requestJson(ghDistUrl, 10000);
+        if (ghDistribution && ghDistribution.client && Array.isArray(ghDistribution.client.mods)) {
+            logLauncher(`Loaded distribution manifest from GitHub fallback`);
+            return ghDistribution.client.mods;
+        }
+    } catch (error) {
+        logLauncher(`GitHub distribution manifest unavailable: ${error.message}`);
+    }
+
+    const ghModsUrl = `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods.json?ts=${Date.now()}`;
+    try {
+        const ghModsList = await requestJson(ghModsUrl, 10000);
+        if (Array.isArray(ghModsList)) {
+            logLauncher(`Loaded client manifest from GitHub fallback ${ghModsUrl}`);
+            return ghModsList;
+        }
+    } catch (error) {
+        logLauncher(`GitHub client manifest unavailable: ${error.message}`);
+    }
+
     try {
         const localList = readLocalClientManifest();
         if (Array.isArray(localList)) {

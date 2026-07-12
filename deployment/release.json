@@ -1,11 +1,11 @@
 {
-  "id": "20260712-151431",
+  "id": "20260712-172512",
   "published": true,
-  "publishedAt": "2026-07-12T15:14:31.845159Z",
-  "title": "Body UI Texture Size Fix",
-  "summary": "Prevented blitting 1x1 browser textures during CEF initialization. Resolves OpenGL state corruption that led to broken fonts and corrupted inventory textures.",
+  "publishedAt": "2026-07-12T17:25:12.103134Z",
+  "title": "Launcher 1.0.12: GitHub manifest fallback",
+  "summary": "Added GitHub CDN fallback for client manifest download to fix timeout issues for players with slow VPS connections",
   "notes": [
-    "Ensures textureWidth > 1 and textureHeight > 1 before invoking GuiGraphics.blit"
+    "Fixes launch failure when api.eclipse-roleplay.online is unreachable"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
