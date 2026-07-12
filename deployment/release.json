@@ -1,9 +1,9 @@
 {
-  "id": "20260712-085734",
+  "id": "20260712-090846",
   "published": true,
-  "publishedAt": "2026-07-12T08:57:34.362008Z",
-  "title": "Optimize joint pivots and increase sleeve thickness",
-  "summary": "Optimized joint pivots to Y=4.1/6.3 and Z=1.0/-1.0, and increased sleeve/pants thickness to 0.32f to completely eliminate joint tooth and skin clipping/Z-fighting.",
+  "publishedAt": "2026-07-12T09:08:46.440241Z",
+  "title": "Integrate JCEF handlers and click coordinates logging",
+  "summary": "Fully integrated JCEF Load, Display, Request, and Lifespan handlers to trace redirects, console messages, load status, and blocked popups, and added comprehensive mouse coordinate/scaling log entries for click tracing.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

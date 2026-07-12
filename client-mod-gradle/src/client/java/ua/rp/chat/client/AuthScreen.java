@@ -63,6 +63,7 @@ public class AuthScreen extends Screen {
                 // keeps CEF on the stable texture path and prevents missing composited layers.
                 browser = MCEF.createBrowser(authUrl, false);
                 log("browser created: " + McefDiagnostics.browserState(browser));
+                McefDiagnostics.registerHandlers(browser, traceId);
             }
 
             resizeBrowser();
@@ -139,11 +140,18 @@ public class AuthScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        log("mouseClicked: x=" + event.x() + ", y=" + event.y() + ", button=" + event.button() + ", doubleClick=" + doubleClick 
+                + ", scaledX=" + scaleMouseX(event.x()) + ", scaledY=" + scaleMouseY(event.y()) 
+                + ", guiScale=" + getGuiScale() 
+                + ", width=" + width + ", height=" + height 
+                + ", isExitHovered=" + isExitButtonHovered(event.x(), event.y()));
+
         if (isExitButtonHovered(event.x(), event.y())) {
             leaveToMainMenu();
             return true;
         }
         if (browser != null) {
+            log("sending mousePress to CEF: scaledX=" + scaleMouseX(event.x()) + ", scaledY=" + scaleMouseY(event.y()) + ", button=" + event.button());
             browser.sendMousePress(scaleMouseX(event.x()), scaleMouseY(event.y()), event.button());
             browser.setFocus(true);
         }
@@ -152,6 +160,8 @@ public class AuthScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        log("mouseReleased: x=" + event.x() + ", y=" + event.y() + ", button=" + event.button()
+                + ", scaledX=" + scaleMouseX(event.x()) + ", scaledY=" + scaleMouseY(event.y()));
         if (browser != null) {
             browser.sendMouseRelease(scaleMouseX(event.x()), scaleMouseY(event.y()), event.button());
             browser.setFocus(true);
