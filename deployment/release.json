@@ -1,9 +1,9 @@
 {
-  "id": "20260712-084047",
+  "id": "20260712-084845",
   "published": true,
-  "publishedAt": "2026-07-12T08:40:47.094445Z",
-  "title": "Set crouching camera forward offset shift to 0.34 blocks",
-  "summary": "Set crouching camera forward offset shift to 0.34 blocks.",
+  "publishedAt": "2026-07-12T08:48:45.760423Z",
+  "title": "Implement shifted joint pivots and joint filler blocks",
+  "summary": "Shifted joint pivots backward for arms and forward for legs, and added non-rotating joint filler blocks to upper arms and thighs to completely prevent gaps and texture tearing during bends.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

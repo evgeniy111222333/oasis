@@ -3,8 +3,8 @@
         "name": "eclipse-client-1.1.0.jar",
         "path": "mods/eclipse-client-1.1.0.jar",
         "url": "https://pub-b766c8d6775740beb9a1d74a4b7b6067.r2.dev/client/mods/eclipse-client-1.1.0.jar",
-        "sha1": "c7de95da33931fdfbb909d8490fca048ae33b90f",
-        "size": 625342
+        "sha1": "701bfeb8a47c2da53c2dcaa6f8aaea367e1e2d87",
+        "size": 625495
     },
     {
         "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",

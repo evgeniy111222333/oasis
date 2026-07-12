@@ -471,24 +471,66 @@ public class PlayerModelMixin {
         int width = slim ? 3 : 4;
         float minX = right ? (slim ? -2.0f : -3.0f) : -1.0f;
         PartDefinition arm = root.addOrReplaceChild(armName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
-        PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", CubeListBuilder.create().texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation), PartPose.ZERO);
-        PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, deformation), PartPose.offset(0.0f, 3.8f, 0.0f));
+        
+        // Upper arm with joint filler block at the bottom-back (Z: 0.0 to 2.0, Y: 3.8 to 4.8)
+        PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", 
+                CubeListBuilder.create()
+                        .texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation)
+                        .texOffs(texX, texY + 4).addBox(minX, 3.8f, 0.0f, width, 1.0f, 2, deformation), 
+                PartPose.ZERO);
+        
+        // Forearm with backward-shifted pivot at Z = 1.2
+        PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
+                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, 0.0f, -3.2f, width, 6.2f, 4, deformation), 
+                PartPose.offset(0.0f, 3.8f, 1.2f));
 
         CubeDeformation sleeve = deformation.extend(0.25f);
-        upperArm.addOrReplaceChild("eclipse_upper_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve), PartPose.ZERO);
-        forearm.addOrReplaceChild("eclipse_forearm_sleeve", CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -2.0f, width, 6.2f, 4, sleeve), PartPose.ZERO);
+        
+        // Upper sleeve with joint filler
+        upperArm.addOrReplaceChild("eclipse_upper_sleeve", 
+                CubeListBuilder.create()
+                        .texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve)
+                        .texOffs(sleeveTexX, sleeveTexY + 4).addBox(minX, 3.8f, 0.0f, width, 1.0f, 2, sleeve), 
+                PartPose.ZERO);
+        
+        // Forearm sleeve with shifted pivot
+        forearm.addOrReplaceChild("eclipse_forearm_sleeve", 
+                CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, 0.0f, -3.2f, width, 6.2f, 4, sleeve), 
+                PartPose.ZERO);
+        
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
     }
 
     @Unique
     private static void eclipse$replaceLeg(PartDefinition root, String legName, String pantsName, float x, int texX, int texY, int pantsTexX, int pantsTexY, CubeDeformation deformation) {
         PartDefinition leg = root.addOrReplaceChild(legName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
-        PartDefinition thigh = leg.addOrReplaceChild("eclipse_thigh", CubeListBuilder.create().texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation), PartPose.ZERO);
-        PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation), PartPose.offset(0.0f, 6.0f, 0.0f));
+        
+        // Thigh with joint filler at the bottom-front (Z: -2.0 to 0.0, Y: 6.0 to 7.0)
+        PartDefinition thigh = leg.addOrReplaceChild("eclipse_thigh", 
+                CubeListBuilder.create()
+                        .texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation)
+                        .texOffs(texX, texY + 4).addBox(-2.0f, 6.0f, -2.0f, 4, 1.0f, 2, deformation), 
+                PartPose.ZERO);
+        
+        // Shin with forward-shifted pivot at Z = -1.2
+        PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", 
+                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, 0.0f, -0.8f, 4, 6.0f, 4, deformation), 
+                PartPose.offset(0.0f, 6.0f, -1.2f));
 
         CubeDeformation pants = deformation.extend(0.25f);
-        thigh.addOrReplaceChild("eclipse_thigh_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants), PartPose.ZERO);
-        shin.addOrReplaceChild("eclipse_shin_pants", CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants), PartPose.ZERO);
+        
+        // Thigh pants with joint filler
+        thigh.addOrReplaceChild("eclipse_thigh_pants", 
+                CubeListBuilder.create()
+                        .texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants)
+                        .texOffs(pantsTexX, pantsTexY + 4).addBox(-2.0f, 6.0f, -2.0f, 4, 1.0f, 2, pants), 
+                PartPose.ZERO);
+        
+        // Shin pants with shifted pivot
+        shin.addOrReplaceChild("eclipse_shin_pants", 
+                CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, 0.0f, -0.8f, 4, 6.0f, 4, pants), 
+                PartPose.ZERO);
+        
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
     }
 
