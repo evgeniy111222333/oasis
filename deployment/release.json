@@ -1,12 +1,12 @@
 {
-  "id": "20260712-141414",
+  "id": "20260712-143255",
   "published": true,
-  "publishedAt": "2026-07-12T14:14:14.274837Z",
-  "title": "Client Mod Logging Update",
-  "summary": "Added info-level logging for player appearance profile requests in the client mod",
+  "publishedAt": "2026-07-12T14:32:55.938491Z",
+  "title": "Launcher Fallback Update 1.0.11",
+  "summary": "Released launcher version 1.0.11 with timeout updates and GitHub CDN fallbacks. Set GitHub CDN as the primary download source for game updates.",
   "notes": [
-    "Detailed logs will show up in the client's latest.log",
-    "Fixes diagnostic traceability for player skins"
+    "Sets raw.githubusercontent.com as primary mirror for mods and launcher installers",
+    "Fixes DPI resets and timeouts for players in Russia"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

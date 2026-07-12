@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-PUBLIC_BASE_URL = "https://api.eclipse-roleplay.online/dist"
+PUBLIC_BASE_URL = "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist"
 
 
 def digest(path: Path, algorithm: str) -> str:
@@ -47,7 +47,15 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
         raise FileNotFoundError("Missing distribution input(s): " + ", ".join(missing))
 
     if output.exists():
-        shutil.rmtree(output)
+        import stat
+        import os
+        def on_rm_error(func, path, exc_info):
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except Exception:
+                pass
+        shutil.rmtree(output, onerror=on_rm_error)
     client_output = output / "client"
     launcher_output = output / "launcher" / "stable"
     manifests_output = output / "manifests"
