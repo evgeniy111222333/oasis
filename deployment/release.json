@@ -1,13 +1,13 @@
 {
-  "id": "20260712-132512",
+  "id": "20260712-133144",
   "published": true,
-  "publishedAt": "2026-07-12T13:25:12.392163Z",
-  "title": "Launcher self-update 1.0.8",
-  "summary": "Fixed the launcher update loop: verified detached installer, legacy 1.0.6 bridge, and automatic silent replacement.",
+  "publishedAt": "2026-07-12T13:31:44.190378Z",
+  "title": "Launcher self-update 1.0.9",
+  "summary": "Final legacy handoff fix: NSIS immediately closes the running 1.0.6 launcher instead of being terminated during delayed shutdown.",
   "notes": [
-    "Launcher 1.0.6 can now hand off safely to the 1.0.8 installer.",
-    "Installer size and SHA-256 are verified before execution.",
-    "Future updates run detached with /S --updated and survive launcher shutdown."
+    "Removed the fatal installer startup delay from the legacy bridge.",
+    "Existing launchers trigger immediate silent replacement through NSIS.",
+    "Detached /S --updated handoff and SHA-256 verification remain enabled."
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
