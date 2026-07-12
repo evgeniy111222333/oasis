@@ -64,13 +64,13 @@ public final class ArticulatedLimbLayoutTest {
         float bentRadiusSquared = square(bentY - ArticulatedLimbLayout.ARM_ELBOW_Y) + square(bentZ);
         assertClose("held item rotation preserves elbow-to-hand distance", originalRadiusSquared, bentRadiusSquared);
 
-        float requiredJointHalfHeight = ArticulatedLimbLayout.requiredJointHalfHeight(
-                2.0f, ArticulatedLimbLayout.MAX_SUPPORTED_FOREARM_BEND);
-        assertTrue("elbow core covers the maximum supported bend",
-                ArticulatedLimbLayout.ELBOW_CORE_HEIGHT / 2.0f >= requiredJointHalfHeight);
-        assertTrue("elbow core remains inset inside the straight arm",
-                ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ > 0.0f
-                        && ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ < 0.5f);
+        assertTrue("elbow cylinder is inset inside the base arm",
+                ArticulatedLimbLayout.ELBOW_CORE_RADIUS < 2.0f);
+        assertClose("second layer keeps a radial anti-z-fighting gap",
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
+                ArticulatedLimbLayout.ELBOW_SLEEVE_RADIUS - ArticulatedLimbLayout.ELBOW_CORE_RADIUS);
+        assertTrue("elbow cylinder has enough facets for a smooth block-scale silhouette",
+                ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS >= 8);
         assertClose("elbow core bisects the joint angle", -0.5f,
                 ArticulatedLimbLayout.jointCoreRotation(-1.0f));
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");

@@ -18,6 +18,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -39,6 +42,13 @@ public class PlayerModelMixin {
         eclipse$remapLowerSegment(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", true);
         eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", false);
         eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", false);
+        int armWidth = slim ? 3 : 4;
+        eclipse$installElbowGeometry(model.rightArm, armWidth, slim ? -2.0f : -3.0f, 40, 16, 40, 32);
+        eclipse$installElbowGeometry(model.leftArm, armWidth, -1.0f, 32, 48, 48, 48);
+        eclipse$removeWearableEndCaps(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
+        eclipse$removeWearableEndCaps(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
+        eclipse$removeWearableEndCaps(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
+        eclipse$removeWearableEndCaps(model.leftLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
     }
 
     @Inject(
@@ -518,17 +528,9 @@ public class PlayerModelMixin {
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
 
-        // This core is fully inset inside a straight arm. It becomes visible only
-        // in the wedge opened by the two rectangular segments while bending.
-        CubeDeformation elbowCore = deformation.extend(
-                -ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ,
-                0.0f,
-                -ArticulatedLimbLayout.ELBOW_CORE_INSET_XZ);
         arm.addOrReplaceChild("eclipse_elbow_core",
                 CubeListBuilder.create()
-                        .texOffs(texX, texY + ArticulatedLimbLayout.ELBOW_CORE_TEXTURE_ROW_OFFSET)
-                        .addBox(minX, ArticulatedLimbLayout.ELBOW_CORE_TOP_Y, -2.0f,
-                                width, ArticulatedLimbLayout.ELBOW_CORE_HEIGHT, 4, elbowCore),
+                        .texOffs(texX, texY).addBox(minX, -1.0f, -1.0f, width, 2, 2, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
 
         // Grow the wearable only across the arm. Y growth would make both sleeve segments intersect.
@@ -548,6 +550,11 @@ public class PlayerModelMixin {
                         .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, sleeve),
                 PartPose.ZERO);
+
+        arm.addOrReplaceChild("eclipse_elbow_sleeve",
+                CubeListBuilder.create()
+                        .texOffs(sleeveTexX, sleeveTexY).addBox(minX, -1.0f, -1.0f, width, 2, 2, sleeve),
+                PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
         
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
     }
@@ -602,13 +609,8 @@ public class PlayerModelMixin {
                 ? ArticulatedLimbLayout.HAND_BOTTOM_CAP_V_SHIFT_PIXELS
                 : ArticulatedLimbLayout.ORIGINAL_CAP_V_SHIFT_PIXELS;
         eclipse$remapEndCaps(lower, topShift, bottomShift);
-        eclipse$remapEndCaps(eclipse$getChildOrNull(lower, wearableName), topShift, bottomShift);
-        if (deriveCapsFromSideTexture) {
-            eclipse$remapEndCaps(
-                    eclipse$getChildOrNull(limb, "eclipse_elbow_core"),
-                    ArticulatedLimbLayout.ELBOW_CORE_CAP_V_SHIFT_PIXELS,
-                    ArticulatedLimbLayout.ELBOW_CORE_CAP_V_SHIFT_PIXELS);
-        }
+        // Wearable caps are removed separately: drawing them in the same Y plane
+        // as the base layer is the source of distance-dependent z-fighting.
     }
 
     @Unique
@@ -642,6 +644,118 @@ public class PlayerModelMixin {
                     }
                 }
             }
+        }
+    }
+
+    @Unique
+    private void eclipse$installElbowGeometry(
+            ModelPart arm, int width, float minX, int texX, int texY, int sleeveTexX, int sleeveTexY) {
+        eclipse$replaceWithElbowCylinder(
+                eclipse$getChildOrNull(arm, "eclipse_elbow_core"),
+                minX + ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
+                minX + width - ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
+                ArticulatedLimbLayout.ELBOW_CORE_RADIUS,
+                texX + 4.0f, texY + 10.0f, width, 4.0f);
+        eclipse$replaceWithElbowCylinder(
+                eclipse$getChildOrNull(arm, "eclipse_elbow_sleeve"),
+                minX - ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ + ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
+                minX + width + ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ - ArticulatedLimbLayout.ELBOW_CORE_X_INSET,
+                ArticulatedLimbLayout.ELBOW_SLEEVE_RADIUS,
+                sleeveTexX + 4.0f, sleeveTexY + 8.0f, width, 4.0f);
+    }
+
+    @Unique
+    private void eclipse$replaceWithElbowCylinder(
+            ModelPart part, float minX, float maxX, float radius,
+            float textureU, float textureV, float textureWidth, float textureSpanV) {
+        if (part == null) {
+            return;
+        }
+        List<ModelPart.Cube> cubes = ((ModelPartAccessor) (Object) part).getCubes();
+        if (cubes.isEmpty()) {
+            return;
+        }
+        int segments = ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS;
+        List<ModelPart.Polygon> polygons = new ArrayList<>(segments + 2);
+        float u0 = textureU / 64.0f;
+        float u1 = (textureU + textureWidth) / 64.0f;
+        for (int segment = 0; segment < segments; segment++) {
+            double angle0 = Math.PI * 2.0 * segment / segments;
+            double angle1 = Math.PI * 2.0 * (segment + 1) / segments;
+            float y0 = radius * (float) Math.cos(angle0);
+            float z0 = radius * (float) Math.sin(angle0);
+            float y1 = radius * (float) Math.cos(angle1);
+            float z1 = radius * (float) Math.sin(angle1);
+            float v0 = (textureV + textureSpanV * segment / segments) / 64.0f;
+            float v1 = (textureV + textureSpanV * (segment + 1) / segments) / 64.0f;
+            ModelPart.Vertex[] vertices = {
+                    new ModelPart.Vertex(minX, y0, z0, u0, v0),
+                    new ModelPart.Vertex(minX, y1, z1, u0, v1),
+                    new ModelPart.Vertex(maxX, y1, z1, u1, v1),
+                    new ModelPart.Vertex(maxX, y0, z0, u1, v0)
+            };
+            float normalY = (float) Math.cos((angle0 + angle1) * 0.5);
+            float normalZ = (float) Math.sin((angle0 + angle1) * 0.5);
+            polygons.add(new ModelPart.Polygon(vertices, new Vector3f(0.0f, normalY, normalZ)));
+        }
+        polygons.add(eclipse$elbowCap(minX, radius, textureU, textureV, textureWidth, textureSpanV, false));
+        polygons.add(eclipse$elbowCap(maxX, radius, textureU, textureV, textureWidth, textureSpanV, true));
+        ((ModelPartCubeAccessor) (Object) cubes.get(0)).eclipse$setPolygons(polygons.toArray(ModelPart.Polygon[]::new));
+    }
+
+    @Unique
+    private ModelPart.Polygon eclipse$elbowCap(
+            float x, float radius, float textureU, float textureV,
+            float textureWidth, float textureSpanV, boolean positiveX) {
+        int segments = ArticulatedLimbLayout.ELBOW_CYLINDER_SEGMENTS;
+        ModelPart.Vertex[] vertices = new ModelPart.Vertex[segments];
+        for (int index = 0; index < segments; index++) {
+            int segment = positiveX ? index : segments - 1 - index;
+            double angle = Math.PI * 2.0 * segment / segments;
+            float y = radius * (float) Math.cos(angle);
+            float z = radius * (float) Math.sin(angle);
+            float u = (textureU + textureWidth * (z / radius + 1.0f) * 0.5f) / 64.0f;
+            float v = (textureV + textureSpanV * (y / radius + 1.0f) * 0.5f) / 64.0f;
+            vertices[index] = new ModelPart.Vertex(x, y, z, u, v);
+        }
+        return new ModelPart.Polygon(vertices, new Vector3f(positiveX ? 1.0f : -1.0f, 0.0f, 0.0f));
+    }
+
+    @Unique
+    private void eclipse$removeWearableEndCaps(
+            ModelPart limb, String upperName, String upperWearable,
+            String lowerName, String lowerWearable) {
+        eclipse$removeEndCaps(eclipse$getChildOrNull(eclipse$getChildOrNull(limb, upperName), upperWearable));
+        eclipse$removeEndCaps(eclipse$getChildOrNull(eclipse$getChildOrNull(limb, lowerName), lowerWearable));
+    }
+
+    @Unique
+    private void eclipse$removeEndCaps(ModelPart part) {
+        if (part == null) {
+            return;
+        }
+        for (ModelPart.Cube cube : ((ModelPartAccessor) (Object) part).getCubes()) {
+            float minY = Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+            for (ModelPart.Polygon polygon : cube.polygons) {
+                for (ModelPart.Vertex vertex : polygon.vertices()) {
+                    minY = Math.min(minY, vertex.y());
+                    maxY = Math.max(maxY, vertex.y());
+                }
+            }
+            final float lower = minY;
+            final float upper = maxY;
+            ModelPart.Polygon[] sidePolygons = Arrays.stream(cube.polygons)
+                    .filter(polygon -> {
+                        float averageY = 0.0f;
+                        for (ModelPart.Vertex vertex : polygon.vertices()) {
+                            averageY += vertex.y();
+                        }
+                        averageY /= polygon.vertices().length;
+                        return Math.abs(averageY - lower) > 0.001f && Math.abs(averageY - upper) > 0.001f;
+                    })
+                    .toArray(ModelPart.Polygon[]::new);
+            ((ModelPartCubeAccessor) (Object) cube).eclipse$setPolygons(sidePolygons);
         }
     }
 
@@ -809,8 +923,10 @@ public class PlayerModelMixin {
         eclipse$resetWearableLocalPose(model.leftPants);
         eclipse$setNestedVisible(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.rightSleeve.visible);
         eclipse$setNestedVisible(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.rightSleeve.visible);
+        eclipse$setDirectVisible(model.rightArm, "eclipse_elbow_sleeve", model.rightSleeve.visible);
         eclipse$setNestedVisible(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", model.leftSleeve.visible);
         eclipse$setNestedVisible(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve", model.leftSleeve.visible);
+        eclipse$setDirectVisible(model.leftArm, "eclipse_elbow_sleeve", model.leftSleeve.visible);
         eclipse$setNestedVisible(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", model.rightPants.visible);
         eclipse$setNestedVisible(model.rightLeg, "eclipse_shin", "eclipse_shin_pants", model.rightPants.visible);
         eclipse$setNestedVisible(model.leftLeg, "eclipse_thigh", "eclipse_thigh_pants", model.leftPants.visible);
@@ -856,9 +972,22 @@ public class PlayerModelMixin {
         if (forearm != null) {
             forearm.xRot = -bend;
         }
+        float jointRotation = ArticulatedLimbLayout.jointCoreRotation(-bend);
         ModelPart elbowCore = eclipse$getChildOrNull(arm, "eclipse_elbow_core");
         if (elbowCore != null) {
-            elbowCore.xRot = ArticulatedLimbLayout.jointCoreRotation(-bend);
+            elbowCore.xRot = jointRotation;
+        }
+        ModelPart elbowSleeve = eclipse$getChildOrNull(arm, "eclipse_elbow_sleeve");
+        if (elbowSleeve != null) {
+            elbowSleeve.xRot = jointRotation;
+        }
+    }
+
+    @Unique
+    private void eclipse$setDirectVisible(ModelPart root, String childName, boolean visible) {
+        ModelPart child = eclipse$getChildOrNull(root, childName);
+        if (child != null) {
+            child.visible = visible;
         }
     }
 
