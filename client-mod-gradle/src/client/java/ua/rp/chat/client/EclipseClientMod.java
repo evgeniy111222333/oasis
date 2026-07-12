@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
+    public static final String DIAGNOSTIC_BUILD = "mcef-trace-20260712-1";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
@@ -36,7 +37,9 @@ public class EclipseClientMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Eclipse RolePlay Client initialized! Waiting for server packages...");
+        LOGGER.info("Eclipse RolePlay Client initialized! Diagnostic build=" + DIAGNOSTIC_BUILD
+                + ", java=" + System.getProperty("java.version")
+                + ", os=" + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         EclipseHudOverlay.register();
         bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.body_status",
@@ -44,6 +47,7 @@ public class EclipseClientMod implements ClientModInitializer {
                 GLFW.GLFW_KEY_B,
                 KeyMapping.Category.GAMEPLAY
         ));
+        LOGGER.info("[BODY] Key mapping registered: translation=key.eclipseclient.body_status, default=B");
 
         // Register custom payload codec
         PayloadTypeRegistry.clientboundPlay().register(AuthPayload.TYPE, AuthPayload.CODEC);
@@ -54,7 +58,7 @@ public class EclipseClientMod implements ClientModInitializer {
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
             String authUrl = payload.authUrl();
-            LOGGER.info("Received auth trigger from server. URL: " + authUrl);
+            LOGGER.info("[AUTH] Received server trigger: url=" + McefDiagnostics.safeUrl(authUrl));
             
             context.client().execute(() -> {
                 openAuthScreen(context.client(), authUrl);
@@ -78,11 +82,21 @@ public class EclipseClientMod implements ClientModInitializer {
             return;
         }
         while (bodyStatusKey.consumeClick()) {
+            String currentScreen = client.screen == null ? "none" : client.screen.getClass().getSimpleName();
+            String gameMode = client.gameMode == null ? "unknown" : String.valueOf(client.gameMode.getPlayerMode());
+            LOGGER.info("[BODY] B key consumed: player=" + (client.player != null)
+                    + ", level=" + (client.level != null)
+                    + ", currentScreen=" + currentScreen
+                    + ", gameMode=" + gameMode);
             if (client.player == null || client.level == null || client.screen != null) {
+                LOGGER.info("[BODY] B request ignored because the client is not in a screen-free playable state.");
                 continue;
             }
-            LOGGER.debug("Opening Eclipse body status screen.");
-            client.setScreen(new BodyStatusScreen(VitalsClientState.bodyStatusUrl()));
+            String bodyUrl = VitalsClientState.bodyStatusUrl();
+            LOGGER.info("[BODY] Creating body status screen: url=" + McefDiagnostics.safeUrl(bodyUrl));
+            client.setScreen(new BodyStatusScreen(bodyUrl));
+            LOGGER.info("[BODY] setScreen returned: currentScreen="
+                    + (client.screen == null ? "none" : client.screen.getClass().getSimpleName()));
         }
     }
 
@@ -118,21 +132,28 @@ public class EclipseClientMod implements ClientModInitializer {
                     if (authUrl == null || authUrl.isBlank() || authUrl.equals(lastOpenedUrl)) {
                         return;
                     }
+                    LOGGER.info("[AUTH] Session poll found a new auth flow: url=" + McefDiagnostics.safeUrl(authUrl));
                     client.execute(() -> openAuthScreen(client, authUrl));
                 });
     }
 
     private static void openAuthScreen(Minecraft client, String authUrl) {
         if (!isValidAuthUrl(authUrl)) {
-            LOGGER.warn("Ignored invalid Eclipse auth URL: " + authUrl);
+            LOGGER.warn("[AUTH] Ignored invalid Eclipse auth URL: " + McefDiagnostics.safeUrl(authUrl));
             return;
         }
         if (client.screen instanceof AuthScreen current && current.usesAuthUrl(authUrl)) {
+            LOGGER.info("[AUTH] Existing AuthScreen already owns this URL; duplicate trigger ignored.");
             return;
         }
+        LOGGER.info("[AUTH] Replacing screen "
+                + (client.screen == null ? "none" : client.screen.getClass().getSimpleName())
+                + " with a new AuthScreen: url=" + McefDiagnostics.safeUrl(authUrl));
         EclipseApiClient.rememberFromUrl(authUrl);
         lastOpenedUrl = authUrl;
         client.setScreen(new AuthScreen(authUrl));
+        LOGGER.info("[AUTH] setScreen returned: currentScreen="
+                + (client.screen == null ? "none" : client.screen.getClass().getSimpleName()));
     }
 
     private static String fetchAuthUrl(String sessionUrl) {

@@ -19,6 +19,8 @@ import java.net.URI;
 public class AuthScreen extends Screen {
 
     private final String authUrl;
+    private final String traceId = McefDiagnostics.nextTraceId("auth");
+    private final long createdNanos = System.nanoTime();
     private MCEFBrowser browser;
     private String fallbackStatus = "Подготовка авторизации Eclipse...";
     private int ticksOpen;
@@ -26,10 +28,17 @@ public class AuthScreen extends Screen {
     private int exitY;
     private int exitWidth = 84;
     private int exitHeight = 24;
+    private boolean lastTextureReady;
+    private boolean firstFallbackLogged;
+    private boolean firstBlitLogged;
+    private boolean closeLogged;
+    private int lastBrowserWidth = -1;
+    private int lastBrowserHeight = -1;
 
     protected AuthScreen(String authUrl) {
         super(Component.literal("Авторизация Eclipse"));
         this.authUrl = authUrl;
+        log("constructed: url=" + McefDiagnostics.safeUrl(authUrl));
     }
 
     boolean usesAuthUrl(String candidate) {
@@ -39,16 +48,21 @@ public class AuthScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        log("init start: screen=" + width + "x" + height + ", guiScale=" + getGuiScale()
+                + ", " + McefDiagnostics.browserState(browser));
 
         try {
             if (!MCEF.isInitialized()) {
+                log("MCEF.initialize start");
                 MCEF.initialize();
+                log("MCEF.initialize complete");
             }
 
             if (browser == null) {
                 // The auth page is fully opaque. Avoiding a transparent OSR surface
                 // keeps CEF on the stable texture path and prevents missing composited layers.
                 browser = MCEF.createBrowser(authUrl, false);
+                log("browser created: " + McefDiagnostics.browserState(browser));
             }
 
             resizeBrowser();
@@ -59,10 +73,11 @@ public class AuthScreen extends Screen {
             browser = null;
             fallbackStatus = "Встроенный браузер недоступен. Открываем вход во внешнем браузере.";
             EclipseClientMod.LOGGER.warn("MCEF auth browser failed, using external browser fallback.", t);
+            log("init failed: " + t.getClass().getName() + ": " + String.valueOf(t.getMessage()));
             openExternalFallback();
         }
 
-        EclipseClientMod.LOGGER.info("Opening embedded auth flow for: " + authUrl);
+        log("init complete: url=" + McefDiagnostics.safeUrl(authUrl) + ", " + McefDiagnostics.browserState(browser));
     }
 
     @Override
@@ -70,8 +85,23 @@ public class AuthScreen extends Screen {
         super.tick();
         ticksOpen++;
 
+        boolean textureReady = browser != null && browser.isTextureReady();
+        if (textureReady != lastTextureReady) {
+            lastTextureReady = textureReady;
+            log("textureReady changed to " + textureReady + ": " + McefDiagnostics.browserState(browser));
+        }
+        if (ticksOpen == 1 || ticksOpen == 5 || ticksOpen == 20 || ticksOpen == 40
+                || ticksOpen == 80 || ticksOpen == 100 || ticksOpen == 200
+                || ticksOpen == 400 || ticksOpen == 800 || ticksOpen == 1200) {
+            String gameMode = minecraft == null || minecraft.gameMode == null
+                    ? "unknown" : String.valueOf(minecraft.gameMode.getPlayerMode());
+            log("tick milestone=" + ticksOpen + ", gameMode=" + gameMode + ", "
+                    + McefDiagnostics.browserState(browser));
+        }
+
         if (ticksOpen > 80 && minecraft != null && minecraft.gameMode != null
                 && minecraft.gameMode.getPlayerMode() != GameType.SPECTATOR) {
+            log("auto-closing after spectator guard failed: gameMode=" + minecraft.gameMode.getPlayerMode());
             minecraft.setScreen(null);
         }
     }
@@ -81,6 +111,11 @@ public class AuthScreen extends Screen {
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
             if (texture != null) {
+                if (!firstBlitLogged) {
+                    firstBlitLogged = true;
+                    log("first browser blit: texture=" + texture + ", target=" + width + "x" + height
+                            + ", " + McefDiagnostics.browserState(browser));
+                }
                 graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f, width, height, width, height);
                 drawExitButton(graphics, mouseX, mouseY);
                 return;
@@ -168,13 +203,16 @@ public class AuthScreen extends Screen {
 
     @Override
     public void onClose() {
-        closeBrowser();
+        log("onClose invoked");
+        closeBrowser("onClose");
         super.onClose();
     }
 
     @Override
     public void removed() {
-        closeBrowser();
+        log("removed from Minecraft; currentScreen="
+                + (minecraft == null || minecraft.screen == null ? "none" : minecraft.screen.getClass().getSimpleName()));
+        closeBrowser("removed");
         super.removed();
     }
 
@@ -195,13 +233,31 @@ public class AuthScreen extends Screen {
 
         updateExitButtonBounds();
         int scale = Math.max(1, minecraft.getWindow().getGuiScale());
-        browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
+        int browserWidth = Math.max(1, width * scale);
+        int browserHeight = Math.max(1, height * scale);
+        browser.resize(browserWidth, browserHeight);
+        if (browserWidth != lastBrowserWidth || browserHeight != lastBrowserHeight) {
+            lastBrowserWidth = browserWidth;
+            lastBrowserHeight = browserHeight;
+            log("browser resize requested: screen=" + width + "x" + height + ", scale=" + scale
+                    + ", browser=" + browserWidth + "x" + browserHeight);
+        }
     }
 
-    private void closeBrowser() {
+    private void closeBrowser(String reason) {
         if (browser != null) {
+            if (!closeLogged) {
+                closeLogged = true;
+                log("closing browser: reason=" + reason + ", " + McefDiagnostics.browserState(browser));
+            }
             browser.close();
             browser = null;
+            log("browser close returned: reason=" + reason);
+        }
+
+        if (!firstFallbackLogged) {
+            firstFallbackLogged = true;
+            log("rendering fallback because browser texture is unavailable: " + McefDiagnostics.browserState(browser));
         }
     }
 
@@ -225,6 +281,7 @@ public class AuthScreen extends Screen {
 
     private void leaveToMainMenu() {
         if (browser != null) {
+            log("exit button selected; disconnecting to title screen");
             browser.close();
             browser = null;
         }
@@ -262,5 +319,10 @@ public class AuthScreen extends Screen {
             fallbackStatus = "Не удалось открыть браузер автоматически. Используйте ссылку авторизации в чате.";
             EclipseClientMod.LOGGER.warn("Failed to open auth URL in external browser.", e);
         }
+    }
+
+    private void log(String message) {
+        long elapsedMs = (System.nanoTime() - createdNanos) / 1_000_000L;
+        EclipseClientMod.LOGGER.info("[AUTH][" + traceId + "][+" + elapsedMs + "ms] " + message);
     }
 }
