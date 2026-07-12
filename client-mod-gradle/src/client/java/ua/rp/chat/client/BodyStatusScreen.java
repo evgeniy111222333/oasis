@@ -27,6 +27,7 @@ public class BodyStatusScreen extends Screen {
     private final String traceId = McefDiagnostics.nextTraceId("body");
     private final long createdNanos = System.nanoTime();
     private MCEFBrowser browser;
+    private boolean pageLoaded = false;
     private int ticksWithoutTexture;
     private int ticksOpen;
     private boolean browserClosed;
@@ -61,6 +62,17 @@ public class BodyStatusScreen extends Screen {
             String targetUrl = getLocalBodyUrl(url);
             log("Opening local body URL: " + targetUrl);
             browser = MCEF.createBrowser(targetUrl, true);
+            if (browser != null && browser.getClient() != null) {
+                browser.getClient().addLoadHandler(new org.cef.handler.CefLoadHandlerAdapter() {
+                    @Override
+                    public void onLoadingStateChange(org.cef.browser.CefBrowser b, boolean isLoading, boolean canGoBack, boolean canGoForward) {
+                        if (!isLoading) {
+                            pageLoaded = true;
+                            log("Local body status page loading completed successfully.");
+                        }
+                    }
+                });
+            }
             log("browser created: " + McefDiagnostics.browserState(browser));
             browserClosed = false;
             resizeBrowser();
@@ -152,7 +164,7 @@ public class BodyStatusScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
-        if (browser != null && browser.isTextureReady()) {
+        if (browser != null && pageLoaded && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
             if (texture != null) {
                 if (!firstBlitLogged) {

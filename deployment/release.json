@@ -1,12 +1,11 @@
 {
-  "id": "20260712-145218",
+  "id": "20260712-145451",
   "published": true,
-  "publishedAt": "2026-07-12T14:52:18.819098Z",
-  "title": "Body UI Local Migration Update",
-  "summary": "Migrated the body status web overlay to a local embedded asset structure inside the client mod JAR. Resolved loading issues for players on censored networks.",
+  "publishedAt": "2026-07-12T14:54:51.871265Z",
+  "title": "Body UI Local Flash Fix",
+  "summary": "Fixed a brief visual flash of the fallback background when opening the body status screen. Delayed the fallback screen render until after 10 ticks.",
   "notes": [
-    "Initializes a file:// load path with transparent OSR background for body UI",
-    "AJAX calls for vitals and treatment point to VPS with CORS"
+    "Ensures a completely seamless, transparent transition when pressing B"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
