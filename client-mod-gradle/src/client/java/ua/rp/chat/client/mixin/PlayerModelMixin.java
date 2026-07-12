@@ -1,5 +1,6 @@
 package ua.rp.chat.client.mixin;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
@@ -12,6 +13,7 @@ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -26,9 +28,39 @@ import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
+import ua.rp.chat.ArticulatedLimbLayout;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
+    @Inject(method = "<init>(Lnet/minecraft/client/model/geom/ModelPart;Z)V", at = @At("RETURN"))
+    private void eclipse$remapSegmentEndCaps(ModelPart root, boolean slim, CallbackInfo ci) {
+        PlayerModel model = (PlayerModel) (Object) this;
+        eclipse$remapLowerSegment(model.rightArm, "eclipse_forearm", "eclipse_forearm_sleeve");
+        eclipse$remapLowerSegment(model.leftArm, "eclipse_forearm", "eclipse_forearm_sleeve");
+        eclipse$remapLowerSegment(model.rightLeg, "eclipse_shin", "eclipse_shin_pants");
+        eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants");
+    }
+
+    @Inject(
+            method = "translateToHand(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;Lnet/minecraft/world/entity/HumanoidArm;Lcom/mojang/blaze3d/vertex/PoseStack;)V",
+            at = @At("RETURN")
+    )
+    private void eclipse$followForearmWithHeldItem(
+            AvatarRenderState state, HumanoidArm side, PoseStack poseStack, CallbackInfo ci) {
+        PlayerModel model = (PlayerModel) (Object) this;
+        ModelPart arm = side == HumanoidArm.RIGHT ? model.rightArm : model.leftArm;
+        ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
+        if (forearm == null) {
+            return;
+        }
+
+        // Vanilla positions the item for a straight 12px arm. Conjugating that
+        // transform around the real 6px elbow makes the hand and held item share
+        // one bone without changing vanilla placement when the bend is zero.
+        forearm.translateAndRotate(poseStack);
+        poseStack.translate(-forearm.x / 16.0f, -forearm.y / 16.0f, -forearm.z / 16.0f);
+    }
+
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
     private static void eclipse$createSegmentedMesh(CubeDeformation deformation, boolean slim, CallbackInfoReturnable<MeshDefinition> cir) {
         MeshDefinition mesh = cir.getReturnValue();
@@ -472,31 +504,36 @@ public class PlayerModelMixin {
         int width = slim ? 3 : 4;
         float minX = right ? (slim ? -2.0f : -3.0f) : -1.0f;
         PartDefinition arm = root.addOrReplaceChild(armName, CubeListBuilder.create(), PartPose.offset(x, 2.0f, 0.0f));
-        
-        // Upper arm with joint filler block at the bottom-back (slightly smaller to prevent Z-fighting)
+
+        // The elbow is a real bone boundary: the two boxes share one plane and never overlap.
         PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", 
                 CubeListBuilder.create()
-                        .texOffs(texX, texY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, deformation)
-                        .texOffs(texX, texY + 4).addBox(minX + 0.01f, 3.8f, 0.0f, width - 0.02f, 1.0f, 1.98f, deformation), 
+                        .texOffs(texX, texY).addBox(minX, ArticulatedLimbLayout.ARM_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.armUpperHeight(), 4, deformation),
                 PartPose.ZERO);
-        
-        // Forearm with pivot shifted down and backward (Y=4.1, Z=1.0) to prevent the "tooth"
-        PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
-                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(minX, -0.3f, -3.0f, width, 6.5f, 4, deformation), 
-                PartPose.offset(0.0f, 4.1f, 1.0f));
 
-        CubeDeformation sleeve = deformation.extend(0.32f); // Increased from 0.25f to prevent skin clipping and Z-fighting
-        
-        // Upper sleeve with joint filler
+        PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
+                CubeListBuilder.create().texOffs(texX, texY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
+                        .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.armLowerHeight(), 4, deformation),
+                PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
+
+        // Grow the wearable only across the arm. Y growth would make both sleeve segments intersect.
+        CubeDeformation sleeve = deformation.extend(
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_Y,
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ);
+
         upperArm.addOrReplaceChild("eclipse_upper_sleeve", 
                 CubeListBuilder.create()
-                        .texOffs(sleeveTexX, sleeveTexY).addBox(minX, -2.0f, -2.0f, width, 5.8f, 4, sleeve)
-                        .texOffs(sleeveTexX, sleeveTexY + 4).addBox(minX + 0.01f, 3.8f, 0.0f, width - 0.02f, 1.0f, 1.98f, sleeve), 
+                        .texOffs(sleeveTexX, sleeveTexY).addBox(minX, ArticulatedLimbLayout.ARM_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.armUpperHeight(), 4, sleeve),
                 PartPose.ZERO);
-        
-        // Forearm sleeve with shifted pivot
+
         forearm.addOrReplaceChild("eclipse_forearm_sleeve", 
-                CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + 6).addBox(minX, -0.3f, -3.0f, width, 6.5f, 4, sleeve), 
+                CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
+                        .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.armLowerHeight(), 4, sleeve),
                 PartPose.ZERO);
         
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
@@ -506,33 +543,79 @@ public class PlayerModelMixin {
     private static void eclipse$replaceLeg(PartDefinition root, String legName, String pantsName, float x, int texX, int texY, int pantsTexX, int pantsTexY, CubeDeformation deformation) {
         PartDefinition leg = root.addOrReplaceChild(legName, CubeListBuilder.create(), PartPose.offset(x, 12.0f, 0.0f));
         
-        // Thigh with joint filler at the bottom-front (slightly smaller to prevent Z-fighting)
         PartDefinition thigh = leg.addOrReplaceChild("eclipse_thigh", 
                 CubeListBuilder.create()
-                        .texOffs(texX, texY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, deformation)
-                        .texOffs(texX, texY + 4).addBox(-1.99f, 6.0f, -1.99f, 3.98f, 1.0f, 1.98f, deformation), 
+                        .texOffs(texX, texY).addBox(-2.0f, ArticulatedLimbLayout.LEG_TOP_Y, -2.0f,
+                                4, ArticulatedLimbLayout.legUpperHeight(), 4, deformation),
                 PartPose.ZERO);
-        
-        // Shin with pivot shifted down and forward (Y=6.3, Z=-1.0) to prevent the "tooth"
-        PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", 
-                CubeListBuilder.create().texOffs(texX, texY + 6).addBox(-2.0f, -0.3f, -1.0f, 4, 6.5f, 4, deformation), 
-                PartPose.offset(0.0f, 6.3f, -1.0f));
 
-        CubeDeformation pants = deformation.extend(0.32f); // Increased from 0.25f to prevent skin clipping and Z-fighting
-        
-        // Thigh pants with joint filler
+        PartDefinition shin = leg.addOrReplaceChild("eclipse_shin", 
+                CubeListBuilder.create().texOffs(texX, texY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
+                        .addBox(-2.0f, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                                4, ArticulatedLimbLayout.legLowerHeight(), 4, deformation),
+                PartPose.offset(0.0f, ArticulatedLimbLayout.LEG_KNEE_Y, 0.0f));
+
+        CubeDeformation pants = deformation.extend(
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ,
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_Y,
+                ArticulatedLimbLayout.OUTER_LAYER_GROW_XZ);
+
         thigh.addOrReplaceChild("eclipse_thigh_pants", 
                 CubeListBuilder.create()
-                        .texOffs(pantsTexX, pantsTexY).addBox(-2.0f, 0.0f, -2.0f, 4, 6.0f, 4, pants)
-                        .texOffs(pantsTexX, pantsTexY + 4).addBox(-1.99f, 6.0f, -1.99f, 3.98f, 1.0f, 1.98f, pants), 
+                        .texOffs(pantsTexX, pantsTexY).addBox(-2.0f, ArticulatedLimbLayout.LEG_TOP_Y, -2.0f,
+                                4, ArticulatedLimbLayout.legUpperHeight(), 4, pants),
                 PartPose.ZERO);
-        
-        // Shin pants with shifted pivot
+
         shin.addOrReplaceChild("eclipse_shin_pants", 
-                CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + 6).addBox(-2.0f, -0.3f, -1.0f, 4, 6.5f, 4, pants), 
+                CubeListBuilder.create().texOffs(pantsTexX, pantsTexY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
+                        .addBox(-2.0f, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                                4, ArticulatedLimbLayout.legLowerHeight(), 4, pants),
                 PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
+    }
+
+    @Unique
+    private void eclipse$remapLowerSegment(ModelPart limb, String lowerName, String wearableName) {
+        ModelPart lower = eclipse$getChildOrNull(limb, lowerName);
+        if (lower == null) {
+            return;
+        }
+        eclipse$remapEndCaps(lower);
+        eclipse$remapEndCaps(eclipse$getChildOrNull(lower, wearableName));
+    }
+
+    @Unique
+    private void eclipse$remapEndCaps(ModelPart part) {
+        if (part == null) {
+            return;
+        }
+        for (ModelPart.Cube cube : ((ModelPartAccessor) (Object) part).getCubes()) {
+            float minY = Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+            for (ModelPart.Polygon polygon : cube.polygons) {
+                for (ModelPart.Vertex vertex : polygon.vertices()) {
+                    minY = Math.min(minY, vertex.y());
+                    maxY = Math.max(maxY, vertex.y());
+                }
+            }
+            for (ModelPart.Polygon polygon : cube.polygons) {
+                float averageY = 0.0f;
+                for (ModelPart.Vertex vertex : polygon.vertices()) {
+                    averageY += vertex.y();
+                }
+                averageY /= polygon.vertices().length;
+                boolean isTopOrBottomCap = Math.abs(averageY - minY) <= 0.001f
+                        || Math.abs(averageY - maxY) <= 0.001f;
+                if (isTopOrBottomCap) {
+                    for (int i = 0; i < polygon.vertices().length; i++) {
+                        ModelPart.Vertex vertex = polygon.vertices()[i];
+                        polygon.vertices()[i] = vertex.remap(
+                                vertex.u(), vertex.v() + ArticulatedLimbLayout.lowerEndCapsVShift());
+                    }
+                }
+            }
+        }
     }
 
     @Unique

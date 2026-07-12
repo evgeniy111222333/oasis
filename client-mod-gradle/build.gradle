@@ -55,6 +55,22 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 21
 }
 
+tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks segmented limb continuity, wearable growth and UV invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ArticulatedLimbLayoutTest"
+}
+
+tasks.named("test") {
+	failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyArticulatedLimbGeometry")
+}
+
 java {
 	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
 	// if it is present.

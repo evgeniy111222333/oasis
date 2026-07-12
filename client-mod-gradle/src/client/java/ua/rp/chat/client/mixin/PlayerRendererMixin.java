@@ -15,11 +15,14 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.client.model.geom.ModelPart;
+import ua.rp.chat.client.mixin.ModelPartAccessor;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
 
 @Mixin(LivingEntityRenderer.class)
 public class PlayerRendererMixin {
+    @Unique private static boolean eclipse$debugPrinted = false;
     @Unique private boolean eclipse$snapshotActive;
     @Unique private boolean eclipse$headVisible;
     @Unique private boolean eclipse$hatVisible;
@@ -51,6 +54,29 @@ public class PlayerRendererMixin {
         if (eclipse$isLocalFirstPersonState(state) && cameraManager.isWorldFirstPersonBodyRender()) {
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
             if (renderer.getModel() instanceof PlayerModel model) {
+                if (!eclipse$debugPrinted) {
+                    eclipse$debugPrinted = true;
+                    System.out.println("[ECLIPSE-DEBUG-MODEL] Left arm cubes count: " + ((ModelPartAccessor) (Object) model.leftArm).getCubes().size());
+                    ((ModelPartAccessor) (Object) model.leftArm).getChildren().forEach((name, part) -> {
+                        System.out.println("[ECLIPSE-DEBUG-MODEL]   Child " + name + " cubes count: " + ((ModelPartAccessor) (Object) part).getCubes().size());
+                        for (ModelPart.Cube cube : ((ModelPartAccessor) (Object) part).getCubes()) {
+                            System.out.println("[ECLIPSE-DEBUG-MODEL]     Cube polygons length: " + cube.polygons.length);
+                            for (int pIdx = 0; pIdx < cube.polygons.length; pIdx++) {
+                                ModelPart.Polygon poly = cube.polygons[pIdx];
+                                float sumY = 0.0f;
+                                for (ModelPart.Vertex v : poly.vertices()) {
+                                    sumY += v.y();
+                                }
+                                float avgY = sumY / poly.vertices().length;
+                                System.out.println("[ECLIPSE-DEBUG-MODEL]       Poly " + pIdx + " avgY=" + avgY + ":");
+                                for (int i = 0; i < poly.vertices().length; i++) {
+                                    ModelPart.Vertex v = poly.vertices()[i];
+                                    System.out.println("[ECLIPSE-DEBUG-MODEL]         Vertex " + i + ": U=" + v.u() + ", V=" + v.v());
+                                }
+                            }
+                        }
+                    });
+                }
                 eclipse$captureVisibility(model, true);
                 cameraManager.setSubmittingFirstPersonPlayer(true);
                 cameraManager.applyFirstPersonBodyPose(model);
