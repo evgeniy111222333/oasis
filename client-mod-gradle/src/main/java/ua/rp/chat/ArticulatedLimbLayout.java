@@ -20,8 +20,8 @@ public final class ArticulatedLimbLayout {
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
 
-    public static final float UPPER_JOINT_OVERLAP = 0.45f;
-    public static final float UPPER_SEGMENT_INSET_XZ = 0.02f;
+    public static final float UPPER_JOINT_OVERLAP = 0.34f;
+    public static final float UPPER_SEGMENT_INSET_XZ = 0.03f;
 
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
     public static final int SKIN_TEXTURE_HEIGHT = 64;
