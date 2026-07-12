@@ -153,7 +153,7 @@ public final class AcquaintanceClientState {
                 if (label != null) {
                     int color = label.known ? 0xFFE3C099 : label.note == null || label.note.isBlank() ? 0xFF8F8F8F : 0xFF7FD0CC;
                     int x = width / 2;
-                    int y = height / 2 + 20;
+                    int y = height / 2 + 32;
                     String stateLine = label.statusLine();
                     int textWidth = Math.max(client.font.width(label.label), client.font.width(stateLine));
                     int boxWidth = Math.max(112, textWidth + 22);

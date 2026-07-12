@@ -1,14 +1,10 @@
 {
-  "id": "20260712-081017",
+  "id": "20260712-082044",
   "published": true,
-  "publishedAt": "2026-07-12T08:10:17.651568Z",
-  "title": "Діагностичне оновлення MCEF",
-  "summary": "Додано розширене логування авторизації та вікна стану на B для точної діагностики MCEF без зміни ігрової поведінки.",
-  "notes": [
-    "Кореляційні trace-ID для кожного AuthScreen і BodyStatusScreen.",
-    "Логування натискання B, setScreen, viewport, texture ID, першого blit та закриття браузера.",
-    "Auth-token автоматично маскується у нових діагностичних записах."
-  ],
+  "publishedAt": "2026-07-12T08:20:44.828144Z",
+  "title": "First Person Crouch & Balance struggle game",
+  "summary": "Fixed first person crouch eye level misalignment by translating the first-person player model when crouching, lowered target nameplate interaction HUD further, and fully implemented the balance game mechanics for struggling.",
+  "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
 }

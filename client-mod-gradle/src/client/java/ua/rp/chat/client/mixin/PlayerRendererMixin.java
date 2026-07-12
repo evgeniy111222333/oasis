@@ -45,6 +45,8 @@ public class PlayerRendererMixin {
         }
     }
 
+    @Unique private boolean eclipse$crouchTranslated = false;
+
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At("HEAD"))
     private void eclipse$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
         SmartCameraManager cameraManager = SmartCameraManager.getInstance();
@@ -54,6 +56,12 @@ public class PlayerRendererMixin {
                 eclipse$captureVisibility(model, true);
                 cameraManager.setSubmittingFirstPersonPlayer(true);
                 cameraManager.applyFirstPersonBodyPose(model);
+
+                if (state instanceof AvatarRenderState avatar && avatar.isCrouching) {
+                    poseStack.pushPose();
+                    poseStack.translate(0.0f, 0.12f, 0.08f);
+                    eclipse$crouchTranslated = true;
+                }
             }
         } else if (eclipse$isLocalFirstPersonState(state)) {
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
@@ -72,6 +80,10 @@ public class PlayerRendererMixin {
                 eclipse$restoreVisibility(model, state);
             }
             cameraManager.setSubmittingFirstPersonPlayer(false);
+            if (eclipse$crouchTranslated) {
+                poseStack.popPose();
+                eclipse$crouchTranslated = false;
+            }
         }
     }
 

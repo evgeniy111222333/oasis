@@ -7,10 +7,13 @@ import net.minecraft.network.chat.Component;
 
 public final class EscapeStruggleScreen extends Screen {
     private int ticks;
-    private double currentEffort = 0.0;
-    private char nextKey = 'A';
-    private long lastTapTime = 0;
-    private int tapFlashTicks = 0;
+    private double balance = 0.5; // 0.0 (left) to 1.0 (right)
+    private double currentEffort = 0.0; // 0.0 to 1.0 (current pull progress)
+    private double driftVelocity = 0.0;
+    
+    private int aFlash = 0;
+    private int dFlash = 0;
+    private int successFlash = 0;
 
     public EscapeStruggleScreen() { 
         super(Component.literal("Ослабление узлов")); 
@@ -19,43 +22,48 @@ public final class EscapeStruggleScreen extends Screen {
     @Override 
     public void tick() {
         ticks++;
-        if (tapFlashTicks > 0) tapFlashTicks--;
+        if (aFlash > 0) aFlash--;
+        if (dFlash > 0) dFlash--;
+        if (successFlash > 0) successFlash--;
 
-        // Drain effort over time if not tapping
-        long now = System.currentTimeMillis();
-        if (now - lastTapTime > 250) {
-            double drainRate = 0.15 / 20.0; // 15% effort lost per second (20 ticks)
-            currentEffort = Math.max(0.0, currentEffort - drainRate);
+        // Pointer physics: natural instability and random drift
+        // Drift pulls pointer further away from center
+        double bias = (balance - 0.5) * 0.014;
+        double jitter = (Math.random() - 0.5) * 0.008;
+        
+        driftVelocity = clamp(driftVelocity + bias + jitter, -0.035, 0.035);
+        balance = clamp(balance + driftVelocity, 0.0, 1.0);
+
+        // Green zone check (width 0.24, center 0.5)
+        boolean inGreen = Math.abs(balance - 0.5) <= 0.12;
+        if (inGreen) {
+            // effort increases when balanced
+            currentEffort = Math.min(1.0, currentEffort + 0.015); // ~3.3 seconds to complete
+        } else {
+            // effort decays when out of balance
+            currentEffort = Math.max(0.0, currentEffort - 0.010);
+            if (balance <= 0.001 || balance >= 0.999) {
+                currentEffort = Math.max(0.0, currentEffort - 0.025); // stuck penalty
+            }
+        }
+
+        // Check pull success
+        if (currentEffort >= 0.999) {
+            currentEffort = 0.0;
+            successFlash = 8;
+            balance = 0.5;
+            driftVelocity = 0.0;
+            
+            // Send pull action to Spigot server
+            EscapeClientState.action(71); // ACTION_ESCAPE_QTE
+            if (minecraft != null && minecraft.player != null) {
+                minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_BREAK, 0.75f, 0.72f);
+            }
         }
     }
 
-    private void handleTap(char key) {
-        if (key == nextKey) {
-            currentEffort = Math.min(1.0, currentEffort + 0.08);
-            nextKey = (nextKey == 'A') ? 'D' : 'A';
-            lastTapTime = System.currentTimeMillis();
-            tapFlashTicks = 3;
-
-            // Play a wool hit sound
-            if (minecraft != null && minecraft.player != null) {
-                minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_HIT, 0.4f, 0.9f);
-            }
-
-            if (currentEffort >= 0.999) {
-                currentEffort = 0.0;
-                // Send success pull to server!
-                EscapeClientState.action(71); // ACTION_ESCAPE_QTE
-                if (minecraft != null && minecraft.player != null) {
-                    minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_BREAK, 0.65f, 0.75f);
-                }
-            }
-        } else {
-            // Penalize wrong tap
-            currentEffort = Math.max(0.0, currentEffort - 0.05);
-            if (minecraft != null && minecraft.player != null) {
-                minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_HIT, 0.35f, 0.55f);
-            }
-        }
+    private double clamp(double val, double min, double max) {
+        return Math.max(min, Math.min(max, val));
     }
 
     @Override
@@ -67,50 +75,92 @@ public final class EscapeStruggleScreen extends Screen {
         // Dark background overlay
         g.fill(0, 0, width, height, 0x8A000000);
 
-        // Header Panel
-        int boxW = 260;
-        int panelY = cy - 85;
-        g.fill(cx - boxW / 2, panelY, cx + boxW / 2, panelY + 38, 0xE018140F);
-        g.fill(cx - boxW / 2, panelY, cx + boxW / 2, panelY + 2, 0xFFE3C099);
-        g.centeredText(font, "ОСЛАБЛЕНИЕ УЗЛОВ", cx, panelY + 8, 0xFFFFE8C5);
-        g.centeredText(font, "Быстро нажимайте A и D поочередно", cx, panelY + 22, 0xFFA5C3C4);
+        // Success flash effect (glowing overlay when a knot breaks)
+        if (successFlash > 0) {
+            int alpha = Math.min(180, successFlash * 22);
+            g.fill(0, 0, width, height, (alpha << 24) | 0xE3C099);
+        }
 
-        // Keys Visuals
-        int keyY = cy - 25;
-        // Left Key (A)
-        int aBg = (nextKey == 'A') ? 0xED423325 : 0xD017130F;
-        int aEdge = (nextKey == 'A') ? 0xFFE3C099 : 0xAA6B5A43;
-        int aTextColor = (nextKey == 'A') ? 0xFFFFE8C5 : 0xFF746E68;
-        g.fill(cx - 48, keyY, cx - 16, keyY + 32, aBg);
-        g.fill(cx - 48, keyY, cx - 16, keyY + 2, aEdge);
-        g.centeredText(font, "A", cx - 32, keyY + 11, aTextColor);
+        // Glassmorphism main dashboard frame
+        int boxW = 280;
+        int boxH = 160;
+        int topY = cy - 80;
+        g.fill(cx - boxW / 2, topY, cx + boxW / 2, topY + boxH, 0xEA110E0B);
+        g.fill(cx - boxW / 2, topY, cx + boxW / 2, topY + 2, 0xFFE3C099); // Gold top border
 
-        // Right Key (D)
-        int dBg = (nextKey == 'D') ? 0xED423325 : 0xD017130F;
-        int dEdge = (nextKey == 'D') ? 0xFFE3C099 : 0xAA6B5A43;
-        int dTextColor = (nextKey == 'D') ? 0xFFFFE8C5 : 0xFF746E68;
-        g.fill(cx + 16, keyY, cx + 48, keyY + 32, dBg);
-        g.fill(cx + 16, keyY, cx + 48, keyY + 2, dEdge);
-        g.centeredText(font, "D", cx + 32, keyY + 11, dTextColor);
+        // Header Text
+        g.centeredText(font, "ОСЛАБЛЕНИЕ УЗЛОВ", cx, topY + 8, 0xFFFFE8C5);
+        g.centeredText(font, "Удерживайте баланс в зеленой зоне", cx, topY + 20, 0xFFA5C3C4);
 
-        // Current Effort Bar
-        int effortY = cy + 22;
-        int effortW = 160;
+        // Slider track
+        int trackW = 200;
+        int trackH = 10;
+        int trackY = cy - 20;
+        g.fill(cx - trackW / 2, trackY, cx + trackW / 2, trackY + trackH, 0xFF1D1712); // track bg
+
+        // Green sweet spot (24% width of track, so 48 pixels wide)
+        int greenHalfW = 24;
+        g.fill(cx - greenHalfW, trackY, cx + greenHalfW, trackY + trackH, 0x774CAF50); // soft green glow
+
+        // Green sweet spot boundaries (dashed indicators)
+        g.fill(cx - greenHalfW, trackY - 2, cx - greenHalfW + 1, trackY + trackH + 2, 0xCC81C784);
+        g.fill(cx + greenHalfW, trackY - 2, cx + greenHalfW + 1, trackY + trackH + 2, 0xCC81C784);
+
+        // A Key indicator (left side)
+        // Glows if pointer is drifting right, recommending player to tap A
+        int aBg = (driftVelocity > 0.005) ? 0xED4A3525 : 0xD017130F;
+        int aEdge = (driftVelocity > 0.005) ? 0xFFE3C099 : 0xAA6B5A43;
+        int aTextColor = (driftVelocity > 0.005) ? 0xFFFFE8C5 : 0xFF746E68;
+        if (aFlash > 0) {
+            aBg = 0xFFE3C099;
+            aTextColor = 0xFF110E0B;
+        }
+        g.fill(cx - trackW / 2 - 24, trackY - 4, cx - trackW / 2 - 6, trackY + 14, aBg);
+        g.fill(cx - trackW / 2 - 24, trackY - 4, cx - trackW / 2 - 6, trackY - 2, aEdge);
+        g.centeredText(font, "A", cx - trackW / 2 - 15, trackY + 2, aTextColor);
+
+        // D Key indicator (right side)
+        // Glows if pointer is drifting left, recommending player to tap D
+        int dBg = (driftVelocity < -0.005) ? 0xED4A3525 : 0xD017130F;
+        int dEdge = (driftVelocity < -0.005) ? 0xFFE3C099 : 0xAA6B5A43;
+        int dTextColor = (driftVelocity < -0.005) ? 0xFFFFE8C5 : 0xFF746E68;
+        if (dFlash > 0) {
+            dBg = 0xFFE3C099;
+            dTextColor = 0xFF110E0B;
+        }
+        g.fill(cx + trackW / 2 + 6, trackY - 4, cx + trackW / 2 + 24, trackY + 14, dBg);
+        g.fill(cx + trackW / 2 + 6, trackY - 4, cx + trackW / 2 + 24, trackY - 2, dEdge);
+        g.centeredText(font, "D", cx + trackW / 2 + 15, trackY + 2, dTextColor);
+
+        // Draw Pointer (with custom colors based on state)
+        int px = cx - trackW / 2 + (int) (balance * trackW);
+        boolean inGreen = Math.abs(balance - 0.5) <= 0.12;
+        int pointerColor = inGreen ? 0xFFFFE8C5 : 0xFFE57373;
+        g.fill(px - 2, trackY - 3, px + 2, trackY + trackH + 3, pointerColor);
+        g.fill(px - 3, trackY - 4, px + 3, trackY - 3, pointerColor); // top cap
+        g.fill(px - 3, trackY + trackH + 3, px + 3, trackY + trackH + 4, pointerColor); // bottom cap
+
+        // Tension Bar (Current Effort)
+        int effortY = cy + 18;
+        int effortW = 200;
         g.fill(cx - effortW / 2, effortY, cx + effortW / 2, effortY + 8, 0xFF2A211A);
         int effortFill = (int) (effortW * currentEffort);
         g.fill(cx - effortW / 2, effortY, cx - effortW / 2 + effortFill, effortY + 8, 0xFFE07B42);
-        g.centeredText(font, "НАТЯЖЕНИЕ: " + Math.round(currentEffort * 100) + "%", cx, effortY - 11, 0xFFB7A895);
+        
+        String hintText = inGreen ? "УДЕРЖИВАЙТЕ БАЛАНС!" : "ВЕРНИТЕ В ЦЕНТР!";
+        int hintColor = inGreen ? 0xFF81C784 : 0xFFE57373;
+        g.centeredText(font, hintText + " (" + Math.round(currentEffort * 100) + "%)", cx, effortY - 11, hintColor);
 
         // Overall Escape Progress Bar
-        int overallY = cy + 54;
-        int overallW = 200;
+        int overallY = cy + 46;
+        int overallW = 220;
         g.fill(cx - overallW / 2, overallY, cx + overallW / 2, overallY + 8, 0xFF2A211A);
         int overallFill = (int) (overallW * p.progress());
         g.fill(cx - overallW / 2, overallY, cx - overallW / 2 + overallFill, overallY + 8, 0xFFD5B16F);
-        g.centeredText(font, Math.round(p.progress() * 100) + "% узлов развязано", cx, overallY + 13, 0xFFB7A895);
+        g.centeredText(font, Math.round(p.progress() * 100) + "% путей разрушено", cx, overallY + 12, 0xFFB7A895);
 
         // Close Hint
-        g.centeredText(font, "Esc — прекратить попытку", cx, overallY + 30, 0xFF81776E);
+        g.centeredText(font, "Esc — прекратить попытку", cx, overallY + 26, 0xFF81776E);
     }
 
     @Override
@@ -120,14 +170,25 @@ public final class EscapeStruggleScreen extends Screen {
             onClose();
             return true;
         }
-        char key = 0;
-        if (event.key() == 65) key = 'A';
-        else if (event.key() == 68) key = 'D';
-
-        if (key != 0) {
-            handleTap(key);
+        
+        if (event.key() == 65) { // A
+            driftVelocity = clamp(driftVelocity - 0.015, -0.035, 0.035);
+            aFlash = 3;
+            if (minecraft != null && minecraft.player != null) {
+                minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_HIT, 0.35f, 0.85f);
+            }
             return true;
         }
+        
+        if (event.key() == 68) { // D
+            driftVelocity = clamp(driftVelocity + 0.015, -0.035, 0.035);
+            dFlash = 3;
+            if (minecraft != null && minecraft.player != null) {
+                minecraft.player.playSound(net.minecraft.sounds.SoundEvents.WOOL_HIT, 0.35f, 0.85f);
+            }
+            return true;
+        }
+        
         return true;
     }
 
