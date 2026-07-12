@@ -1,13 +1,12 @@
 {
-  "id": "20260712-185116",
+  "id": "20260712-190225",
   "published": true,
-  "publishedAt": "2026-07-12T18:51:16.366126Z",
-  "title": "Limb Bottom Cap UV Fix (Mixins Registry Patch)",
-  "summary": "Corrected texture UV coordinates on the bottom cap of forearms and shins to fix mismatched green textures on wrists/soles, and registered the new ModelPartAccessor in the mixins configuration.",
+  "publishedAt": "2026-07-12T19:02:25.052860Z",
+  "title": "Limb Bottom Cap UV Fix (Constructor Injection)",
+  "summary": "Moved the UV remapping logic to run inside the ModelPart.Cube constructor, guaranteeing early application before any vertex baking, caching, or model wrapping occurs.",
   "notes": [
-    "Aligns forearm bottom caps with original wrist texture",
-    "Aligns shin bottom caps with original boot sole texture",
-    "Registers ModelPartAccessor in eclipseclient.mixins.json to prevent classload exceptions on startup"
+    "Uses ModelPartCubeMixin targeting ModelPart.Cube constructor",
+    "Removes old post-init PlayerModel constructor injection"
   ],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."

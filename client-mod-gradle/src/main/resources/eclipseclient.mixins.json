@@ -12,6 +12,7 @@
     "PlayerRendererMixin",
     "PlayerModelMixin",
     "ModelPartAccessor",
+    "ModelPartCubeMixin",
     "HumanoidArmorLayerMixin",
     "CustomHeadLayerMixin",
     "ItemInHandRendererMixin",
