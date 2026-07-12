@@ -45,6 +45,8 @@ public class PlayerModelMixin {
         int armWidth = slim ? 3 : 4;
         eclipse$installElbowGeometry(model.rightArm, armWidth, slim ? -2.0f : -3.0f, 40, 16);
         eclipse$installElbowGeometry(model.leftArm, armWidth, -1.0f, 32, 48);
+        eclipse$removeArmJointCaps(model.rightArm);
+        eclipse$removeArmJointCaps(model.leftArm);
         eclipse$removeWearableEndCaps(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
@@ -719,7 +721,18 @@ public class PlayerModelMixin {
     }
 
     @Unique
+    private void eclipse$removeArmJointCaps(ModelPart arm) {
+        eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(arm, "eclipse_upper_arm"), false, true);
+        eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(arm, "eclipse_forearm"), true, false);
+    }
+
+    @Unique
     private void eclipse$removeEndCaps(ModelPart part) {
+        eclipse$removeSelectedEndCaps(part, true, true);
+    }
+
+    @Unique
+    private void eclipse$removeSelectedEndCaps(ModelPart part, boolean removeTop, boolean removeBottom) {
         if (part == null) {
             return;
         }
@@ -741,7 +754,9 @@ public class PlayerModelMixin {
                             averageY += vertex.y();
                         }
                         averageY /= polygon.vertices().length;
-                        return Math.abs(averageY - lower) > 0.001f && Math.abs(averageY - upper) > 0.001f;
+                        boolean topCap = Math.abs(averageY - lower) <= 0.001f;
+                        boolean bottomCap = Math.abs(averageY - upper) <= 0.001f;
+                        return !(removeTop && topCap) && !(removeBottom && bottomCap);
                     })
                     .toArray(ModelPart.Polygon[]::new);
             ((ModelPartCubeAccessor) (Object) cube).eclipse$setPolygons(sidePolygons);
