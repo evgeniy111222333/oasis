@@ -16,12 +16,13 @@ public final class ArticulatedLimbLayout {
     public static final float LEG_KNEE_Y = 6.0f;
     public static final float LEG_FOOT_Y = 12.0f;
 
+    public static final float JOINT_HALF_BAND = 0.25f;
+    public static final int JOINT_SKINNING_RINGS = 5;
+    public static final float ARM_LOWER_LOCAL_TOP_Y = JOINT_HALF_BAND;
     public static final float LOWER_LOCAL_TOP_Y = 0.0f;
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
 
-    public static final float UPPER_JOINT_OVERLAP = 0.34f;
-    public static final float UPPER_SEGMENT_INSET_XZ = 0.03f;
 
     public static final int LOWER_SEGMENT_TEXTURE_ROW_OFFSET = 6;
     public static final int SKIN_TEXTURE_HEIGHT = 64;
@@ -34,11 +35,23 @@ public final class ArticulatedLimbLayout {
     }
 
     public static float armUpperHeight() {
-        return ARM_ELBOW_Y - ARM_TOP_Y;
+        return ARM_ELBOW_Y - JOINT_HALF_BAND - ARM_TOP_Y;
     }
 
     public static float armLowerHeight() {
-        return ARM_HAND_Y - ARM_ELBOW_Y;
+        return ARM_HAND_Y - ARM_ELBOW_Y - JOINT_HALF_BAND;
+    }
+
+    public static float armUpperBoundaryY() {
+        return ARM_ELBOW_Y - JOINT_HALF_BAND;
+    }
+
+    public static float armLowerBoundaryY() {
+        return ARM_ELBOW_Y + JOINT_HALF_BAND;
+    }
+
+    public static float jointSkinWeight(float t) {
+        return t * t * (3.0f - 2.0f * t);
     }
 
     public static float legUpperHeight() {

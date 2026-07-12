@@ -29,6 +29,7 @@ import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
+import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 
 @Mixin(PlayerModel.class)
@@ -46,6 +47,15 @@ public class PlayerModelMixin {
         eclipse$removeWearableEndCaps(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
         eclipse$removeWearableEndCaps(model.leftLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
+        int armWidth = slim ? 3 : 4;
+        ElbowBridgeRenderer.register(
+                eclipse$getChildOrNull(model.rightArm, "eclipse_elbow_bridge"),
+                eclipse$getChildOrNull(model.rightArm, "eclipse_forearm"),
+                model.rightSleeve, slim ? -2.0f : -3.0f, armWidth, 40, 16, 40, 32);
+        ElbowBridgeRenderer.register(
+                eclipse$getChildOrNull(model.leftArm, "eclipse_elbow_bridge"),
+                eclipse$getChildOrNull(model.leftArm, "eclipse_forearm"),
+                model.leftSleeve, -1.0f, armWidth, 32, 48, 48, 48);
     }
 
     @Inject(
@@ -515,19 +525,13 @@ public class PlayerModelMixin {
         // The elbow is a real bone boundary: the two boxes share one plane and never overlap.
         PartDefinition upperArm = arm.addOrReplaceChild("eclipse_upper_arm", 
                 CubeListBuilder.create()
-                        .texOffs(texX, texY).addBox(
-                                minX + ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ,
-                                ArticulatedLimbLayout.ARM_TOP_Y,
-                                -2.0f + ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ,
-                                width - ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ * 2.0f,
-                                ArticulatedLimbLayout.armUpperHeight() + ArticulatedLimbLayout.UPPER_JOINT_OVERLAP,
-                                4.0f - ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ * 2.0f,
-                                deformation),
+                        .texOffs(texX, texY).addBox(minX, ArticulatedLimbLayout.ARM_TOP_Y, -2.0f,
+                                width, ArticulatedLimbLayout.armUpperHeight(), 4, deformation),
                 PartPose.ZERO);
 
         PartDefinition forearm = arm.addOrReplaceChild("eclipse_forearm", 
                 CubeListBuilder.create().texOffs(texX, texY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
-                        .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                        .addBox(minX, ArticulatedLimbLayout.ARM_LOWER_LOCAL_TOP_Y, -2.0f,
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, deformation),
                 PartPose.offset(0.0f, ArticulatedLimbLayout.ARM_ELBOW_Y, 0.0f));
 
@@ -545,9 +549,11 @@ public class PlayerModelMixin {
 
         forearm.addOrReplaceChild("eclipse_forearm_sleeve", 
                 CubeListBuilder.create().texOffs(sleeveTexX, sleeveTexY + ArticulatedLimbLayout.LOWER_SEGMENT_TEXTURE_ROW_OFFSET)
-                        .addBox(minX, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
+                        .addBox(minX, ArticulatedLimbLayout.ARM_LOWER_LOCAL_TOP_Y, -2.0f,
                                 width, ArticulatedLimbLayout.armLowerHeight(), 4, sleeve),
                 PartPose.ZERO);
+
+        arm.addOrReplaceChild("eclipse_elbow_bridge", CubeListBuilder.create(), PartPose.ZERO);
 
         arm.addOrReplaceChild(sleeveName, CubeListBuilder.create(), PartPose.ZERO);
     }

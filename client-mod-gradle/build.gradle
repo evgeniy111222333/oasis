@@ -63,12 +63,24 @@ tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
 	mainClass = "ua.rp.chat.ArticulatedLimbLayoutTest"
 }
 
+sourceSets.test.compileClasspath += sourceSets.client.output
+sourceSets.test.runtimeClasspath += sourceSets.client.output
+
+tasks.register("verifyElbowBridgeRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic elbow renderer with base and overlay layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ElbowBridgeRendererTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
 tasks.named("check") {
 	dependsOn tasks.named("verifyArticulatedLimbGeometry")
+	dependsOn tasks.named("verifyElbowBridgeRenderer")
 }
 
 java {

@@ -4,17 +4,17 @@ public final class ArticulatedLimbLayoutTest {
     private static final float EPSILON = 0.00001f;
 
     public static void main(String[] args) {
-        assertClose("arm upper height", 6.0f, ArticulatedLimbLayout.armUpperHeight());
-        assertClose("arm lower height", 6.0f, ArticulatedLimbLayout.armLowerHeight());
-        assertClose("arm joint continuity",
-                ArticulatedLimbLayout.ARM_ELBOW_Y,
-                ArticulatedLimbLayout.ARM_ELBOW_Y + ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y);
+        assertClose("arm upper height", 5.75f, ArticulatedLimbLayout.armUpperHeight());
+        assertClose("arm lower height", 5.75f, ArticulatedLimbLayout.armLowerHeight());
+        assertClose("arm bridge span", 0.5f,
+                ArticulatedLimbLayout.armLowerBoundaryY() - ArticulatedLimbLayout.armUpperBoundaryY());
         assertClose("arm total length", 12.0f,
-                ArticulatedLimbLayout.armUpperHeight() + ArticulatedLimbLayout.armLowerHeight());
+                ArticulatedLimbLayout.armUpperHeight() + ArticulatedLimbLayout.armLowerHeight()
+                        + ArticulatedLimbLayout.JOINT_HALF_BAND * 2.0f);
         assertClose("arm segment overlap", 0.0f, ArticulatedLimbLayout.intervalOverlap(
                 ArticulatedLimbLayout.ARM_TOP_Y,
-                ArticulatedLimbLayout.ARM_ELBOW_Y,
-                ArticulatedLimbLayout.ARM_ELBOW_Y + ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y,
+                ArticulatedLimbLayout.armUpperBoundaryY(),
+                ArticulatedLimbLayout.armLowerBoundaryY(),
                 ArticulatedLimbLayout.ARM_HAND_Y));
 
         assertClose("leg upper height", 6.0f, ArticulatedLimbLayout.legUpperHeight());
@@ -64,11 +64,16 @@ public final class ArticulatedLimbLayoutTest {
         float bentRadiusSquared = square(bentY - ArticulatedLimbLayout.ARM_ELBOW_Y) + square(bentZ);
         assertClose("held item rotation preserves elbow-to-hand distance", originalRadiusSquared, bentRadiusSquared);
 
-        assertTrue("upper segment overlaps the elbow plane",
-                ArticulatedLimbLayout.UPPER_JOINT_OVERLAP > 0.0f);
-        assertTrue("overlapping upper segment is inset to prevent coplanar z-fighting",
-                ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ > 0.0f
-                        && ArticulatedLimbLayout.UPPER_SEGMENT_INSET_XZ < 0.1f);
+        assertTrue("continuous bridge uses multiple weighted rings",
+                ArticulatedLimbLayout.JOINT_SKINNING_RINGS >= 5);
+        assertClose("upper bridge ring belongs completely to upper arm", 0.0f,
+                ArticulatedLimbLayout.jointSkinWeight(0.0f));
+        assertClose("middle bridge ring blends both bones equally", 0.5f,
+                ArticulatedLimbLayout.jointSkinWeight(0.5f));
+        assertClose("lower bridge ring belongs completely to forearm", 1.0f,
+                ArticulatedLimbLayout.jointSkinWeight(1.0f));
+        assertTrue("each layer has sixteen continuous seam quads",
+                (ArticulatedLimbLayout.JOINT_SKINNING_RINGS - 1) * 4 == 16);
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");
     }
 
