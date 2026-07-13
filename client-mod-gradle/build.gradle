@@ -74,6 +74,14 @@ tasks.register("verifyElbowBridgeRenderer", JavaExec) {
 	mainClass = "ua.rp.chat.ElbowBridgeRendererTest"
 }
 
+tasks.register("verifyCameraCollisionMath", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks continuous camera-volume collision and fail-closed invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CameraCollisionMathTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -81,6 +89,7 @@ tasks.named("test") {
 tasks.named("check") {
 	dependsOn tasks.named("verifyArticulatedLimbGeometry")
 	dependsOn tasks.named("verifyElbowBridgeRenderer")
+	dependsOn tasks.named("verifyCameraCollisionMath")
 }
 
 java {

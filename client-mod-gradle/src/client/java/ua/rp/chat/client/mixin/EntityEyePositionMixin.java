@@ -2,6 +2,7 @@ package ua.rp.chat.client.mixin;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,7 +23,8 @@ public class EntityEyePositionMixin {
             return;
         }
 
-        Vec3 offset = camera.getEyeOffset(entity.getYRot(), entity.getXRot());
+        Vec3 offset = camera.resolveEyeOffset((Player) entity,
+                cir.getReturnValue(), entity.getYRot(), entity.getXRot());
         if (offset.lengthSqr() > 0.0) {
             cir.setReturnValue(cir.getReturnValue().add(offset));
         }

@@ -23,16 +23,46 @@ public abstract class CameraMixin {
     @Shadow private Entity entity;
 
     @Shadow public abstract float getCameraEntityPartialTicks(DeltaTracker deltaTracker);
+    @Shadow public abstract float getFov();
+    @Shadow public abstract Camera.NearPlane getNearPlane(float fov);
+    @Shadow protected abstract void setPosition(Vec3 position);
 
-    @Inject(method = "update", at = @At("RETURN"))
+    @Inject(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Camera;prepareCullFrustum(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4f;Lnet/minecraft/world/phys/Vec3;)V"))
     private void eclipse$afterUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
         if (this.entity instanceof Player player && SmartCameraManager.getInstance().isCameraMotionActiveFor(player) && !this.detached) {
             float partialTick = this.getCameraEntityPartialTicks(deltaTracker);
-            SmartCameraManager.getInstance().updatePhysics(player, partialTick);
-            double stabilizedY = SmartCameraManager.getInstance().getStabilizedY(player, this.position.y, partialTick);
-            Vec3 offset = SmartCameraManager.getInstance().getCameraOffset(this.yRot, this.xRot);
-            this.position = new Vec3(this.position.x + offset.x, stabilizedY + offset.y, this.position.z + offset.z);
+            SmartCameraManager manager = SmartCameraManager.getInstance();
+            manager.updatePhysics(player, partialTick);
+            double stabilizedY = manager.getStabilizedY(player, this.position.y, partialTick);
+            Vec3 origin = new Vec3(this.position.x, stabilizedY, this.position.z);
+            Vec3 desiredOffset = manager.getCameraOffset(this.yRot, this.xRot);
+            Vec3 safeOffset = manager.resolveCameraOffset(player, origin, desiredOffset, eclipse$nearPlaneHalfExtents());
+            this.setPosition(origin.add(safeOffset));
         }
+    }
+
+    private Vec3 eclipse$nearPlaneHalfExtents() {
+        try {
+            Camera.NearPlane plane = this.getNearPlane(this.getFov());
+            Vec3[] corners = {
+                    plane.getTopLeft(), plane.getTopRight(),
+                    plane.getBottomLeft(), plane.getBottomRight()
+            };
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            for (Vec3 corner : corners) {
+                x = Math.max(x, Math.abs(corner.x));
+                y = Math.max(y, Math.abs(corner.y));
+                z = Math.max(z, Math.abs(corner.z));
+            }
+            if (Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z)) {
+                return new Vec3(Math.max(0.05, x), Math.max(0.05, y), Math.max(0.05, z));
+            }
+        } catch (RuntimeException ignored) {
+            // A conservative fallback keeps the first projection frame safe.
+        }
+        return ua.rp.chat.client.camera.CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
     }
 
     @Inject(method = "isDetached", at = @At("HEAD"), cancellable = true)

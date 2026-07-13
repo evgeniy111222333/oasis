@@ -49,6 +49,12 @@ public class SmartCameraManager {
     private boolean renderingFirstPersonPlayer = false;
     private boolean submittingFirstPersonPlayer = false;
     private boolean enabled = true;
+    private final CameraCollisionResolver cameraCollisionResolver = new CameraCollisionResolver();
+    private Vec3 cameraHalfExtents = CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
+    private Vec3 resolvedCameraOffset = Vec3.ZERO;
+    private double cameraCollisionFraction = 1.0;
+    private boolean cameraFailClosed = false;
+    private boolean cameraCollisionInitialized = false;
 
     private SmartCameraManager() {}
 
@@ -123,6 +129,7 @@ public class SmartCameraManager {
 
         LocalPlayer player = client.player;
         if (!isCameraMotionActiveFor(player)) {
+            clearCameraCollisionState();
             armorStepCooldown = Math.max(0, armorStepCooldown - 1);
             breathSoundCooldown = Math.max(0, breathSoundCooldown - 1);
             return;
@@ -246,6 +253,49 @@ public class SmartCameraManager {
         // автоматично співпадає зі зором гравця. Моби теж "бачать" гравця
         // у новій позиції обличчя, а не старій позиції шиї.
         return getCameraOffset(yaw, pitch);
+    }
+
+    public Vec3 resolveCameraOffset(Player player, Vec3 origin, Vec3 desiredOffset, Vec3 halfExtents) {
+        CameraCollisionResolver.Resolution resolution = cameraCollisionResolver.resolve(
+                player, origin, desiredOffset, halfExtents);
+        boolean wasFailClosed = cameraFailClosed;
+        cameraHalfExtents = halfExtents;
+        resolvedCameraOffset = resolution.offset();
+        cameraCollisionFraction = resolution.fraction();
+        cameraFailClosed = resolution.failClosed();
+        if (!cameraCollisionInitialized) {
+            cameraCollisionInitialized = true;
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CAMERA-COLLISION] Continuous near-plane sweep active: clearance={}, fallbackExtent={}",
+                    CameraCollisionResolver.SURFACE_CLEARANCE,
+                    CameraCollisionResolver.FALLBACK_HALF_EXTENTS.x);
+        }
+        if (cameraFailClosed && !wasFailClosed) {
+            ua.rp.chat.client.EclipseClientMod.LOGGER.warn(
+                    "[CAMERA-COLLISION] Fail-closed guard engaged; custom camera travel and picking are blocked.");
+        } else if (!cameraFailClosed && wasFailClosed) {
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CAMERA-COLLISION] Safe camera volume restored; fail-closed guard released.");
+        }
+        return resolvedCameraOffset;
+    }
+
+    public Vec3 resolveEyeOffset(Player player, Vec3 origin, double yaw, double pitch) {
+        Vec3 desiredOffset = getEyeOffset(yaw, pitch);
+        CameraCollisionResolver.Resolution resolution = cameraCollisionResolver.resolve(
+                player, origin, desiredOffset, cameraHalfExtents);
+        if (resolution.failClosed()) {
+            cameraFailClosed = true;
+        }
+        return resolution.offset();
+    }
+
+    public boolean isCameraFailClosed() {
+        return isFirstPersonBodyEnabled() && cameraFailClosed;
+    }
+
+    public double getCameraCollisionFraction() {
+        return cameraCollisionFraction;
     }
 
     public void applyFirstPersonBodyPose(PlayerModel model) {
@@ -480,6 +530,15 @@ public class SmartCameraManager {
         lastYawDelta = 0.0f;
         lastPitch = Float.NaN;
         wasUsingRanged = false;
+        clearCameraCollisionState();
+        cameraCollisionInitialized = false;
+    }
+
+    private void clearCameraCollisionState() {
+        cameraHalfExtents = CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
+        resolvedCameraOffset = Vec3.ZERO;
+        cameraCollisionFraction = 1.0;
+        cameraFailClosed = false;
     }
 
     private static double clamp(double value, double min, double max) {

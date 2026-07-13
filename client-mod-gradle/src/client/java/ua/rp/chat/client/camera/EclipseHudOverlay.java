@@ -23,6 +23,10 @@ public final class EclipseHudOverlay implements HudElement {
         SmartCameraManager manager = SmartCameraManager.getInstance();
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
+        if (manager.isCameraFailClosed()) {
+            graphics.fill(0, 0, width, height, 0xFF000000);
+            return;
+        }
         if (manager.shouldRenderHelmetVisor()) {
             int alpha = Math.round(manager.getHelmetVisorAlpha() * 255.0f);
             int edge = alpha << 24;
