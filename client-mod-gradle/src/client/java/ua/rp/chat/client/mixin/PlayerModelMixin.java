@@ -27,13 +27,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.RespirationModel;
-import ua.rp.chat.client.camera.RespirationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
+import ua.rp.chat.client.render.BreathingPoseState;
 import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
+import ua.rp.chat.BreathingShoulderLayout;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
@@ -135,46 +136,37 @@ public class PlayerModelMixin {
             return;
         }
 
-        float moving = eclipse$clamp(state.walkAnimationSpeed * 3.2f, 0.0f, 1.0f);
-        ItemStack main = state.getMainHandItemStack();
-        String heldItem = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
-        boolean heavyItem = heldItem.contains("axe") || heldItem.contains("mace") || heldItem.contains("hammer") || heldItem.contains("great") || heldItem.contains("halberd");
-        boolean aiming = state.isUsingItem && (heldItem.contains("bow") || heldItem.contains("crossbow") || heldItem.contains("trident") || heldItem.contains("spear"));
+        BreathingPoseState.Sample breathState = BreathingPoseState.sample(state);
+        float moving = breathState.moving();
         // НЕ повне згасання — реальні люди дихають i при ходьбі.
-        // minCalm 0.30 гарантує видиму амплітуду дихання під час руху.
-        float calmBase = state.isCrouching ? 0.62f : 1.0f;
-        float motionDamp = 1.0f - moving * 0.55f;
-        if (heavyItem) {
-            motionDamp *= 0.86f;
-        }
-        if (aiming) {
-            motionDamp *= 0.55f;
-        }
-        float calm = calmBase * eclipse$clamp(motionDamp, 0.28f, 1.0f);
+        // minCalm 0.28 guarantees visible breathing while preserving action poses.
+        float calm = breathState.calm();
 
         // --- ДИХАННЯ ---
         // The shared controller keeps the local cycle continuous at 14-50 BPM.
         // body.y remains untouched so the neck seam cannot open during breathing.
-        boolean localPlayer = eclipse$isLocalFirstPersonState(state);
-        RespirationModel.Snapshot respiration = localPlayer
-                ? RespirationController.getInstance().sampleFrame()
-                : RespirationController.getInstance().sampleRemote(state.ageInTicks, state.id);
+        RespirationModel.Snapshot respiration = breathState.respiration();
         float respiratoryIntensity = (float) respiration.intensity();
         float breathGain = calm * (0.38f + respiratoryIntensity * 0.62f);
         float chestExpansion = (float) respiration.expansion() * breathGain;
-        boolean localFirstPerson = localPlayer
-                && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose();
+        boolean localFirstPerson = breathState.firstPerson();
         BreathingTorsoRenderer.update(
                 torsoMarker, respiration.phase(), respiratoryIntensity, calm, localFirstPerson);
+
+        BreathingShoulderLayout.Pose shoulder = BreathingShoulderLayout.pose(
+                respiration.phase(), respiratoryIntensity, calm, localFirstPerson);
+        model.leftArm.x += shoulder.rootOutPixels();
+        model.rightArm.x -= shoulder.rootOutPixels();
+        model.leftArm.y -= shoulder.liftPixels();
+        model.rightArm.y -= shoulder.liftPixels();
 
         // The surface itself expands in a bottom-up V. The skeleton only follows
         // enough to sell the rib-cage lift without throwing hands around.
         model.body.xRot += chestExpansion * (0.0160f + respiratoryIntensity * 0.0060f);
-        float shoulderFollow = chestExpansion * (0.0060f + respiratoryIntensity * 0.0080f);
-        model.leftArm.xRot += shoulderFollow;
-        model.rightArm.xRot += shoulderFollow;
-        model.leftArm.zRot += shoulderFollow * 0.35f;
-        model.rightArm.zRot -= shoulderFollow * 0.35f;
+        model.leftArm.xRot += shoulder.forwardPitchRadians();
+        model.rightArm.xRot += shoulder.forwardPitchRadians();
+        model.leftArm.zRot -= shoulder.outwardRollRadians();
+        model.rightArm.zRot += shoulder.outwardRollRadians();
 
         // Exhaustion is a slowly blended posture, never a second oscillator.
         float exhaustedPosture = eclipse$smoothStep(0.62f, 1.0f, respiratoryIntensity) * (1.0f - moving * 0.70f);
@@ -873,10 +865,12 @@ public class PlayerModelMixin {
         model.head.y = state.isCrouching ? 4.2f : 0.0f;
         model.head.z = 0.0f;
         
-        model.leftArm.y = state.isCrouching ? 5.2f : 2.0f;
+        model.leftArm.x = BreathingShoulderLayout.BASE_SHOULDER_X;
+        model.leftArm.y = state.isCrouching ? 5.2f : BreathingShoulderLayout.BASE_SHOULDER_Y;
         model.leftArm.z = 0.0f;
         
-        model.rightArm.y = state.isCrouching ? 5.2f : 2.0f;
+        model.rightArm.x = -BreathingShoulderLayout.BASE_SHOULDER_X;
+        model.rightArm.y = state.isCrouching ? 5.2f : BreathingShoulderLayout.BASE_SHOULDER_Y;
         model.rightArm.z = 0.0f;
         
         model.leftLeg.x = ArticulatedLimbLayout.LEG_HIP_X;

@@ -106,6 +106,14 @@ tasks.register("verifyBreathingTorsoRenderer", JavaExec) {
 	mainClass = "ua.rp.chat.BreathingTorsoRendererTest"
 }
 
+tasks.register("verifyBreathingShoulderLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks breathing shoulder seam, clearance, symmetry and stability."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingShoulderLayoutTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -117,6 +125,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyRespirationModel")
 	dependsOn tasks.named("verifyBreathingTorsoLayout")
 	dependsOn tasks.named("verifyBreathingTorsoRenderer")
+	dependsOn tasks.named("verifyBreathingShoulderLayout")
 }
 
 java {
