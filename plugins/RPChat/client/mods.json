@@ -93,6 +93,6 @@
         "category": "Строительство",
         "description": "Профессиональные инструменты редактирования и строительства мира.",
         "icon": "fa-wand-magic-sparkles",
-        "defaultEnabled": true
+        "defaultEnabled": false
     }
 ]

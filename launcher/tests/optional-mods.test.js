@@ -13,7 +13,7 @@ const manifest = [
     { name: 'required.jar' },
     {
         name: 'Axiom.jar', optional: true, preferenceKey: 'axiom', modId: 'axiom',
-        displayName: 'Axiom', version: '5.4.2', defaultEnabled: true
+        displayName: 'Axiom', version: '5.4.2', defaultEnabled: false
     },
     {
         name: 'Camera.jar', optional: true, preferenceKey: 'camera_tools', modId: 'camera_tools',
@@ -24,16 +24,24 @@ const manifest = [
 assert.strictEqual(getOptionalMods(manifest).length, 2);
 assert.deepStrictEqual(
     buildOptionalModView(manifest, {}).map(mod => [mod.preferenceKey, mod.enabled]),
-    [['axiom', true], ['camera_tools', false]]
+    [['axiom', false], ['camera_tools', false]]
 );
 
-const preferences = setOptionalModPreference({}, 'axiom', false, manifest);
-assert.deepStrictEqual(preferences, { axiom: false });
-assert.deepStrictEqual(collectDisabledModIds(manifest, preferences), ['axiom', 'camera_tools']);
+// Preferences are persisted in launcher-config.json. Simulate a complete
+// launcher restart by serializing and reading the preference object again.
+const preferences = setOptionalModPreference({}, 'axiom', true, manifest);
+const preferencesAfterRestart = JSON.parse(JSON.stringify(preferences));
+assert.deepStrictEqual(preferencesAfterRestart, { axiom: true });
 assert.strictEqual(
-    buildFabricDisableArgument(manifest, preferences),
-    '-Dfabric.debug.disableModIds=axiom,camera_tools'
+    buildOptionalModView(manifest, preferencesAfterRestart).find(mod => mod.modId === 'axiom').enabled,
+    true
 );
+assert.deepStrictEqual(collectDisabledModIds(manifest, preferencesAfterRestart), ['camera_tools']);
+assert.strictEqual(
+    buildFabricDisableArgument(manifest, preferencesAfterRestart),
+    '-Dfabric.debug.disableModIds=camera_tools'
+);
+assert.strictEqual(buildFabricDisableArgument(manifest, {}), '-Dfabric.debug.disableModIds=axiom,camera_tools');
 assert.strictEqual(buildFabricDisableArgument(manifest, { axiom: true, camera_tools: true }), null);
 assert.throws(() => setOptionalModPreference({}, 'unknown', true, manifest), /Unknown optional mod preference/);
 
