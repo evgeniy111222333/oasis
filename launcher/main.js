@@ -6,6 +6,12 @@ const https = require('https');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
+const {
+    getOptionalMods,
+    buildOptionalModViewFromCatalog,
+    setOptionalModPreference,
+    buildFabricDisableArgument
+} = require('./optional-mods');
 
 let mainWindow;
 let isGameRunning = false;
@@ -624,6 +630,40 @@ async function fetchRequiredModsFromSources(apiUrl) {
     throw new Error('Client manifest unavailable from remote, server API, and local source.');
 }
 
+async function loadOptionalModsState(apiUrl) {
+    const config = readConfig();
+    let catalog;
+    try {
+        const manifest = await fetchRequiredModsFromSources(apiUrl);
+        catalog = getOptionalMods(manifest);
+        config.optionalModsCatalog = catalog;
+        saveConfig(config);
+    } catch (error) {
+        catalog = Array.isArray(config.optionalModsCatalog) ? config.optionalModsCatalog : [];
+        if (catalog.length === 0) throw error;
+        logLauncher(`Using cached optional mod catalog: ${error.message}`);
+    }
+
+    return {
+        catalog,
+        mods: buildOptionalModViewFromCatalog(catalog, config.optionalMods)
+    };
+}
+
+function catalogAsManifest(catalog) {
+    return catalog.map(mod => ({
+        optional: true,
+        preferenceKey: mod.preferenceKey,
+        modId: mod.modId,
+        displayName: mod.name,
+        version: mod.version,
+        category: mod.category,
+        description: mod.description,
+        icon: mod.icon,
+        defaultEnabled: mod.defaultEnabled
+    }));
+}
+
 async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
     const cleanPath = relativePath.replace(/\\/g, '/');
     const candidates = [
@@ -790,6 +830,39 @@ ipcMain.on('save-username', (event, username) => {
         delete config.lastUsername;
     }
     saveConfig(config);
+});
+
+ipcMain.on('get-optional-mods', async (event) => {
+    try {
+        const { apiUrl } = getServerSettings();
+        const state = await loadOptionalModsState(apiUrl);
+        event.reply('optional-mods-data', { success: true, mods: state.mods });
+    } catch (error) {
+        logLauncher(`Optional mod catalog unavailable: ${error.message}`);
+        event.reply('optional-mods-data', { success: false, mods: [], error: error.message });
+    }
+});
+
+ipcMain.on('set-optional-mod-enabled', async (event, payload) => {
+    try {
+        const { apiUrl } = getServerSettings();
+        const state = await loadOptionalModsState(apiUrl);
+        const preferenceKey = String(payload && payload.preferenceKey || '').trim().toLowerCase();
+        const config = readConfig();
+        config.optionalMods = setOptionalModPreference(
+            config.optionalMods,
+            preferenceKey,
+            payload && payload.enabled === true,
+            catalogAsManifest(state.catalog)
+        );
+        saveConfig(config);
+        const mods = buildOptionalModViewFromCatalog(state.catalog, config.optionalMods);
+        logLauncher(`Optional mod ${preferenceKey} is now ${payload && payload.enabled === true ? 'enabled' : 'disabled'}`);
+        event.reply('optional-mods-data', { success: true, mods, changed: preferenceKey });
+    } catch (error) {
+        logLauncher(`Failed to save optional mod preference: ${error.message}`);
+        event.reply('optional-mods-data', { success: false, error: error.message });
+    }
 });
 
 ipcMain.on('get-server-status', async (event) => {
@@ -1045,6 +1118,15 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             }
         }
 
+        const customJvmArgs = [`-Declipse.apiUrl=${normalizeApiUrl(apiUrl)}`];
+        const fabricDisableArgument = buildFabricDisableArgument(requiredMods, config.optionalMods);
+        if (fabricDisableArgument) {
+            customJvmArgs.push(fabricDisableArgument);
+            logLauncher(`Optional Fabric mods disabled for this launch: ${fabricDisableArgument.split('=')[1]}`);
+        } else {
+            logLauncher('All installed optional Fabric mods are enabled for this launch.');
+        }
+
         const authSession = await Authenticator.getAuth(username);
 
         // Force Minecraft language to Russian
@@ -1094,7 +1176,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             // Make the public HTTPS API available before the first world render.
             // Without this, the client guesses http://<game-host>:25580 and every
             // initial skin request waits for a connection timeout.
-            customArgs: [`-Declipse.apiUrl=${normalizeApiUrl(apiUrl)}`]
+            customArgs: customJvmArgs
         };
 
         const minecraftProcess = await launcher.launch(opts);

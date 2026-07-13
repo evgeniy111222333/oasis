@@ -16,6 +16,9 @@ const settingsModal = document.getElementById('settingsModal');
 const btnBrowseFolder = document.getElementById('btnBrowseFolder');
 const gamePathInput = document.getElementById('gamePathInput');
 const fullscreenInput = document.getElementById('fullscreenInput');
+const optionalModsList = document.getElementById('optionalModsList');
+const optionalModsCount = document.getElementById('optionalModsCount');
+const optionalModsNotice = document.getElementById('optionalModsNotice');
 
 let currentGamePath = '';
 let usernameSaveTimer = null;
@@ -45,12 +48,14 @@ ipcRenderer.on('config-data', (event, data) => {
         usernameInput.value = data.lastUsername || '';
     }
     ipcRenderer.send('check-updates', { gamePath: currentGamePath });
+    ipcRenderer.send('get-optional-mods');
     updateServerStatus();
 });
 
 // Settings toggle
 btnSettings.addEventListener('click', () => {
     settingsModal.style.display = 'flex';
+    ipcRenderer.send('get-optional-mods');
 });
 
 btnSettingsClose.addEventListener('click', () => {
@@ -71,6 +76,102 @@ ipcRenderer.on('selected-directory', (event, path) => {
 // Save fullscreen configuration on change
 fullscreenInput.addEventListener('change', () => {
     ipcRenderer.send('save-fullscreen', fullscreenInput.checked);
+});
+
+function renderOptionalMods(mods) {
+    optionalModsList.replaceChildren();
+    optionalModsCount.innerText = String(mods.length);
+
+    if (mods.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'optional-mods-placeholder';
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-box-open';
+        const text = document.createElement('span');
+        text.innerText = 'Дополнительные моды пока не опубликованы.';
+        empty.append(icon, text);
+        optionalModsList.appendChild(empty);
+        return;
+    }
+
+    for (const mod of mods) {
+        const card = document.createElement('article');
+        card.className = `optional-mod-card${mod.enabled ? ' enabled' : ''}`;
+
+        const iconBox = document.createElement('div');
+        iconBox.className = 'optional-mod-icon';
+        const icon = document.createElement('i');
+        icon.className = `fa-solid ${mod.icon || 'fa-cube'}`;
+        iconBox.appendChild(icon);
+
+        const copy = document.createElement('div');
+        copy.className = 'optional-mod-copy';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'optional-mod-title-row';
+        const title = document.createElement('span');
+        title.className = 'optional-mod-title';
+        title.innerText = mod.name;
+        titleRow.appendChild(title);
+        if (mod.version) {
+            const version = document.createElement('span');
+            version.className = 'optional-mod-version';
+            version.innerText = `v${mod.version}`;
+            titleRow.appendChild(version);
+        }
+        if (mod.category) {
+            const category = document.createElement('span');
+            category.className = 'optional-mod-category';
+            category.innerText = mod.category;
+            titleRow.appendChild(category);
+        }
+        const description = document.createElement('p');
+        description.className = 'optional-mod-description';
+        description.innerText = mod.description || 'Дополнительный мод Eclipse RolePlay.';
+        copy.append(titleRow, description);
+
+        const control = document.createElement('div');
+        control.className = 'optional-mod-control';
+        const state = document.createElement('span');
+        state.className = 'optional-mod-state';
+        state.innerText = mod.enabled ? 'Включён' : 'Выключен';
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'switch mod-switch';
+        switchLabel.title = `${mod.enabled ? 'Выключить' : 'Включить'} ${mod.name}`;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = mod.enabled === true;
+        checkbox.setAttribute('aria-label', `${mod.name}: ${mod.enabled ? 'включён' : 'выключен'}`);
+        const slider = document.createElement('span');
+        slider.className = 'slider';
+        checkbox.addEventListener('change', () => {
+            checkbox.disabled = true;
+            state.innerText = 'Сохранение...';
+            optionalModsNotice.classList.remove('error');
+            optionalModsNotice.innerText = 'Настройка применится при следующем запуске игры.';
+            ipcRenderer.send('set-optional-mod-enabled', {
+                preferenceKey: mod.preferenceKey,
+                enabled: checkbox.checked
+            });
+        });
+        switchLabel.append(checkbox, slider);
+        control.append(state, switchLabel);
+
+        card.append(iconBox, copy, control);
+        optionalModsList.appendChild(card);
+    }
+}
+
+ipcRenderer.on('optional-mods-data', (event, data) => {
+    if (data.success) {
+        renderOptionalMods(Array.isArray(data.mods) ? data.mods : []);
+        optionalModsNotice.classList.remove('error');
+        optionalModsNotice.innerText = data.changed
+            ? 'Сохранено. Изменение применится при следующем запуске игры.'
+            : 'Включённые моды загружаются Fabric при запуске; выключенные JAR остаются на диске.';
+    } else {
+        optionalModsNotice.classList.add('error');
+        optionalModsNotice.innerText = `Не удалось загрузить каталог: ${data.error || 'неизвестная ошибка'}`;
+    }
 });
 
 usernameInput.addEventListener('input', () => {

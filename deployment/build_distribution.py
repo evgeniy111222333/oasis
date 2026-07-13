@@ -80,6 +80,14 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
         if entry.get("sha1") and current["sha1"] != str(entry["sha1"]).lower():
             raise ValueError(f"SHA-1 mismatch in source manifest for {relative_path}")
         current["path"] = relative_path
+        # Presentation and activation metadata is launcher configuration, not
+        # file-integrity data. Preserve it while always recomputing URLs/hashes.
+        for key in (
+            "optional", "preferenceKey", "modId", "displayName", "version",
+            "category", "description", "icon", "defaultEnabled",
+        ):
+            if key in entry:
+                current[key] = entry[key]
         mods.append(current)
 
     profile_relative = f"versions/26.1.2/26.1.2.json"

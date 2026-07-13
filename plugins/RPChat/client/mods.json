@@ -77,5 +77,22 @@
         "size": 577617,
         "sha1": "7a43e5c92b87e360bfa0156870f2097549e3732d",
         "sha256": "07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8"
+    },
+    {
+        "name": "Axiom-5.4.2-for-MC26.1.jar",
+        "path": "mods/Axiom-5.4.2-for-MC26.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/Axiom-5.4.2-for-MC26.1.jar",
+        "size": 46821470,
+        "sha1": "5d89bb35ca5f73f40dd7dfc9ef6764916b89689f",
+        "sha512": "dac0681e5b377a8824153249559849eafb3a1e085b07c4586f10f3dd146a3aae935b998faef11c0bad1fbfb9e21d950ee21992af53790296bad8e7cc20b78a59",
+        "optional": true,
+        "preferenceKey": "axiom",
+        "modId": "axiom",
+        "displayName": "Axiom",
+        "version": "5.4.2",
+        "category": "Строительство",
+        "description": "Профессиональные инструменты редактирования и строительства мира.",
+        "icon": "fa-wand-magic-sparkles",
+        "defaultEnabled": true
     }
 ]
