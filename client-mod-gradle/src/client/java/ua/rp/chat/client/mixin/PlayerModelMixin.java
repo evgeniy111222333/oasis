@@ -26,6 +26,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.AcquaintanceClientState;
+import ua.rp.chat.RespirationModel;
+import ua.rp.chat.client.camera.RespirationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
@@ -129,8 +131,6 @@ public class PlayerModelMixin {
         // НЕ повне згасання — реальні люди дихають i при ходьбі.
         // minCalm 0.30 гарантує видиму амплітуду дихання під час руху.
         float calmBase = state.isCrouching ? 0.62f : 1.0f;
-        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
-        float fatigue = 1.0f - stamina;
         float motionDamp = 1.0f - moving * 0.55f;
         if (heavyItem) {
             motionDamp *= 0.86f;
@@ -141,29 +141,31 @@ public class PlayerModelMixin {
         float calm = calmBase * eclipse$clamp(motionDamp, 0.28f, 1.0f);
 
         // --- ДИХАННЯ ---
-        // ~13 дихань/хв при 20 TPS. Амплітуди підібрані так, щоб рух було
-        // видно неозброєним оком (кути ~2-3° замість колишніх 0.3-0.5°).
-        // ВАЖЛИВО: НЕ модифікуємо body.y — це рвало тулуб від голови.
-        float breathRate = 0.0114f + moving * 0.0038f + eclipse$clamp(state.speedValue, 0.0f, 0.35f) * 0.0030f + fatigue * 0.017f;
-        float breath = eclipse$breathCurve(state.ageInTicks * breathRate);
-        float inhale = breath * calm;
-        float exhale = (1.0f - breath) * calm;
-        float micro = ((float) Math.sin(state.ageInTicks * 0.173f + 0.7f) * 0.10f
-                + (float) Math.sin(state.ageInTicks * 0.041f + 1.9f) * 0.07f) * calm;
-        float breathLift = (inhale - exhale * 0.18f + micro * 0.12f) * (1.0f + fatigue * 1.15f);
-        model.body.xRot += breathLift * (0.010f + fatigue * 0.010f);
-        model.leftArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
-        model.rightArm.xRot += breathLift * (0.022f + fatigue * 0.020f);
-        model.leftArm.zRot += breathLift * (0.012f + fatigue * 0.012f);
-        model.rightArm.zRot -= breathLift * (0.012f + fatigue * 0.012f);
-        model.leftArm.yRot -= inhale * (0.006f + fatigue * 0.009f);
-        model.rightArm.yRot += inhale * (0.006f + fatigue * 0.009f);
-        if (fatigue > 0.55f && moving < 0.25f) {
-            float exhausted = (fatigue - 0.55f) / 0.45f;
-            model.body.xRot += exhausted * 0.035f;
-            model.leftArm.xRot += exhausted * 0.080f;
-            model.rightArm.xRot += exhausted * 0.080f;
-        }
+        // The shared controller keeps the local cycle continuous at 14-50 BPM.
+        // body.y remains untouched so the neck seam cannot open during breathing.
+        boolean localPlayer = eclipse$isLocalFirstPersonState(state);
+        RespirationModel.Snapshot respiration = localPlayer
+                ? RespirationController.getInstance().sampleFrame()
+                : RespirationController.getInstance().sampleRemote(state.ageInTicks, state.id);
+        float respiratoryIntensity = (float) respiration.intensity();
+        float breathGain = calm * (0.38f + respiratoryIntensity * 0.62f);
+        float chestExpansion = (float) respiration.expansion() * breathGain;
+
+        // Expand the torso depth instead of swinging the whole skeleton. Arms
+        // only inherit a small passive shoulder motion, keeping hands stable.
+        model.body.zScale *= 1.0f + chestExpansion * (0.0040f + respiratoryIntensity * 0.0050f);
+        model.body.xRot += chestExpansion * (0.0080f + respiratoryIntensity * 0.0060f);
+        float shoulderFollow = chestExpansion * (0.0040f + respiratoryIntensity * 0.0030f);
+        model.leftArm.xRot += shoulderFollow;
+        model.rightArm.xRot += shoulderFollow;
+        model.leftArm.zRot += shoulderFollow * 0.35f;
+        model.rightArm.zRot -= shoulderFollow * 0.35f;
+
+        // Exhaustion is a slowly blended posture, never a second oscillator.
+        float exhaustedPosture = eclipse$smoothStep(0.62f, 1.0f, respiratoryIntensity) * (1.0f - moving * 0.70f);
+        model.body.xRot += exhaustedPosture * 0.018f;
+        model.leftArm.xRot += exhaustedPosture * 0.025f;
+        model.rightArm.xRot += exhaustedPosture * 0.025f;
 
         // Легкий ваго-перенос (вес тела переносится с ноги на ногу).
         float idleShift = (float) Math.sin(state.ageInTicks * 0.0105f + Math.sin(state.ageInTicks * 0.003f) * 0.4f) * calm * (1.0f - moving * 0.35f);
@@ -445,78 +447,6 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void eclipse$applySharedRoleplayPose(PlayerModel model, AvatarRenderState state) {
-        if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
-            return;
-        }
-
-        float moving = eclipse$clamp(state.walkAnimationSpeed * 3.8f, 0.0f, 1.0f);
-        float calm = 1.0f - moving;
-        if (state.isCrouching) {
-            calm *= 0.65f;
-        }
-
-        float breath = (float) Math.sin(state.ageInTicks * 0.07853982f); // 80 ticks per calm breath, about 15/min.
-        float breathLift = breath * calm;
-
-        model.body.xRot += breathLift * 0.010f;
-        model.body.y -= breathLift * 0.045f;
-        model.leftArm.xRot += breathLift * 0.012f;
-        model.rightArm.xRot += breathLift * 0.012f;
-        model.leftArm.zRot += breathLift * 0.006f;
-        model.rightArm.zRot -= breathLift * 0.006f;
-
-        float idleShift = (float) Math.sin(state.ageInTicks * 0.01745329f) * calm; // About one weight shift every 18s.
-        model.body.zRot += idleShift * 0.018f;
-        model.leftLeg.zRot += idleShift * 0.010f;
-        model.rightLeg.zRot += idleShift * 0.010f;
-
-        float lookDown = eclipse$smoothStep(65.0f, 88.0f, eclipse$clamp(state.xRot, 0.0f, 90.0f));
-        float crouchGuard = state.isCrouching ? 0.55f : 1.0f;
-        float lean = lookDown * crouchGuard;
-        model.body.xRot += lean * 0.26f;
-        model.body.y += lean * 0.34f;
-        model.body.z -= lean * 0.36f;
-
-        model.leftArm.xRot -= lean * 0.24f;
-        model.rightArm.xRot -= lean * 0.24f;
-        model.leftArm.yRot += lean * 0.06f;
-        model.rightArm.yRot -= lean * 0.06f;
-        model.leftArm.z -= lean * 0.28f;
-        model.rightArm.z -= lean * 0.28f;
-
-        model.leftLeg.xRot -= lean * 0.10f;
-        model.rightLeg.xRot -= lean * 0.10f;
-        model.leftLeg.zRot += lean * 0.025f;
-        model.rightLeg.zRot -= lean * 0.025f;
-
-        float lookSide = eclipse$clamp(eclipse$wrapDegrees(state.yRot - state.bodyRot) / 90.0f, -1.0f, 1.0f);
-        float upperTurn = lookSide * (0.035f + calm * 0.035f);
-        model.body.yRot += upperTurn;
-        model.leftArm.yRot += upperTurn * 0.6f;
-        model.rightArm.yRot += upperTurn * 0.6f;
-
-        Player player = eclipse$getRenderedPlayer(state);
-        float terrain = eclipse$getTerrainBalance(player);
-        if (Math.abs(terrain) > 0.01f && moving < 0.45f) {
-            model.body.zRot += terrain * 0.045f;
-            model.leftLeg.xRot -= Math.max(0.0f, terrain) * 0.10f;
-            model.rightLeg.xRot += Math.min(0.0f, terrain) * 0.10f;
-            model.leftLeg.zRot += terrain * 0.025f;
-            model.rightLeg.zRot += terrain * 0.025f;
-        }
-
-        float runLean = moving * eclipse$clamp(state.speedValue * 0.45f, 0.0f, 1.0f);
-        model.body.xRot += runLean * 0.055f;
-        model.leftArm.xRot -= runLean * 0.035f;
-        model.rightArm.xRot -= runLean * 0.035f;
-
-        eclipse$applyWeaponStance(model, state, moving);
-        eclipse$applyWeatherPosture(model, player, calm);
-        eclipse$applyArticulatedLimbs(model, state, moving, calm, lean);
-    }
-
-    @Unique
     private static void eclipse$replaceArm(PartDefinition root, String armName, String sleeveName, float x, boolean right, boolean slim, int texX, int texY, int sleeveTexX, int sleeveTexY, CubeDeformation deformation) {
         int width = slim ? 3 : 4;
         float minX = right ? (slim ? -2.0f : -3.0f) : -1.0f;
@@ -713,18 +643,6 @@ public class PlayerModelMixin {
     private float eclipse$smoothStep(float edge0, float edge1, float value) {
         float x = eclipse$clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
         return x * x * (3.0f - 2.0f * x);
-    }
-
-    @Unique
-    private float eclipse$breathCurve(float cycles) {
-        float phase = cycles - (float) Math.floor(cycles);
-        if (phase < 0.34f) {
-            return eclipse$smoothStep(0.0f, 0.34f, phase);
-        }
-        if (phase < 0.88f) {
-            return 1.0f - eclipse$smoothStep(0.34f, 0.88f, phase);
-        }
-        return 0.0f;
     }
 
     @Unique

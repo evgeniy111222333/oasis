@@ -82,6 +82,14 @@ tasks.register("verifyCameraCollisionMath", JavaExec) {
 	mainClass = "ua.rp.chat.CameraCollisionMathTest"
 }
 
+tasks.register("verifyRespirationModel", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks respiratory phase continuity, FPS independence and recovery timing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.RespirationModelTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -90,6 +98,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyArticulatedLimbGeometry")
 	dependsOn tasks.named("verifyElbowBridgeRenderer")
 	dependsOn tasks.named("verifyCameraCollisionMath")
+	dependsOn tasks.named("verifyRespirationModel")
 }
 
 java {

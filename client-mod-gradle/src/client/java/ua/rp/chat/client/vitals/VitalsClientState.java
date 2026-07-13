@@ -1,6 +1,7 @@
 package ua.rp.chat.client.vitals;
 
 import net.minecraft.client.Minecraft;
+import ua.rp.chat.RespirationModel;
 import ua.rp.chat.client.EclipseApiClient;
 import ua.rp.chat.client.EclipseClientMod;
 
@@ -21,6 +22,12 @@ public final class VitalsClientState {
     private static volatile float blood = 100.0f;
     private static volatile float pain = 0.0f;
     private static volatile float bleeding = 0.0f;
+    private static volatile float targetStamina = 100.0f;
+    private static volatile float targetBreathDebt = 0.0f;
+    private static volatile float targetFatigue = 0.0f;
+    private static volatile float targetBlood = 100.0f;
+    private static volatile float targetPain = 0.0f;
+    private static volatile float targetBleeding = 0.0f;
     private static volatile boolean unconscious = false;
     private static volatile String band = "steady";
 
@@ -35,11 +42,18 @@ public final class VitalsClientState {
             blood = 100.0f;
             pain = 0.0f;
             bleeding = 0.0f;
+            targetStamina = 100.0f;
+            targetBreathDebt = 0.0f;
+            targetFatigue = 0.0f;
+            targetBlood = 100.0f;
+            targetPain = 0.0f;
+            targetBleeding = 0.0f;
             unconscious = false;
             band = "steady";
             pollTicks = 0;
             return;
         }
+        smoothVitals();
         if (IN_FLIGHT.get()) {
             return;
         }
@@ -59,12 +73,12 @@ public final class VitalsClientState {
                     if (error != null || body == null || body.isBlank()) {
                         return;
                     }
-                    stamina = extractFloat(body, "stamina", stamina);
-                    breathDebt = extractFloat(body, "breathDebt", breathDebt);
-                    fatigue = extractFloat(body, "fatigue", fatigue);
-                    blood = extractFloat(body, "blood", blood);
-                    pain = extractFloat(body, "pain", pain);
-                    bleeding = extractFloat(body, "bleeding", bleeding);
+                    targetStamina = extractFloat(body, "stamina", targetStamina);
+                    targetBreathDebt = extractFloat(body, "breathDebt", targetBreathDebt);
+                    targetFatigue = extractFloat(body, "fatigue", targetFatigue);
+                    targetBlood = extractFloat(body, "blood", targetBlood);
+                    targetPain = extractFloat(body, "pain", targetPain);
+                    targetBleeding = extractFloat(body, "bleeding", targetBleeding);
                     unconscious = extractBoolean(body, "unconscious", unconscious);
                     String nextBand = extractString(body, "band");
                     if (nextBand != null && !nextBand.isBlank()) {
@@ -113,6 +127,19 @@ public final class VitalsClientState {
 
     public static String getBand() {
         return band;
+    }
+
+    private static void smoothVitals() {
+        stamina = smooth(stamina, targetStamina, targetStamina < stamina ? 0.55f : 1.40f);
+        breathDebt = smooth(breathDebt, targetBreathDebt, targetBreathDebt > breathDebt ? 0.50f : 1.80f);
+        fatigue = smooth(fatigue, targetFatigue, targetFatigue > fatigue ? 0.80f : 2.80f);
+        blood = smooth(blood, targetBlood, targetBlood < blood ? 0.45f : 1.50f);
+        pain = smooth(pain, targetPain, targetPain > pain ? 0.35f : 0.90f);
+        bleeding = smooth(bleeding, targetBleeding, targetBleeding > bleeding ? 0.35f : 0.85f);
+    }
+
+    private static float smooth(float current, float target, float timeConstant) {
+        return (float) RespirationModel.smoothSignal(current, target, 0.05, timeConstant);
     }
 
     private static String get(String url) {

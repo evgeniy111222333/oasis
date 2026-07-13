@@ -3,6 +3,7 @@ package ua.rp.chat.client.camera;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
+import ua.rp.chat.RespirationModel;
 import ua.rp.chat.client.EclipseClientMod;
 import ua.rp.chat.client.vitals.VitalsClientState;
 
@@ -32,21 +33,20 @@ final class MedicalScreenEffects {
     }
 
     private static void renderSuffocationPulse(GuiGraphicsExtractor graphics, int width, int height, float intensity) {
-        long now = System.currentTimeMillis();
-        float pulse = wave(now, 620.0f);
-        float deepPulse = wave(now + 170L, 1350.0f);
-        float breathBeat = 0.62f + pulse * 0.38f;
-        float coldAlpha = clamp01((0.18f + intensity * 0.54f) * (0.78f + deepPulse * 0.22f));
+        RespirationModel.Snapshot respiration = RespirationController.getInstance().sampleFrame();
+        float inhale = (float) respiration.expansion();
+        float breathBeat = 0.80f + inhale * 0.20f;
+        float coldAlpha = clamp01((0.18f + intensity * 0.54f) * (0.88f + inhale * 0.12f));
         float tunnelAlpha = clamp01((0.24f + intensity * 0.72f) * breathBeat);
-        float pulseAlpha = clamp01(intensity * intensity * (0.18f + pulse * 0.50f));
+        float pulseAlpha = clamp01(intensity * intensity * (0.08f + inhale * 0.22f));
 
         sprite(graphics, HYPOXIA_VIGNETTE, width, height, coldAlpha);
         sprite(graphics, HYPOXIA_PULSE, width, height, pulseAlpha);
 
         if (intensity > 0.72f) {
             float blackout = (intensity - 0.72f) / 0.28f;
-            sprite(graphics, BLACKOUT_VIGNETTE, width, height, clamp01(blackout * (0.42f + pulse * 0.34f)));
-            graphics.fill(0, 0, width, height, argb(Math.round(blackout * (24.0f + pulse * 38.0f)), 0x000000));
+            sprite(graphics, BLACKOUT_VIGNETTE, width, height, clamp01(blackout * (0.48f + inhale * 0.14f)));
+            graphics.fill(0, 0, width, height, argb(Math.round(blackout * (24.0f + inhale * 18.0f)), 0x000000));
         }
         graphics.fillGradient(0, 0, width, height,
                 argb(Math.round(tunnelAlpha * 28.0f), 0x061014),

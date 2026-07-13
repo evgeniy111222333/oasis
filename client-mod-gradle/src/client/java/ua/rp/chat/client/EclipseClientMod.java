@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "mcef-trace-20260712-1";
+    public static final String DIAGNOSTIC_BUILD = "respiration-sync-20260713-1";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
@@ -70,8 +70,8 @@ public class EclipseClientMod implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            SmartCameraManager.getInstance().clientTick(client);
             VitalsClientState.clientTick(client);
+            SmartCameraManager.getInstance().clientTick(client);
             AcquaintanceClientState.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);

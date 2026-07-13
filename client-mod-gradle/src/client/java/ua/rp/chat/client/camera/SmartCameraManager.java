@@ -10,6 +10,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import ua.rp.chat.RespirationModel;
 import ua.rp.chat.client.AcquaintanceClientState;
 
 public class SmartCameraManager {
@@ -45,7 +46,6 @@ public class SmartCameraManager {
     private float lastPitch = Float.NaN;
     private boolean wasUsingRanged = false;
     private int armorStepCooldown = 0;
-    private int breathSoundCooldown = 0;
     private boolean renderingFirstPersonPlayer = false;
     private boolean submittingFirstPersonPlayer = false;
     private boolean enabled = true;
@@ -129,19 +129,19 @@ public class SmartCameraManager {
         }
 
         LocalPlayer player = client.player;
+        RespirationController.getInstance().clientTick(player);
+        updateBreathSound(player);
         if (!isCameraMotionActiveFor(player)) {
             clearCameraCollisionState();
             armorStepCooldown = Math.max(0, armorStepCooldown - 1);
-            breathSoundCooldown = Math.max(0, breathSoundCooldown - 1);
             return;
         }
 
         if (armorStepCooldown > 0) {
             armorStepCooldown--;
         }
-        if (breathSoundCooldown > 0) {
-            breathSoundCooldown--;
-        }
+        // Fixed-tick idle time keeps weapon idle motion identical at 30, 60 or 240 FPS.
+        idlePhase += 0.036;
 
         Vec3 velocity = player.getDeltaMovement();
         double horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
@@ -152,7 +152,6 @@ public class SmartCameraManager {
             armorStepCooldown = player.isSprinting() ? 9 : 13;
         }
 
-        updateBreathSound(player);
         updateActionImpulses(player);
     }
 
@@ -186,7 +185,6 @@ public class SmartCameraManager {
         double targetStride = player.onGround() ? Math.min(1.0, horizontalSpeed * (player.isSprinting() ? 8.0 : 6.0)) : 0.0;
         strideStrength += (targetStride - strideStrength) * 0.18;
         stridePhase += (0.18 + horizontalSpeed * 1.55) * Math.max(0.2, strideStrength);
-        idlePhase += 0.012;
 
         updateTurnInertia(player);
         updateWeaponSpring(player);
@@ -237,14 +235,12 @@ public class SmartCameraManager {
                     : pose.active() && !pose.actor() && "KNEEL".equals(pose.action()) ? smoothStep(0.0, 1.0, pose.progress()) : 0.0f;
             y -= 0.34 * kneel;
         }
-        float danger = getStaminaDanger01();
-        if (danger > 0.0f) {
-            double pulse = Math.sin(idlePhase * 8.5) * 0.004 + Math.sin(idlePhase * 3.1) * 0.008;
-            double lateral = pulse * danger;
-            double vertical = -Math.abs(Math.sin(idlePhase * 4.2)) * 0.006 * danger;
-            x += Math.cos(yawRad) * lateral;
-            y += vertical;
-            z += Math.sin(yawRad) * lateral;
+        RespirationModel.Snapshot breath = RespirationController.getInstance().sampleFrame();
+        double visibleBreath = smoothStep(0.30, 0.95, breath.intensity());
+        if (visibleBreath > 0.0) {
+            // Breathing is vertical, tiny and phase-locked. Pain/shock must never
+            // masquerade as a separate lateral respiratory tremor.
+            y += (breath.expansion() - 0.20) * 0.0024 * visibleBreath;
         }
         return new Vec3(x, y, z);
     }
@@ -394,8 +390,8 @@ public class SmartCameraManager {
     }
 
     public float getExhaustionPulse() {
-        return clampFloat((float) (0.74 + Math.sin(System.currentTimeMillis() / 180.0) * 0.18
-                + Math.sin(System.currentTimeMillis() / 470.0) * 0.08), 0.58f, 1.0f);
+        RespirationModel.Snapshot breath = RespirationController.getInstance().sampleFrame();
+        return clampFloat((float) (0.78 + breath.expansion() * 0.22), 0.78f, 1.0f);
     }
 
     public double getStabilizedY(Player player, double rawY, float partialTick) {
@@ -416,20 +412,16 @@ public class SmartCameraManager {
     }
 
     private void updateBreathSound(LocalPlayer player) {
-        float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
-        float breathDebt = ua.rp.chat.client.vitals.VitalsClientState.getBreathDebt() / 100.0f;
-        float pain = ua.rp.chat.client.vitals.VitalsClientState.getPain() / 100.0f;
-        float bloodLoss = 1.0f - ua.rp.chat.client.vitals.VitalsClientState.getBlood01();
-        if ((stamina > 0.72f && breathDebt < 0.22f && pain < 0.28f && bloodLoss < 0.25f)
-                || breathSoundCooldown > 0 || player.isSpectator()) {
+        RespirationController respiration = RespirationController.getInstance();
+        boolean exhaleStarted = respiration.consumeExhaleStart();
+        RespirationModel.Snapshot breath = respiration.sample(1.0);
+        if (!exhaleStarted || breath.intensity() < 0.30 || player.isSpectator()) {
             return;
         }
-        float fatigue = Math.max(Math.max(1.0f - stamina, breathDebt * 0.82f), Math.max(pain * 0.55f, bloodLoss * 0.65f));
-        float pulse = getExhaustionPulse();
-        float volume = clampFloat(0.045f + fatigue * 0.26f + breathDebt * 0.12f + pain * 0.08f, 0.05f, 0.44f) * pulse;
-        float pitch = clampFloat(0.58f + stamina * 0.30f - breathDebt * 0.08f - bloodLoss * 0.06f, 0.50f, 0.92f);
+        float effort = (float) smoothStep(0.30, 1.0, breath.intensity());
+        float volume = clampFloat(0.035f + effort * 0.245f, 0.035f, 0.28f);
+        float pitch = clampFloat(0.92f - effort * 0.25f, 0.67f, 0.92f);
         player.playSound(SoundEvents.PLAYER_BREATH, volume, pitch);
-        breathSoundCooldown = stamina < 0.12f || breathDebt > 0.72f || pain > 0.72f || bloodLoss > 0.55f ? 18 : stamina < 0.35f ? 28 : 46;
     }
 
     private float getYawDelta(Player player) {
@@ -543,6 +535,7 @@ public class SmartCameraManager {
         lastYawDelta = 0.0f;
         lastPitch = Float.NaN;
         wasUsingRanged = false;
+        RespirationController.getInstance().reset();
         clearCameraCollisionState();
         cameraCollisionInitialized = false;
     }
