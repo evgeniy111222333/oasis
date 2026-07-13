@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,6 +32,7 @@ public class PlayerRendererMixin {
     @Unique private boolean eclipse$bodyVisible;
     @Unique private boolean eclipse$jacketVisible;
     @Unique private boolean eclipse$firstPersonSnapshot;
+    @Unique private boolean eclipse$bodyCompensationPushed;
 
     @Unique private float eclipse$bodyY;
     @Unique private float eclipse$bodyZ;
@@ -52,6 +54,10 @@ public class PlayerRendererMixin {
     private void eclipse$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
         SmartCameraManager cameraManager = SmartCameraManager.getInstance();
         if (eclipse$isLocalFirstPersonState(state) && cameraManager.isWorldFirstPersonBodyRender()) {
+            Vec3 compensation = cameraManager.getFirstPersonBodyCompensation();
+            poseStack.pushPose();
+            poseStack.translate(compensation.x, compensation.y, compensation.z);
+            eclipse$bodyCompensationPushed = true;
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
             if (renderer.getModel() instanceof PlayerModel model) {
                 if (!eclipse$debugPrinted) {
@@ -98,6 +104,10 @@ public class PlayerRendererMixin {
                 eclipse$restoreVisibility(model, state);
             }
             cameraManager.setSubmittingFirstPersonPlayer(false);
+        }
+        if (eclipse$bodyCompensationPushed) {
+            poseStack.popPose();
+            eclipse$bodyCompensationPushed = false;
         }
     }
 

@@ -49,6 +49,15 @@ public final class CameraCollisionMath {
         return new SweepResult(allowed, startBlocked, tested);
     }
 
+    public static Point bodyCompensation(Point desiredCameraOffset, Point resolvedCameraOffset) {
+        requireFinite(desiredCameraOffset, "desiredCameraOffset");
+        requireFinite(resolvedCameraOffset, "resolvedCameraOffset");
+        return new Point(
+                resolvedCameraOffset.x - desiredCameraOffset.x,
+                resolvedCameraOffset.y - desiredCameraOffset.y,
+                resolvedCameraOffset.z - desiredCameraOffset.z);
+    }
+
     private static double segmentEntry(Point start, Point movement, Box box) {
         double enter = Double.NEGATIVE_INFINITY;
         double exit = Double.POSITIVE_INFINITY;

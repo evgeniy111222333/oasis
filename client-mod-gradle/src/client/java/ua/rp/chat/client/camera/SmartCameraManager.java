@@ -51,6 +51,7 @@ public class SmartCameraManager {
     private boolean enabled = true;
     private final CameraCollisionResolver cameraCollisionResolver = new CameraCollisionResolver();
     private Vec3 cameraHalfExtents = CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
+    private Vec3 desiredCameraOffset = Vec3.ZERO;
     private Vec3 resolvedCameraOffset = Vec3.ZERO;
     private double cameraCollisionFraction = 1.0;
     private boolean cameraFailClosed = false;
@@ -260,6 +261,7 @@ public class SmartCameraManager {
                 player, origin, desiredOffset, halfExtents);
         boolean wasFailClosed = cameraFailClosed;
         cameraHalfExtents = halfExtents;
+        desiredCameraOffset = desiredOffset;
         resolvedCameraOffset = resolution.offset();
         cameraCollisionFraction = resolution.fraction();
         cameraFailClosed = resolution.failClosed();
@@ -296,6 +298,17 @@ public class SmartCameraManager {
 
     public double getCameraCollisionFraction() {
         return cameraCollisionFraction;
+    }
+
+    /**
+     * Keeps the local first-person body at the same camera-relative distance
+     * when collision resolution shortens the requested camera offset.
+     */
+    public Vec3 getFirstPersonBodyCompensation() {
+        if (!isFirstPersonBodyEnabled() || cameraFailClosed) {
+            return Vec3.ZERO;
+        }
+        return resolvedCameraOffset.subtract(desiredCameraOffset);
     }
 
     public void applyFirstPersonBodyPose(PlayerModel model) {
@@ -536,6 +549,7 @@ public class SmartCameraManager {
 
     private void clearCameraCollisionState() {
         cameraHalfExtents = CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
+        desiredCameraOffset = Vec3.ZERO;
         resolvedCameraOffset = Vec3.ZERO;
         cameraCollisionFraction = 1.0;
         cameraFailClosed = false;

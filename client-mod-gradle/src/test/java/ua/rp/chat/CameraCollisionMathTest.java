@@ -25,6 +25,21 @@ public final class CameraCollisionMathTest {
         double crouchZ = 0.70 + 0.59 * crouching.fraction();
         assertTrue("near plane and clearance remain before the wall", crouchZ + 0.05 + CLEARANCE <= 1.0);
 
+        CameraCollisionMath.Point desiredCamera = point(0.0, -0.04, 0.59);
+        CameraCollisionMath.Point resolvedCamera = desiredCamera.scale(crouching.fraction());
+        CameraCollisionMath.Point bodyCompensation = CameraCollisionMath.bodyCompensation(
+                desiredCamera, resolvedCamera);
+        CameraCollisionMath.Point body = point(0.0, -1.20, 0.0);
+        assertClose("collision compensation preserves camera-relative body X",
+                body.x() - desiredCamera.x(),
+                body.x() + bodyCompensation.x() - resolvedCamera.x());
+        assertClose("collision compensation preserves camera-relative body Y",
+                body.y() - desiredCamera.y(),
+                body.y() + bodyCompensation.y() - resolvedCamera.y());
+        assertClose("collision compensation preserves camera-relative body Z",
+                body.z() - desiredCamera.z(),
+                body.z() + bodyCompensation.z() - resolvedCamera.z());
+
         CameraCollisionMath.Box thinPanel = box(-1.0, -1.0, 1.0, 1.0, 1.0, 1.0625);
         CameraCollisionMath.SweepResult tunnelling = sweep(
                 point(0.0, 0.0, 0.0), point(0.0, 0.0, 2.0), List.of(thinPanel));
@@ -60,6 +75,9 @@ public final class CameraCollisionMathTest {
         assertThrows("non-finite movement fails closed at the API boundary", () -> CameraCollisionMath.sweep(
                 point(0.0, 0.0, 0.0), point(Double.NaN, 0.0, 0.0), HALF_EXTENTS,
                 CLEARANCE, List.of(wall)));
+        assertThrows("non-finite compensation fails closed at the API boundary",
+                () -> CameraCollisionMath.bodyCompensation(
+                        point(0.0, 0.0, 0.0), point(Double.POSITIVE_INFINITY, 0.0, 0.0)));
         System.out.println("CameraCollisionMathTest: all continuous collision and fail-closed invariants passed");
     }
 
