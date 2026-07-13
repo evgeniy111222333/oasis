@@ -7,6 +7,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
 
 @Mixin(ModelPart.class)
@@ -16,10 +17,12 @@ public class ModelPartRenderMixin {
             at = @At("HEAD"),
             cancellable = true
     )
-    private void eclipse$renderDynamicElbow(
+    private void eclipse$renderDynamicGeometry(
             PoseStack poseStack, VertexConsumer consumer,
             int light, int overlay, int color, CallbackInfo ci) {
-        if (ElbowBridgeRenderer.renderIfRegistered(
+        if (BreathingTorsoRenderer.renderIfRegistered(
+                (ModelPart) (Object) this, poseStack, consumer, light, overlay, color)
+                || ElbowBridgeRenderer.renderIfRegistered(
                 (ModelPart) (Object) this, poseStack, consumer, light, overlay, color)) {
             ci.cancel();
         }

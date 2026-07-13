@@ -31,6 +31,7 @@ import ua.rp.chat.client.camera.RespirationController;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
+import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 
@@ -58,6 +59,12 @@ public class PlayerModelMixin {
                 eclipse$getChildOrNull(model.leftArm, "eclipse_elbow_bridge"),
                 eclipse$getChildOrNull(model.leftArm, "eclipse_forearm"),
                 model.leftSleeve, -1.0f, armWidth, 32, 48, 48, 48);
+        ModelPart torsoMarker = eclipse$getChildOrNull(model.body, "eclipse_breathing_torso");
+        BreathingTorsoRenderer.register(torsoMarker, model.jacket);
+        if (torsoMarker == null) {
+            ua.rp.chat.client.EclipseClientMod.LOGGER.error(
+                    "[TORSO] Dynamic breathing marker is missing; player torso cannot be rendered safely.");
+        }
     }
 
     @Inject(
@@ -91,6 +98,9 @@ public class PlayerModelMixin {
         eclipse$replaceArm(root, "left_arm", "left_sleeve", 5.0f, false, slim, 32, 48, 48, 48, deformation);
         eclipse$replaceLeg(root, "right_leg", "right_pants", -ArticulatedLimbLayout.LEG_HIP_X, 0, 16, 0, 32, deformation);
         eclipse$replaceLeg(root, "left_leg", "left_pants", ArticulatedLimbLayout.LEG_HIP_X, 16, 48, 0, 48, deformation);
+        PartDefinition body = root.addOrReplaceChild("body", CubeListBuilder.create(), PartPose.ZERO);
+        body.addOrReplaceChild("jacket", CubeListBuilder.create(), PartPose.ZERO);
+        body.addOrReplaceChild("eclipse_breathing_torso", CubeListBuilder.create(), PartPose.ZERO);
     }
 
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("RETURN"))
@@ -119,6 +129,8 @@ public class PlayerModelMixin {
 
     @Unique
     private void eclipse$applyStableRoleplayPose(PlayerModel model, AvatarRenderState state) {
+        ModelPart torsoMarker = model == null ? null : eclipse$getChildOrNull(model.body, "eclipse_breathing_torso");
+        BreathingTorsoRenderer.update(torsoMarker, 0.0, 0.0, 0.0, false);
         if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
             return;
         }
@@ -150,12 +162,15 @@ public class PlayerModelMixin {
         float respiratoryIntensity = (float) respiration.intensity();
         float breathGain = calm * (0.38f + respiratoryIntensity * 0.62f);
         float chestExpansion = (float) respiration.expansion() * breathGain;
+        boolean localFirstPerson = localPlayer
+                && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose();
+        BreathingTorsoRenderer.update(
+                torsoMarker, respiration.phase(), respiratoryIntensity, calm, localFirstPerson);
 
-        // Expand the torso depth instead of swinging the whole skeleton. Arms
-        // only inherit a small passive shoulder motion, keeping hands stable.
-        model.body.zScale *= 1.0f + chestExpansion * (0.0040f + respiratoryIntensity * 0.0050f);
-        model.body.xRot += chestExpansion * (0.0080f + respiratoryIntensity * 0.0060f);
-        float shoulderFollow = chestExpansion * (0.0040f + respiratoryIntensity * 0.0030f);
+        // The surface itself expands in a bottom-up V. The skeleton only follows
+        // enough to sell the rib-cage lift without throwing hands around.
+        model.body.xRot += chestExpansion * (0.0160f + respiratoryIntensity * 0.0060f);
+        float shoulderFollow = chestExpansion * (0.0060f + respiratoryIntensity * 0.0080f);
         model.leftArm.xRot += shoulderFollow;
         model.rightArm.xRot += shoulderFollow;
         model.leftArm.zRot += shoulderFollow * 0.35f;

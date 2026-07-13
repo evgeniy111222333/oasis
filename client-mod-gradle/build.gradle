@@ -90,6 +90,22 @@ tasks.register("verifyRespirationModel", JavaExec) {
 	mainClass = "ua.rp.chat.RespirationModelTest"
 }
 
+tasks.register("verifyBreathingTorsoLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks V-shaped torso geometry, phase propagation and layer clearance."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoLayoutTest"
+}
+
+tasks.register("verifyBreathingTorsoRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic breathing torso renderer for skin and jacket layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoRendererTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -99,6 +115,8 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyElbowBridgeRenderer")
 	dependsOn tasks.named("verifyCameraCollisionMath")
 	dependsOn tasks.named("verifyRespirationModel")
+	dependsOn tasks.named("verifyBreathingTorsoLayout")
+	dependsOn tasks.named("verifyBreathingTorsoRenderer")
 }
 
 java {
