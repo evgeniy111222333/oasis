@@ -1,8 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
-const https = require('https');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const { Client, Authenticator } = require('minecraft-launcher-core');
@@ -12,6 +10,7 @@ const {
     setOptionalModPreference,
     buildFabricDisableArgument
 } = require('./optional-mods');
+const updateNetwork = require('./update-network');
 
 let mainWindow;
 let isGameRunning = false;
@@ -39,7 +38,13 @@ const DEFAULT_GAME_SERVER_HOST = process.env.ECLIPSE_GAME_SERVER_HOST || '13.51.
 const DEFAULT_GAME_SERVER_PORT = Number(process.env.ECLIPSE_GAME_SERVER_PORT || 25565);
 const DISTRIBUTION_BASE_URL = process.env.ECLIPSE_DISTRIBUTION_BASE_URL || 'https://api.eclipse-roleplay.online/dist';
 const DISTRIBUTION_MANIFEST_URL = process.env.ECLIPSE_DISTRIBUTION_MANIFEST_URL || joinUrl(DISTRIBUTION_BASE_URL, 'manifests/production.json');
-const REMOTE_CLIENT_BASE_URL = process.env.ECLIPSE_CLIENT_BASE_URL || joinUrl(DISTRIBUTION_BASE_URL, 'client');
+const R2_DISTRIBUTION_BASE_URL = 'https://dist.eclipse-roleplay.online';
+const GITHUB_DISTRIBUTION_BASE_URL = 'https://raw.githubusercontent.com/evgeniy111222333/oasis/dist';
+const DISTRIBUTION_MANIFEST_URLS = [
+    joinUrl(R2_DISTRIBUTION_BASE_URL, 'manifests/production.json'),
+    DISTRIBUTION_MANIFEST_URL,
+    joinUrl(GITHUB_DISTRIBUTION_BASE_URL, 'manifests/production.json')
+];
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 const JAVA_RUNTIME_MAJOR = 25;
 const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
@@ -79,167 +84,20 @@ class EclipseMinecraftClient extends Client {
     }
 }
 
-function getTransport(url) {
-    return url.startsWith('https:') ? https : http;
-}
-
 function joinUrl(baseUrl, relativePath) {
     return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 }
 
-function downloadFile(url, dest, onProgress, timeoutMs = 20000, redirectDepth = 0) {
-    return new Promise((resolve, reject) => {
-        logLauncher(`[DOWNLOAD] Started: url=${url}, dest=${dest}`);
-        const dir = path.dirname(dest);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        
-        const file = fs.createWriteStream(dest);
-        let receivedBytes = 0;
-        let totalBytes = 0;
-        let lastProgressLogTime = Date.now();
-
-        const request = getTransport(url).get(url, (response) => {
-            logLauncher(`[DOWNLOAD] Response received: status=${response.statusCode}, contentLength=${response.headers['content-length']}`);
-
-            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectDepth < 4) {
-                logLauncher(`[DOWNLOAD] Redirecting to: ${response.headers.location}`);
-                response.resume();
-                file.close();
-                fs.unlink(dest, () => {});
-                const redirectUrl = new URL(response.headers.location, url).toString();
-                downloadFile(redirectUrl, dest, onProgress, timeoutMs, redirectDepth + 1).then(resolve).catch(reject);
-                return;
-            }
-
-            if (response.statusCode !== 200) {
-                logLauncher(`[DOWNLOAD] Error status ${response.statusCode} for ${url}`);
-                response.resume();
-                file.close();
-                fs.unlink(dest, () => {});
-                reject(new Error(`Server returned status code ${response.statusCode}`));
-                return;
-            }
-
-            totalBytes = parseInt(response.headers['content-length'], 10) || 0;
-
-            response.on('data', (chunk) => {
-                receivedBytes += chunk.length;
-                if (onProgress && totalBytes > 0) {
-                    onProgress(receivedBytes, totalBytes);
-                }
-                const now = Date.now();
-                if (now - lastProgressLogTime > 5000) {
-                    lastProgressLogTime = now;
-                    logLauncher(`[DOWNLOAD] Progress: ${receivedBytes}/${totalBytes} bytes (${totalBytes > 0 ? ((receivedBytes/totalBytes)*100).toFixed(1) : '?'}%)`);
-                }
-            });
-
-            response.pipe(file);
-
-            file.on('finish', () => {
-                file.close();
-                logLauncher(`[DOWNLOAD] Finished successfully: ${dest}`);
-                resolve();
-            });
-
-            file.on('error', (err) => {
-                logLauncher(`[DOWNLOAD] File stream error for ${dest}: ${err.message}`);
-                file.close();
-                fs.unlink(dest, () => {});
-                reject(err);
-            });
-        });
-
-        // Set connection & activity timeout
-        request.setTimeout(timeoutMs, () => {
-            logLauncher(`[DOWNLOAD] Timeout triggered (${timeoutMs / 1000}s inactivity) for ${url}`);
-            request.destroy(new Error('Download timed out'));
-        });
-
-        // Detailed socket tracing for DNS / TCP / TLS diagnostics
-        request.on('socket', (socket) => {
-            logLauncher(`[SOCKET] Assigned for ${url}`);
-            
-            socket.on('lookup', (err, address, family, host) => {
-                if (err) {
-                    logLauncher(`[DNS] Lookup failed for ${host}: ${err.message}`);
-                } else {
-                    logLauncher(`[DNS] Resolved ${host} -> ${address}`);
-                }
-            });
-            
-            socket.on('connect', () => {
-                logLauncher(`[TCP] Connected successfully to server`);
-            });
-            
-            socket.on('secureConnect', () => {
-                logLauncher(`[TLS] Secure handshake completed`);
-            });
-            
-            socket.on('error', (err) => {
-                logLauncher(`[SOCKET] Error: ${err.message}`);
-            });
-        });
-
-        request.on('error', (err) => {
-            logLauncher(`[DOWNLOAD] HTTP request error for ${url}: ${err.message}`);
-            file.close();
-            fs.unlink(dest, () => {});
-            reject(err);
-        });
-    });
+function downloadFile(url, dest, onProgress, timeoutMs = 20000) {
+    return updateNetwork.downloadFileAtomic(url, dest, onProgress, timeoutMs, logLauncher);
 }
 
-async function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 10000) {
-    let lastError;
-    const urlList = Array.isArray(urls) ? urls : [urls];
-    for (const url of urlList) {
-        try {
-            await downloadFile(url, dest, onProgress, timeoutMs);
-            return url;
-        } catch (error) {
-            lastError = error;
-            logLauncher(`[FALLBACK] Failed download from ${url}: ${error.message}. Trying next candidate...`);
-        }
-    }
-    throw lastError || new Error('All download sources failed');
+function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000) {
+    return updateNetwork.downloadFileWithFallback(urls, dest, onProgress, timeoutMs, logLauncher, 2);
 }
 
-function requestJson(url, timeoutMs = 3500, redirectDepth = 0) {
-    return new Promise((resolve, reject) => {
-        const request = getTransport(url).get(url, (response) => {
-            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location && redirectDepth < 4) {
-                response.resume();
-                const redirectUrl = new URL(response.headers.location, url).toString();
-                requestJson(redirectUrl, timeoutMs, redirectDepth + 1).then(resolve).catch(reject);
-                return;
-            }
-
-            if (response.statusCode !== 200) {
-                response.resume();
-                reject(new Error(`HTTP ${response.statusCode}`));
-                return;
-            }
-
-            let data = '';
-            response.setEncoding('utf8');
-            response.on('data', (chunk) => { data += chunk; });
-            response.on('end', () => {
-                try {
-                    resolve(JSON.parse(data));
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        });
-
-        request.setTimeout(timeoutMs, () => {
-            request.destroy(new Error('Request timed out'));
-        });
-        request.on('error', reject);
-    });
+function requestJson(url, timeoutMs = 8000) {
+    return updateNetwork.requestJson(url, timeoutMs);
 }
 
 function getClientProfilePath(gamePath) {
@@ -514,6 +372,7 @@ function removeObsoleteManagedMods(gamePath, requiredMods) {
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'launcher-config.json');
 const DEBUG_LOG_PATH = path.join(app.getPath('userData'), 'launcher-debug.log');
+const DISTRIBUTION_CACHE_PATH = path.join(app.getPath('userData'), 'distribution-cache.json');
 
 function logLauncher(message) {
     const line = `[${new Date().toISOString()}] ${message}\n`;
@@ -558,63 +417,22 @@ function getServerSettings(config = readConfig()) {
 }
 
 async function fetchDistributionManifest() {
-    const distribution = await requestJson(`${DISTRIBUTION_MANIFEST_URL}?ts=${Date.now()}`, 5000);
-    if (!distribution || !distribution.client || !Array.isArray(distribution.client.mods)) {
-        throw new Error('Invalid Eclipse distribution manifest');
-    }
-    return distribution;
+    const result = await updateNetwork.fetchDistributionManifest({
+        urls: DISTRIBUTION_MANIFEST_URLS,
+        cachePath: DISTRIBUTION_CACHE_PATH,
+        timeoutMs: 10000,
+        log: logLauncher
+    });
+    logLauncher(`Loaded Eclipse distribution manifest from ${result.source}${result.cached ? ' (last-known-good cache)' : ''}`);
+    return result.manifest;
 }
 
-async function fetchRequiredModsFromSources(apiUrl) {
+async function fetchRequiredModsFromSources() {
     try {
         const distribution = await fetchDistributionManifest();
-        logLauncher(`Loaded Eclipse distribution manifest from ${DISTRIBUTION_MANIFEST_URL}`);
         return distribution.client.mods;
     } catch (error) {
-        logLauncher(`Distribution manifest unavailable: ${error.message}`);
-    }
-
-    try {
-        const apiList = await requestJson(`${normalizeApiUrl(apiUrl)}/api/required-mods?ts=${Date.now()}`, 5000);
-        if (Array.isArray(apiList)) {
-            logLauncher(`Loaded client manifest from server API ${apiUrl}`);
-            return apiList;
-        }
-    } catch (error) {
-        logLauncher(`Server client manifest unavailable: ${error.message}`);
-    }
-
-    const manifestUrl = `${joinUrl(REMOTE_CLIENT_BASE_URL, 'mods.json')}?ts=${Date.now()}`;
-    try {
-        const remoteList = await requestJson(manifestUrl, 5000);
-        if (Array.isArray(remoteList)) {
-            logLauncher(`Loaded client manifest from ${manifestUrl}`);
-            return remoteList;
-        }
-    } catch (error) {
-        logLauncher(`Remote client manifest unavailable: ${error.message}`);
-    }
-
-    const ghDistUrl = `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?ts=${Date.now()}`;
-    try {
-        const ghDistribution = await requestJson(ghDistUrl, 10000);
-        if (ghDistribution && ghDistribution.client && Array.isArray(ghDistribution.client.mods)) {
-            logLauncher(`Loaded distribution manifest from GitHub fallback`);
-            return ghDistribution.client.mods;
-        }
-    } catch (error) {
-        logLauncher(`GitHub distribution manifest unavailable: ${error.message}`);
-    }
-
-    const ghModsUrl = `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods.json?ts=${Date.now()}`;
-    try {
-        const ghModsList = await requestJson(ghModsUrl, 10000);
-        if (Array.isArray(ghModsList)) {
-            logLauncher(`Loaded client manifest from GitHub fallback ${ghModsUrl}`);
-            return ghModsList;
-        }
-    } catch (error) {
-        logLauncher(`GitHub client manifest unavailable: ${error.message}`);
+        logLauncher(`Authoritative distribution manifest unavailable: ${error.message}`);
     }
 
     try {
@@ -627,14 +445,14 @@ async function fetchRequiredModsFromSources(apiUrl) {
         logLauncher(`Local client manifest unavailable: ${error.message}`);
     }
 
-    throw new Error('Client manifest unavailable from remote, server API, and local source.');
+    throw new Error('No authoritative or cached client manifest is available. Refusing an unsafe downgrade.');
 }
 
-async function loadOptionalModsState(apiUrl) {
+async function loadOptionalModsState() {
     const config = readConfig();
     let catalog;
     try {
-        const manifest = await fetchRequiredModsFromSources(apiUrl);
+        const manifest = await fetchRequiredModsFromSources();
         catalog = getOptionalMods(manifest);
         config.optionalModsCatalog = catalog;
         saveConfig(config);
@@ -664,13 +482,14 @@ function catalogAsManifest(catalog) {
     }));
 }
 
-async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
+async function downloadClientAsset(relativePath, dest, onProgress) {
     const cleanPath = relativePath.replace(/\\/g, '/');
-    const candidates = [
-        joinUrl(normalizeApiUrl(apiUrl), `client/${cleanPath}`),
-        joinUrl(REMOTE_CLIENT_BASE_URL, relativePath),
-        `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/${cleanPath}`
-    ];
+    const distributionPath = `client/${cleanPath}`;
+    const candidates = updateNetwork.uniqueUrls([
+        joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath),
+        joinUrl(DISTRIBUTION_BASE_URL, distributionPath),
+        joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath)
+    ]);
     
     let lastError;
     try {
@@ -692,29 +511,32 @@ async function downloadClientAsset(relativePath, dest, apiUrl, onProgress) {
     throw lastError || new Error(`No source available for ${relativePath}`);
 }
 
-async function repairManagedMod(mod, dest, apiUrl, onProgress) {
-    const candidates = [];
-    if (mod.url) {
-        candidates.push(mod.url);
-    }
-    candidates.push(joinUrl(normalizeApiUrl(apiUrl), `client/${mod.path}`));
-    candidates.push(joinUrl(REMOTE_CLIENT_BASE_URL, mod.path));
-    candidates.push(`https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/${mod.path}`);
+async function repairManagedMod(mod, dest, onProgress) {
+    const distributionPath = `client/${String(mod.path || '').replace(/\\/g, '/')}`;
+    const candidates = updateNetwork.uniqueUrls([
+        mod.url,
+        joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath),
+        joinUrl(DISTRIBUTION_BASE_URL, distributionPath),
+        joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath)
+    ]);
 
     let lastError;
-    for (const url of candidates) {
-        try {
-            await downloadFile(url, dest, onProgress, 10000);
-            if (isManagedFileValid(dest, mod)) {
-                logLauncher(`Downloaded ${mod.name} from ${url}`);
-                return;
+    for (let round = 1; round <= 2; round++) {
+        for (const url of candidates) {
+            try {
+                await downloadFile(url, dest, onProgress, 20000);
+                if (isManagedFileValid(dest, mod)) {
+                    logLauncher(`Downloaded and verified ${mod.name} from ${url} (round ${round})`);
+                    return;
+                }
+                lastError = new Error(`${mod.name} checksum mismatch after download`);
+                fs.unlink(dest, () => {});
+            } catch (error) {
+                lastError = error;
+                logLauncher(`Failed to download ${mod.name} from ${url} (round ${round}): ${error.message}`);
             }
-            lastError = new Error(`${mod.name} checksum mismatch after download`);
-            fs.unlink(dest, () => {});
-        } catch (error) {
-            lastError = error;
-            logLauncher(`Failed to download ${mod.name} from ${url}: ${error.message}`);
         }
+        if (round < 2) await new Promise(resolve => setTimeout(resolve, 400));
     }
 
     const localSource = getLocalClientSource(mod.path);
@@ -834,8 +656,7 @@ ipcMain.on('save-username', (event, username) => {
 
 ipcMain.on('get-optional-mods', async (event) => {
     try {
-        const { apiUrl } = getServerSettings();
-        const state = await loadOptionalModsState(apiUrl);
+        const state = await loadOptionalModsState();
         event.reply('optional-mods-data', { success: true, mods: state.mods });
     } catch (error) {
         logLauncher(`Optional mod catalog unavailable: ${error.message}`);
@@ -845,8 +666,7 @@ ipcMain.on('get-optional-mods', async (event) => {
 
 ipcMain.on('set-optional-mod-enabled', async (event, payload) => {
     try {
-        const { apiUrl } = getServerSettings();
-        const state = await loadOptionalModsState(apiUrl);
+        const state = await loadOptionalModsState();
         const preferenceKey = String(payload && payload.preferenceKey || '').trim().toLowerCase();
         const config = readConfig();
         config.optionalMods = setOptionalModPreference(
@@ -883,7 +703,8 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
         // Check for launcher self-update first
         const currentLauncherVersion = app.getVersion();
         const remoteLauncherVersion = distribution.launcher && distribution.launcher.version;
-        if (remoteLauncherVersion && remoteLauncherVersion !== currentLauncherVersion) {
+        const launcherVersionDelta = updateNetwork.compareVersions(remoteLauncherVersion, currentLauncherVersion);
+        if (remoteLauncherVersion && launcherVersionDelta > 0) {
             logLauncher(`Launcher update available: ${currentLauncherVersion} -> ${remoteLauncherVersion}`);
             event.reply('update-status', {
                 updateRequired: true,
@@ -900,6 +721,9 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
                 }
             });
             return;
+        }
+        if (remoteLauncherVersion && launcherVersionDelta < 0) {
+            logLauncher(`Ignored launcher downgrade ${currentLauncherVersion} -> ${remoteLauncherVersion}`);
         }
 
         const release = distribution.release;
@@ -920,7 +744,6 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
 
 ipcMain.on('trigger-update', async (event, { gamePath }) => {
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.eclipse-rp');
-    const { apiUrl } = getServerSettings();
     let activeRelease = null;
     
     try {
@@ -929,7 +752,8 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         // Handle launcher self-update download and execution
         const currentLauncherVersion = app.getVersion();
         const remoteLauncherVersion = distribution.launcher && distribution.launcher.version;
-        if (remoteLauncherVersion && remoteLauncherVersion !== currentLauncherVersion) {
+        const launcherVersionDelta = updateNetwork.compareVersions(remoteLauncherVersion, currentLauncherVersion);
+        if (remoteLauncherVersion && launcherVersionDelta > 0) {
             const updateProgress = (message, progress) => {
                 event.reply('update-progress', { status: 'downloading', progress, message });
             };
@@ -939,14 +763,16 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             
             const installerCandidates = [
                 distribution.launcher.url,
-                `https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`
+                joinUrl(R2_DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`),
+                joinUrl(DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`),
+                joinUrl(GITHUB_DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`)
             ];
             await downloadFileWithFallback(installerCandidates, installerDest, (received, total) => {
                 const percent = Math.round((received / total) * 100);
                 const mbReceived = (received / (1024 * 1024)).toFixed(1);
                 const mbTotal = (total / (1024 * 1024)).toFixed(1);
                 updateProgress(`Скачивание установщика лаунчера: ${percent}% [${mbReceived} MB / ${mbTotal} MB]...`, Math.round(10 + percent * 0.8));
-            }, 10000);
+            }, 20000);
 
             const installerSha256 = verifyDownloadedFile(installerDest, distribution.launcher);
             logLauncher(`Launcher setup verified: size=${fs.statSync(installerDest).size}, sha256=${installerSha256}`);
@@ -962,6 +788,9 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             }, 300);
             return;
         }
+        if (remoteLauncherVersion && launcherVersionDelta < 0) {
+            logLauncher(`Ignored launcher downgrade ${currentLauncherVersion} -> ${remoteLauncherVersion}`);
+        }
 
         let requiredMods;
         requiredMods = distribution.client.mods;
@@ -975,13 +804,11 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             event.reply('update-progress', { status: 'downloading', progress, message });
         };
 
-        removeObsoleteManagedMods(activeGamePath, requiredMods);
-
         // 1. Download the Fabric 26.1.2 profile if missing or stale
         const versionJsonPath = getClientProfilePath(activeGamePath);
         if (!isClientProfileValid(versionJsonPath)) {
             updateProgress('Загрузка профиля запуска...', Math.round((currentStep / totalSteps) * 100));
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, apiUrl);
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath);
         }
         currentStep++;
 
@@ -990,7 +817,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
                 updateProgress(`Загрузка мода: ${mod.name} (0%)...`, Math.round((currentStep / totalSteps) * 100));
-                await repairManagedMod(mod, modLocalPath, apiUrl, (received, total) => {
+                await repairManagedMod(mod, modLocalPath, (received, total) => {
                     const filePercent = Math.round((received / total) * 100);
                     const kbReceived = Math.round(received / 1024);
                     const kbTotal = Math.round(total / 1024);
@@ -1004,6 +831,11 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             }
             currentStep++;
         }
+
+        // Commit the new managed set only after every replacement exists and
+        // passes its integrity check. A transient mirror failure must never
+        // delete the last working Eclipse client.
+        removeObsoleteManagedMods(activeGamePath, requiredMods);
 
         updateProgress('Клиент успешно обновлен!', 100);
         if (activeRelease && activeRelease.published === true && activeRelease.id) {
@@ -1105,18 +937,18 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         const versionJsonPath = getClientProfilePath(activeGamePath);
 
         if (!isClientProfileValid(versionJsonPath)) {
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, apiUrl);
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath);
         }
 
         // Quick mod check
-        const requiredMods = await fetchRequiredModsFromSources(apiUrl);
-        removeObsoleteManagedMods(activeGamePath, requiredMods);
+        const requiredMods = await fetchRequiredModsFromSources();
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
-                await repairManagedMod(mod, modLocalPath, apiUrl);
+                await repairManagedMod(mod, modLocalPath);
             }
         }
+        removeObsoleteManagedMods(activeGamePath, requiredMods);
 
         const customJvmArgs = [`-Declipse.apiUrl=${normalizeApiUrl(apiUrl)}`];
         const fabricDisableArgument = buildFabricDisableArgument(requiredMods, config.optionalMods);

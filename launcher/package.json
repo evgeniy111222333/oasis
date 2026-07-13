@@ -1,6 +1,6 @@
 {
   "name": "eclipse-launcher",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Eclipse RolePlay Desktop Launcher",
   "author": "Eclipse RolePlay",
   "main": "main.js",
@@ -8,7 +8,7 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis",
-    "test": "node tests/optional-mods.test.js && node --check main.js && node --check renderer.js"
+    "test": "node tests/optional-mods.test.js && node tests/update-network.test.js && node tests/launcher-update-safety.test.js && node --check main.js && node --check renderer.js"
   },
   "build": {
     "appId": "ua.eclipse.roleplay.launcher",
@@ -19,6 +19,7 @@
     "files": [
       "main.js",
       "optional-mods.js",
+      "update-network.js",
       "renderer.js",
       "index.html",
       "style.css",
