@@ -18,22 +18,22 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "art" / "heavy_hammer_minecraft"
 RUNTIME = ROOT / "client-mod-gradle" / "src" / "main" / "resources" / "assets" / "eclipseclient"
 SIZE = 128
-SEED = 23140714
-MAIN_GRIP_Y = -8.2
+MAIN_GRIP_Y = 2.4
+OFFHAND_GRIP_Y = 9.6
 
 REGIONS = {
     "iron": (0, 0, 8, 8),
     "iron_dark": (0, 8, 8, 16),
     "wood": (8, 0, 12, 16),
-    "wrap": (12, 0, 16, 8),
+    "face": (12, 0, 16, 8),
     "wedge": (12, 8, 16, 12),
 }
 COLORS = {
-    "iron": np.array((73, 78, 79)),
-    "iron_dark": np.array((48, 51, 51)),
-    "wood": np.array((104, 63, 31)),
-    "wrap": np.array((61, 49, 40)),
-    "wedge": np.array((137, 91, 43)),
+    "iron": np.array((47, 50, 52)),
+    "iron_dark": np.array((30, 33, 35)),
+    "wood": np.array((113, 65, 31)),
+    "face": np.array((91, 94, 97)),
+    "wedge": np.array((155, 86, 33)),
 }
 
 
@@ -47,29 +47,21 @@ class Cube:
 
 
 def cubes() -> list[Cube]:
-    c: list[Cube] = []
-    # Цельное ясеневое древко без рукояти меча, навершия и декоративного воротника.
-    # Обе руки держат один и тот же непрерывный кусок дерева.
-    c += [
-        Cube("solid_ash_haft", (7.02, -12.0, 7.06), (8.98, 17.1, 8.94), "wood", "handle"),
-        # Широкий простой кованый боёк; ступени имитируют ручные фаски.
-        Cube("head_core", (0.0, 15.65, 4.55), (16.0, 22.35, 11.45), "iron", "head"),
-        Cube("head_left_neck", (-3.0, 16.15, 5.05), (0.0, 21.85, 10.95), "iron", "head"),
-        Cube("head_right_neck", (16.0, 16.15, 5.05), (19.0, 21.85, 10.95), "iron", "head"),
-        Cube("left_striking_face", (-4.25, 15.45, 4.35), (-3.0, 22.55, 11.65), "iron_dark", "head"),
-        Cube("right_striking_face", (19.0, 15.45, 4.35), (20.25, 22.55, 11.65), "iron_dark", "head"),
-        Cube("left_face_highlight", (-4.42, 16.05, 4.95), (-4.24, 21.95, 11.05), "iron", "head"),
-        Cube("right_face_highlight", (20.24, 16.05, 4.95), (20.42, 21.95, 11.05), "iron", "head"),
-        # Дешёвые железные полосы не дают бойку расколоть древко.
-        Cube("strap_front", (6.45, 10.95, 6.38), (7.05, 17.0, 9.62), "iron_dark", "handle"),
-        Cube("strap_back", (8.95, 10.95, 6.38), (9.55, 17.0, 9.62), "iron_dark", "handle"),
-        Cube("strap_left", (6.38, 10.95, 6.45), (9.62, 17.0, 7.05), "iron_dark", "handle"),
-        Cube("strap_right", (6.38, 10.95, 8.95), (9.62, 17.0, 9.55), "iron_dark", "handle"),
-        # Два видимых клина делают конструкцию понятной и ремонтопригодной.
-        Cube("ash_wedge", (5.8, 22.35, 6.65), (10.2, 23.05, 9.35), "wedge", "head"),
-        Cube("cross_wedge", (7.45, 23.0, 5.85), (8.55, 23.42, 10.15), "iron_dark", "head"),
+    # Простая ремонтопригодная конструкция из референса: длинное цельное древко,
+    # прямоугольный кованый боёк, ступенчатые шейки и светлые рабочие торцы.
+    return [
+        Cube("ash_haft", (7.0, 0.0, 7.0), (9.0, 25.0, 9.0), "wood", "handle"),
+        Cube("socket", (6.35, 21.0, 6.25), (9.65, 26.0, 9.75), "iron_dark", "head"),
+        Cube("head_core", (-0.5, 23.0, 4.65), (16.5, 30.0, 11.35), "iron", "head"),
+        Cube("left_neck", (-3.0, 23.5, 5.15), (-0.5, 29.5, 10.85), "iron_dark", "head"),
+        Cube("right_neck", (16.5, 23.5, 5.15), (19.0, 29.5, 10.85), "iron_dark", "head"),
+        Cube("left_cap", (-4.45, 22.75, 4.35), (-3.0, 30.25, 11.65), "iron_dark", "head"),
+        Cube("right_cap", (19.0, 22.75, 4.35), (20.45, 30.25, 11.65), "iron_dark", "head"),
+        Cube("left_striking_face", (-4.65, 23.45, 5.05), (-4.43, 29.55, 10.95), "face", "head"),
+        Cube("right_striking_face", (20.43, 23.45, 5.05), (20.65, 29.55, 10.95), "face", "head"),
+        Cube("wood_wedge", (5.85, 30.0, 6.55), (10.15, 30.75, 9.45), "wedge", "head"),
+        Cube("cross_wedge", (7.35, 30.72, 5.9), (8.65, 31.15, 10.1), "iron_dark", "head"),
     ]
-    return c
 
 
 def faces_for(region: tuple[int, int, int, int]) -> dict:
@@ -80,7 +72,8 @@ def faces_for(region: tuple[int, int, int, int]) -> dict:
 
 def minecraft_model(parts: list[Cube]) -> dict:
     return {
-        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP",
+        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.1",
+        "parent": "minecraft:item/handheld",
         "ambientocclusion": True,
         "texture_size": [SIZE, SIZE],
         "textures": {"0": "eclipseclient:item/heavy_hammer", "particle": "eclipseclient:item/heavy_hammer"},
@@ -90,85 +83,55 @@ def minecraft_model(parts: list[Cube]) -> dict:
             for part in parts
         ],
         "display": {
-            "thirdperson_righthand": {"rotation": [0, 90, -38], "translation": [0, 1.5, -2.5], "scale": [0.62, 0.62, 0.62]},
-            "thirdperson_lefthand": {"rotation": [0, -90, 38], "translation": [0, 1.5, -2.5], "scale": [0.62, 0.62, 0.62]},
-            "firstperson_righthand": {"rotation": [0, -92, 24], "translation": [1.1, 2.3, 0.2], "scale": [0.70, 0.70, 0.70]},
-            "firstperson_lefthand": {"rotation": [0, 92, -24], "translation": [1.1, 2.3, 0.2], "scale": [0.70, 0.70, 0.70]},
-            "ground": {"rotation": [0, 0, 78], "translation": [0, 3.0, 0], "scale": [0.43, 0.43, 0.43]},
-            "gui": {"rotation": [25, 142, -32], "translation": [0, 0.6, 0], "scale": [0.58, 0.58, 0.58]},
-            "fixed": {"rotation": [0, 0, -45], "translation": [0, 0, 0], "scale": [0.57, 0.57, 0.57]},
+            "thirdperson_righthand": {"rotation": [0, -90, 55], "translation": [0, 3.9, 0.5], "scale": [0.57, 0.57, 0.57]},
+            "thirdperson_lefthand": {"rotation": [0, 90, -55], "translation": [0, 3.9, 0.5], "scale": [0.57, 0.57, 0.57]},
+            "firstperson_righthand": {"rotation": [0, -90, 25], "translation": [1.13, 3.2, 1.13], "scale": [0.61, 0.61, 0.61]},
+            "firstperson_lefthand": {"rotation": [0, 90, -25], "translation": [1.13, 3.2, 1.13], "scale": [0.61, 0.61, 0.61]},
+            "ground": {"rotation": [0, 0, 78], "translation": [0, 2.4, 0], "scale": [0.34, 0.34, 0.34]},
+            "gui": {"rotation": [25, 142, -32], "translation": [0, -0.5, 0], "scale": [0.43, 0.43, 0.43]},
+            "fixed": {"rotation": [0, 0, -45], "translation": [0, -1.0, 0], "scale": [0.40, 0.40, 0.40]},
         },
     }
 
 
-def block_noise(rng: np.random.Generator, shape: tuple[int, int], cell: int = 4) -> np.ndarray:
-    small = rng.integers(-18, 19, (math.ceil(shape[0] / cell), math.ceil(shape[1] / cell)))
-    return np.repeat(np.repeat(small, cell, axis=0), cell, axis=1)[:shape[0], :shape[1]]
-
-
 def make_textures() -> tuple[Image.Image, Image.Image, Image.Image]:
-    rng = np.random.default_rng(SEED)
-    color = np.zeros((SIZE, SIZE, 3), dtype=np.int16)
-    height = np.full((SIZE, SIZE), 128, dtype=np.int16)
-    spec = np.full((SIZE, SIZE), 28, dtype=np.uint8)
+    color = np.full((SIZE, SIZE, 3), (22, 24, 25), dtype=np.uint8)
+    spec = np.full((SIZE, SIZE), 12, dtype=np.uint8)
 
-    # Кованое железо: крупные пиксельные пятна, копоть, сбитые блики и тупые царапины.
-    iron = COLORS["iron"] + block_noise(rng, (64, 64), 4)[..., None]
-    iron = np.clip(iron, 38, 112)
-    color[0:64, 0:64] = iron
-    height[0:64, 0:64] = 128 + block_noise(rng, (64, 64), 4)
-    spec[0:64, 0:64] = 74
-    dark = COLORS["iron_dark"] + block_noise(rng, (64, 64), 4)[..., None]
-    color[64:128, 0:64] = np.clip(dark, 25, 78)
-    height[64:128, 0:64] = 122 + block_noise(rng, (64, 64), 4)
-    spec[64:128, 0:64] = 52
-    # Ржавчина и сколы редкие: это рабочий, а не заброшенный инструмент.
-    for _ in range(55):
-        x, y = int(rng.integers(2, 62)), int(rng.integers(2, 126))
-        s = int(rng.choice((2, 2, 3, 4)))
-        color[y:y+s, x:x+s] = (83, 52, 31)
-        height[y:y+s, x:x+s] = 106
-        spec[y:y+s, x:x+s] = 30
-    for _ in range(34):
-        x, y = int(rng.integers(2, 58)), int(rng.integers(2, 126))
-        length = int(rng.integers(4, 14))
-        color[y:y+2, x:min(64, x+length)] = (116, 120, 116)
-        height[y:y+2, x:min(64, x+length)] = 148
+    # Матовые крупные тона без каменной крошки, ржавой каши и случайного шума.
+    color[0:64, 0:64] = COLORS["iron"]
+    color[0:8, 0:64] = (57, 60, 62)
+    color[56:64, 0:64] = (39, 42, 44)
+    color[16:48, 24:32] = (52, 55, 57)
+    spec[0:64, 0:64] = 34
 
-    # Ясень: вертикальные волокна, сучок и тёмные рабочие пятна.
-    for x in range(64, 96):
-        band = 12 * math.sin((x - 64) * 0.75) + 7 * math.sin((x - 64) * 0.19)
-        for y in range(SIZE):
-            jitter = int(block_noise(rng, (1, 1), 1)[0, 0] * 0.25)
-            color[y, x] = np.clip(COLORS["wood"] + band + jitter, 25, 160)
-            height[y, x] = int(np.clip(128 + band * 0.75, 90, 170))
-    color[70:79, 76:85] = (71, 40, 20)
-    color[73:76, 73:88] = (83, 48, 22)
-    height[70:79, 76:85] = 108
-    spec[:, 64:96] = 18
+    color[64:128, 0:64] = COLORS["iron_dark"]
+    color[64:72, 0:64] = (38, 41, 43)
+    color[120:128, 0:64] = (24, 27, 29)
+    spec[64:128, 0:64] = 24
 
-    # Потёртая ткань и необработанный клин занимают последнюю четверть атласа.
-    cloth = COLORS["wrap"] + block_noise(rng, (64, 32), 4)[..., None]
-    color[0:64, 96:128] = np.clip(cloth, 24, 94)
-    for y in range(3, 64, 8):
-        color[y:y+2, 96:128] = (85, 67, 52)
-        height[y:y+2, 96:128] = 151
-    height[0:64, 96:128] += block_noise(rng, (64, 32), 4)
-    spec[0:64, 96:128] = 10
-    wedge = COLORS["wedge"] + block_noise(rng, (32, 32), 4)[..., None]
-    color[64:96, 96:128] = np.clip(wedge, 55, 183)
-    for x in range(98, 128, 6):
-        color[64:96, x:x+2] = (93, 57, 27)
-        height[64:96, x:x+2] = 144
-    spec[64:96, 96:128] = 15
-    color[96:128, 96:128] = (35, 34, 32)
+    # Древко читается вертикальными пиксельными полосами, как в исходном рендере.
+    wood_bands = ((82, 45, 22), (113, 65, 31), (128, 73, 34), (99, 55, 26))
+    for index, x in enumerate(range(64, 96, 4)):
+        color[:, x:x + 4] = wood_bands[index % len(wood_bands)]
+    color[0:8, 64:96] = (136, 78, 37)
+    color[120:128, 64:96] = (76, 42, 21)
+    spec[:, 64:96] = 10
 
-    gy, gx = np.gradient(height.astype(np.float32) / 255.0)
-    nx, ny, nz = -gx * 3.5, -gy * 3.5, np.ones_like(gx)
-    length = np.sqrt(nx * nx + ny * ny + nz * nz)
-    normal = np.stack((nx / length, ny / length, nz / length), axis=-1)
-    normal = ((normal * 0.5 + 0.5) * 255).astype(np.uint8)
-    return Image.fromarray(color.clip(0, 255).astype(np.uint8), "RGB"), Image.fromarray(normal, "RGB"), Image.fromarray(spec, "L")
+    color[0:64, 96:128] = COLORS["face"]
+    color[0:6, 96:128] = (111, 114, 117)
+    color[58:64, 96:128] = (70, 73, 76)
+    color[8:56, 102:108] = (98, 101, 104)
+    spec[0:64, 96:128] = 48
+
+    color[64:96, 96:128] = COLORS["wedge"]
+    color[64:96, 96:102] = (111, 60, 25)
+    color[64:96, 120:128] = (177, 99, 39)
+    spec[64:96, 96:128] = 8
+
+    normal = np.zeros((SIZE, SIZE, 3), dtype=np.uint8)
+    normal[:, :] = (128, 128, 255)
+    return Image.fromarray(color, "RGB"), Image.fromarray(normal, "RGB"), Image.fromarray(spec, "L")
 
 
 FACE_CORNERS = {
@@ -194,8 +157,9 @@ def build_gltf(parts: list[Cube], texture_name: str) -> None:
     views, accessors, meshes, nodes = [], [], [], [
         {"name": "HeavyHammer_Root", "children": [1, 2, 3, 4, 5]},
         {"name": "Handle_Bone", "children": []}, {"name": "Head_Bone", "children": []},
-        {"name": "Grip_Main"}, {"name": "Grip_Offhand", "translation": [0, 10.0 / 16.0, 0]},
-        {"name": "Impact_Point", "translation": [-12.42 / 16.0, (19.0 - MAIN_GRIP_Y) / 16.0, 0]},
+        {"name": "Grip_Main"},
+        {"name": "Grip_Offhand", "translation": [0, (OFFHAND_GRIP_Y - MAIN_GRIP_Y) / 16.0, 0]},
+        {"name": "Impact_Point", "translation": [-12.65 / 16.0, (26.5 - MAIN_GRIP_Y) / 16.0, 0]},
     ]
 
     def add_accessor(array: np.ndarray, component: int, kind: str, target: int | None = None, bounds: bool = False) -> int:
@@ -311,7 +275,7 @@ def preview(parts: list[Cube], texture: Image.Image) -> None:
     views[0].save(p / "heavy_hammer_minecraft_hero.png")
     tex_sheet = Image.new("RGB", (1024, 1024), (15, 17, 19))
     tex_sheet.paste(texture.resize((896, 896), Image.Resampling.NEAREST), (64, 96))
-    ImageDraw.Draw(tex_sheet).text((64, 44), "128x128 PIXEL ATLAS — IRON / WOOD / CLOTH / WEDGE",
+    ImageDraw.Draw(tex_sheet).text((64, 44), "128x128 PIXEL ATLAS — IRON / WOOD / FACE / WEDGE",
                                    fill=(218, 211, 193), font=ImageFont.load_default())
     tex_sheet.save(p / "heavy_hammer_minecraft_texture_sheet.png")
 
@@ -345,14 +309,19 @@ def main() -> None:
     shutil.copy2(tex_dir / "heavy_hammer_s.png", runtime_tex / "heavy_hammer_s.png")
     shutil.copy2(OUT / "heavy_hammer.animation.json", anim_dir / "heavy_hammer.animation.json")
 
+    bounds = {
+        "min": [min(part.start[index] for part in parts) for index in range(3)],
+        "max": [max(part.end[index] for part in parts) for index in range(3)],
+    }
     manifest = {"style": "Утилитарный средневековый инструмент в стилистике Minecraft", "texture": [SIZE, SIZE],
                 "cuboids": len(parts), "triangles": len(parts)*12, "animations": list(animation["clips"]),
+                "mainGripY": MAIN_GRIP_Y, "offhandGripY": OFFHAND_GRIP_Y, "bounds": bounds,
                 "runtimeModel": "eclipseclient:models/item/heavy_hammer.json"}
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (OUT / "README.md").write_text(
         "# Тяжёлый рабочий молот Minecraft\n\n"
-        "Недорогой ремонтопригодный средневековый инструмент: грубое кованое железо, ясеневое древко, "
-        "простая обмотка, четыре защитные полосы и видимые клинья. Без бронзы, геральдики и декоративной кожи.\n\n"
+        "Недорогой ремонтопригодный средневековый инструмент: матовое кованое железо, длинное ясеневое древко, "
+        "ступенчатые шейки, светлые рабочие торцы и видимые клинья. Без ржавого шума, геральдики и декоративной кожи.\n\n"
         "Модель предмета и пиксельный атлас 128 px копируются в ресурсы клиента Eclipse. "
         "glTF-источник содержит жёсткие узлы хватов, точки контакта и четыре клипа.\n",
         encoding="utf-8")

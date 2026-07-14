@@ -75,6 +75,8 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
                 Component.text("ЛКМ по микровокселям — тяжёлый круговой удар.", NamedTextColor.DARK_GRAY)
         ));
         meta.setItemModel(NamespacedKey.fromString(CLIENT_MODEL));
+        // Числовой маркер остаётся на предмете при переносе между совместимыми версиями Paper.
+        meta.setCustomModelData(1401);
         meta.getPersistentDataContainer().set(itemIdKey, PersistentDataType.STRING, ITEM_ID);
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
         if (meta instanceof Damageable damageable) damageable.setMaxDamage(420);

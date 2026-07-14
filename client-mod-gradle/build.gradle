@@ -130,6 +130,14 @@ tasks.register("verifyHeavyHammerAnimation", JavaExec) {
 	mainClass = "ua.rp.chat.HeavyHammerAnimationTest"
 }
 
+tasks.register("verifyHeavyHammerGrip", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет достижимость и точность двуручного хвата молота."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerGripSolverTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -144,6 +152,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyBreathingShoulderLayout")
 	dependsOn tasks.named("verifyMicrovoxelCore")
 	dependsOn tasks.named("verifyHeavyHammerAnimation")
+	dependsOn tasks.named("verifyHeavyHammerGrip")
 }
 
 java {

@@ -5,6 +5,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import ua.rp.chat.HeavyHammerAnimation;
 import ua.rp.chat.client.EclipseClientMod;
 
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 public final class HeavyHammerClientState {
     private static final String MODEL_ID = "eclipseclient:heavy_hammer";
+    private static final String DISPLAY_NAME = "Тяжёлый рабочий молот";
     private static final Map<UUID, Strike> STRIKES = new HashMap<>();
     private static int nextPrediction = -1;
 
@@ -77,7 +79,10 @@ public final class HeavyHammerClientState {
     public static boolean isHolding(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         Identifier model = stack.get(DataComponents.ITEM_MODEL);
-        return model != null && MODEL_ID.equals(model.toString());
+        if (model != null && MODEL_ID.equals(model.toString())) return true;
+        // Старые уже выданные предметы могли потерять клиентский компонент при обновлении Paper.
+        // Узкий резервный признак сохраняет стойку, не превращая обычные переименованные топоры в молот.
+        return stack.is(Items.IRON_AXE) && DISPLAY_NAME.equals(stack.getHoverName().getString());
     }
 
     private static float elapsedTicks(Strike strike, long now) {

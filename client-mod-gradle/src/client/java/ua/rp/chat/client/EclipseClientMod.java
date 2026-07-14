@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-20260714-1";
+    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-grip-20260714-2";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;

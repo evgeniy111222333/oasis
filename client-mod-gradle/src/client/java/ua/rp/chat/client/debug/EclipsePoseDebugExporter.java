@@ -4,10 +4,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
+import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +51,8 @@ public final class EclipsePoseDebugExporter {
         double forward = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
         double eyeForward = Math.sqrt(eyeOffset.x * eyeOffset.x + eyeOffset.z * eyeOffset.z);
         EclipseAppearanceManager.DebugSkinInfo skin = EclipseAppearanceManager.getDebugSkinInfo(player.getUUID());
+        ItemStack mainHand = player.getMainHandItem();
+        Identifier itemModel = mainHand.get(DataComponents.ITEM_MODEL);
 
         StringBuilder json = new StringBuilder(4096);
         json.append("{\n");
@@ -70,6 +76,10 @@ public final class EclipsePoseDebugExporter {
         prop(json, "walkAnimationPos", state.walkAnimationPos).append(",\n");
         prop(json, "speedValue", state.speedValue).append(",\n");
         prop(json, "crouching", state.isCrouching).append(",\n");
+        prop(json, "mainHandItem", mainHand.isEmpty() ? "" : mainHand.getItem().toString()).append(",\n");
+        prop(json, "mainHandName", mainHand.isEmpty() ? "" : mainHand.getHoverName().getString()).append(",\n");
+        prop(json, "mainHandModel", itemModel == null ? "" : itemModel.toString()).append(",\n");
+        prop(json, "heavyHammerPose", HeavyHammerClientState.isHolding(mainHand)).append(",\n");
         prop(json, "skinPath", skin == null ? "" : skin.path()).append(",\n");
         prop(json, "skinHash", skin == null ? "" : skin.hash()).append(",\n");
         prop(json, "skinModel", skin == null ? "" : skin.model()).append(",\n");

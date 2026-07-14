@@ -4,13 +4,27 @@
     128,
     128
   ],
-  "cuboids": 14,
-  "triangles": 168,
+  "cuboids": 11,
+  "triangles": 132,
   "animations": [
     "idle_ready",
     "heavy_overhead_strike",
     "quarry_side_strike",
     "carry_walk"
   ],
+  "mainGripY": 2.4,
+  "offhandGripY": 9.6,
+  "bounds": {
+    "min": [
+      -4.65,
+      0.0,
+      4.35
+    ],
+    "max": [
+      20.65,
+      31.15,
+      11.65
+    ]
+  },
   "runtimeModel": "eclipseclient:models/item/heavy_hammer.json"
 }
