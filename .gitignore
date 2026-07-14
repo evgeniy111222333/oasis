@@ -46,7 +46,8 @@ target/
 *.db
 *.class
 .DS_Store
-tools/
+tools/*
+!tools/generate_minecraft_heavy_hammer.py
 node_modules/
 launcher/dist/
 /distribution-build/

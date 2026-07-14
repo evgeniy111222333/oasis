@@ -97,6 +97,11 @@ public class StaminaManager implements Listener {
     }
 
     public boolean consumeEscapeEffort(Player player, double staminaCost, double fatigueGain) {
+        return consumeWorkEffort(player, staminaCost, fatigueGain);
+    }
+
+    /** Единая серверная проверка затрат для физически тяжёлой работы. */
+    public boolean consumeWorkEffort(Player player, double staminaCost, double fatigueGain) {
         if (player == null || player.isDead()) {
             return false;
         }

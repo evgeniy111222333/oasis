@@ -35,6 +35,8 @@ import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 import ua.rp.chat.BreathingShoulderLayout;
+import ua.rp.chat.HeavyHammerAnimation;
+import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
@@ -120,6 +122,7 @@ public class PlayerModelMixin {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
         Player player = eclipse$getRenderedPlayer(state);
+        eclipse$applyHeavyHammerPose(model, state, player);
         eclipse$applyPhysicalInteractionPose(model, state, player);
         if (localFirstPerson) {
             eclipse$anchorUpperBodyAtHips(model);
@@ -529,6 +532,32 @@ public class PlayerModelMixin {
                 PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
+    }
+
+    @Unique
+    private void eclipse$applyHeavyHammerPose(PlayerModel model, AvatarRenderState state, Player player) {
+        HeavyHammerAnimation.Sample pose = HeavyHammerClientState.poseFor(player, state.ageInTicks);
+        if (pose == null) return;
+
+        // Правая кисть держит конец рукояти, левая принимает вес выше середины.
+        // Во время замаха обе руки ведут один круг, а левая кисть скользит вниз к удару.
+        model.body.xRot += pose.bodyX();
+        model.body.yRot += pose.bodyY();
+        model.rightArm.xRot = eclipse$lerp(model.rightArm.xRot, pose.rightX(), 0.94f);
+        model.rightArm.yRot = eclipse$lerp(model.rightArm.yRot, pose.rightY(), 0.94f);
+        model.rightArm.zRot = eclipse$lerp(model.rightArm.zRot, pose.rightZ(), 0.94f);
+        model.leftArm.xRot = eclipse$lerp(model.leftArm.xRot, pose.leftX(), 0.94f);
+        model.leftArm.yRot = eclipse$lerp(model.leftArm.yRot, pose.leftY(), 0.94f);
+        model.leftArm.zRot = eclipse$lerp(model.leftArm.zRot, pose.leftZ(), 0.94f);
+        eclipse$setLowerArm(model.rightArm, model.rightSleeve, pose.rightLower());
+        eclipse$setLowerArm(model.leftArm, model.leftSleeve, pose.leftLower());
+
+        float brace = 0.05f + Math.abs(pose.bodyY()) * 0.11f;
+        model.rightLeg.zRot -= brace;
+        model.leftLeg.zRot += brace;
+        model.rightLeg.xRot -= brace * 0.45f;
+        model.leftLeg.xRot += brace * 0.28f;
+        eclipse$syncWearableLayers(model);
     }
 
     @Unique

@@ -32,6 +32,7 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import ua.rp.chat.RPChat;
+import ua.rp.chat.heavyhammer.HeavyHammerImpact;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -276,6 +277,56 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         RayTraceResult obstruction = player.getWorld().rayTraceBlocks(
                 eye, direction, Math.max(0.0, hit.distance() - 0.001), FluidCollisionMode.NEVER, true);
         return obstruction == null ? hit : null;
+    }
+
+    /** Подготавливает неизменяемую цель. Удар всё равно будет повторно проверен в кадре контакта. */
+    public HammerTarget prepareHammerTarget(Player player, int x, int y, int z, int cell, int expectedRevision) {
+        if (player == null || !storageAvailable || cell < 0 || cell >= MicrovoxelVolume.CELL_COUNT) return null;
+        MicrovoxelKey key = new MicrovoxelKey(player.getWorld().getUID(), x, y, z);
+        MicrovoxelVolume volume = store.get(key);
+        ServerMicrovoxelRaycaster.Hit hit = raycastMicrovoxel(player);
+        if (volume == null || volume.revision() != expectedRevision || !volume.occupied(cell)
+                || hit == null || !hit.key().equals(key) || hit.cell() != cell || !withinReach(player, key)) {
+            if (volume != null) sendUpsert(player, key, volume);
+            feedback(player, "Цель для удара изменилась или находится вне досягаемости.");
+            return null;
+        }
+        return new HammerTarget(key, cell, expectedRevision, HeavyHammerImpact.Face.valueOf(hit.face().name()));
+    }
+
+    /** Совершает серверный удар и возвращает число действительно выбитых микровокселей. */
+    public int commitHammerImpact(Player player, HammerTarget target) {
+        if (player == null || target == null || !withinReach(player, target.key())) return 0;
+        MicrovoxelVolume volume = store.get(target.key());
+        ServerMicrovoxelRaycaster.Hit currentHit = raycastMicrovoxel(player);
+        if (volume == null || volume.revision() != target.expectedRevision() || currentHit == null
+                || !currentHit.key().equals(target.key())) {
+            if (volume != null) sendUpsert(player, target.key(), volume);
+            return 0;
+        }
+
+        MicrovoxelVolume before = volume.copy();
+        int removed = 0;
+        for (int cell : HeavyHammerImpact.cells(target.anchorCell(), target.face())) {
+            if (volume.occupied(cell) && volume.remove(cell)) removed++;
+        }
+        if (removed == 0) return 0;
+        if (volume.collisionCuboids().size() > MAX_COLLISION_CUBOIDS) {
+            store.put(target.key(), before);
+            sendUpsert(player, target.key(), before);
+            feedback(player, "После удара форма стала слишком раздробленной.");
+            return 0;
+        }
+        if (volume.occupiedCount() == 0) {
+            store.remove(target.key());
+            markerBlock(target.key()).setType(Material.AIR, false);
+            broadcastRemove(target.key());
+        } else {
+            updateMarker(target.key(), volume);
+            broadcastUpsert(target.key(), volume);
+        }
+        markDirty();
+        return removed;
     }
 
     private boolean withinReach(Player player, MicrovoxelKey key) {
@@ -687,5 +738,9 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     }
 
     private record RateWindow(long startedAt, int count) {
+    }
+
+    public record HammerTarget(MicrovoxelKey key, int anchorCell, int expectedRevision,
+                               HeavyHammerImpact.Face face) {
     }
 }

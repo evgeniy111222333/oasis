@@ -21,6 +21,10 @@ import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
+import ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload;
+import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
+import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
+import ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -33,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "microvoxels-20260714-1";
+    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-20260714-1";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
@@ -64,6 +68,8 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(HeavyHammerSyncPayload.TYPE, HeavyHammerSyncPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -79,6 +85,8 @@ public class EclipseClientMod implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(HeavyHammerSyncPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> HeavyHammerClientState.handle(payload)));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
@@ -86,6 +94,8 @@ public class EclipseClientMod implements ClientModInitializer {
             AcquaintanceClientState.clientTick(client);
             MicrovoxelClientState.clientTick(client);
             MicrovoxelInteractionController.tick(client);
+            HeavyHammerInteractionController.tick(client);
+            HeavyHammerClientState.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);
         });

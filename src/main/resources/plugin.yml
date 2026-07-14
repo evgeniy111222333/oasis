@@ -1,5 +1,5 @@
 name: RPChat
-version: 1.0.0
+version: 1.4.0
 main: ua.rp.chat.RPChat
 api-version: '1.21'
 author: Antigravity
@@ -63,8 +63,15 @@ commands:
     description: Управление микровоксельными блоками.
     usage: /microvoxel [convert|restore|status]
     permission: rpchat.microvoxels.edit
+  heavyhammer:
+    description: Выдаёт тяжёлый рабочий молот для тестирования и RP-работ.
+    usage: /heavyhammer [игрок]
+    permission: rpchat.heavyhammer.give
 permissions:
   rpchat.microvoxels.edit:
     description: Разрешает преобразование и редактирование микровоксельных блоков.
+    default: op
+  rpchat.heavyhammer.give:
+    description: Разрешает выдавать тяжёлый рабочий молот.
     default: op
 
