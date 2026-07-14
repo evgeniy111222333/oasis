@@ -37,20 +37,51 @@ public final class HeavyHammerGripSolver {
         float targetX = (float) Math.atan2(dz, planarY);
         float triangle = (float) Math.atan2(LOWER_LENGTH * Math.sin(lowerX),
                 UPPER_LENGTH + LOWER_LENGTH * Math.cos(lowerX));
-        float upperX = targetX - triangle;
+        // Сегментированная модель сгибает предплечье отрицательным X, поэтому выбираем
+        // анатомическую ветвь решения: локоть выходит наружу, а не выворачивается назад.
+        float upperX = targetX + triangle;
         return new Solution(upperX, upperZ, lowerX, target, Math.abs(distance - reachableDistance));
     }
 
     public static Point hand(Point shoulder, float upperX, float upperZ, float lowerX) {
-        float firstY = UPPER_LENGTH * (float) Math.cos(upperX);
-        float firstZ = UPPER_LENGTH * (float) Math.sin(upperX);
-        float secondAngle = upperX + lowerX;
-        float secondY = LOWER_LENGTH * (float) Math.cos(secondAngle);
-        float secondZ = LOWER_LENGTH * (float) Math.sin(secondAngle);
-        float planarY = firstY + secondY;
-        float x = -planarY * (float) Math.sin(upperZ);
-        float y = planarY * (float) Math.cos(upperZ);
-        return new Point(shoulder.x + x, shoulder.y + y, shoulder.z + firstZ + secondZ);
+        return hand(shoulder, upperX, 0.0f, upperZ, lowerX);
+    }
+
+    public static Point hand(Point shoulder, float upperX, float upperY, float upperZ, float lowerX) {
+        Vector upper = rotateArm(new Vector(0.0f, UPPER_LENGTH, 0.0f), upperX, upperY, upperZ);
+        Vector lower = rotateArm(rotateX(new Vector(0.0f, LOWER_LENGTH, 0.0f), -lowerX),
+                upperX, upperY, upperZ);
+        return new Point(shoulder.x + upper.x + lower.x,
+                shoulder.y + upper.y + lower.y,
+                shoulder.z + upper.z + lower.z);
+    }
+
+    private static Vector rotateArm(Vector vector, float x, float y, float z) {
+        return rotateZ(rotateY(rotateX(vector, x), y), z);
+    }
+
+    private static Vector rotateX(Vector vector, float angle) {
+        float cosine = (float) Math.cos(angle);
+        float sine = (float) Math.sin(angle);
+        return new Vector(vector.x, vector.y * cosine - vector.z * sine,
+                vector.y * sine + vector.z * cosine);
+    }
+
+    private static Vector rotateY(Vector vector, float angle) {
+        float cosine = (float) Math.cos(angle);
+        float sine = (float) Math.sin(angle);
+        return new Vector(vector.x * cosine + vector.z * sine, vector.y,
+                -vector.x * sine + vector.z * cosine);
+    }
+
+    private static Vector rotateZ(Vector vector, float angle) {
+        float cosine = (float) Math.cos(angle);
+        float sine = (float) Math.sin(angle);
+        return new Vector(vector.x * cosine - vector.y * sine,
+                vector.x * sine + vector.y * cosine, vector.z);
+    }
+
+    private record Vector(float x, float y, float z) {
     }
 
     private static float length(float x, float y, float z) {

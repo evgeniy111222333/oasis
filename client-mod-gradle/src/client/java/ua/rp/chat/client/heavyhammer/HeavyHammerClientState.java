@@ -68,7 +68,8 @@ public final class HeavyHammerClientState {
     public static HeavyHammerAnimation.Sample poseFor(Player player, float ageTicks) {
         if (player == null || !isHolding(player.getMainHandItem())) return null;
         Strike strike = STRIKES.get(player.getUUID());
-        return strike == null ? HeavyHammerAnimation.idle(ageTicks)
+        float locomotion = (float) player.getDeltaMovement().horizontalDistance();
+        return strike == null ? HeavyHammerAnimation.idle(ageTicks, locomotion)
                 : HeavyHammerAnimation.strike(elapsedTicks(strike, System.nanoTime()));
     }
 

@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
+import ua.rp.chat.HeavyHammerAnimation;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +54,7 @@ public final class EclipsePoseDebugExporter {
         EclipseAppearanceManager.DebugSkinInfo skin = EclipseAppearanceManager.getDebugSkinInfo(player.getUUID());
         ItemStack mainHand = player.getMainHandItem();
         Identifier itemModel = mainHand.get(DataComponents.ITEM_MODEL);
+        HeavyHammerAnimation.Sample hammer = HeavyHammerClientState.poseFor(player, state.ageInTicks);
 
         StringBuilder json = new StringBuilder(4096);
         json.append("{\n");
@@ -80,6 +82,12 @@ public final class EclipsePoseDebugExporter {
         prop(json, "mainHandName", mainHand.isEmpty() ? "" : mainHand.getHoverName().getString()).append(",\n");
         prop(json, "mainHandModel", itemModel == null ? "" : itemModel.toString()).append(",\n");
         prop(json, "heavyHammerPose", HeavyHammerClientState.isHolding(mainHand)).append(",\n");
+        prop(json, "hammerProgress", hammer == null ? -1.0f : hammer.progress()).append(",\n");
+        prop(json, "hammerMainClamp", hammer == null ? -1.0f : hammer.mainClampDistance()).append(",\n");
+        prop(json, "hammerOffhandClamp", hammer == null ? -1.0f : hammer.gripClampDistance()).append(",\n");
+        prop(json, "hammerShaftX", hammer == null ? 0.0f : hammer.shaftX()).append(",\n");
+        prop(json, "hammerShaftY", hammer == null ? 0.0f : hammer.shaftY()).append(",\n");
+        prop(json, "hammerShaftZ", hammer == null ? 0.0f : hammer.shaftZ()).append(",\n");
         prop(json, "skinPath", skin == null ? "" : skin.path()).append(",\n");
         prop(json, "skinHash", skin == null ? "" : skin.hash()).append(",\n");
         prop(json, "skinModel", skin == null ? "" : skin.model()).append(",\n");

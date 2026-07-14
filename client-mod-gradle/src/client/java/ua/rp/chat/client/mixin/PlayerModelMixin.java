@@ -36,6 +36,7 @@ import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 import ua.rp.chat.BreathingShoulderLayout;
 import ua.rp.chat.HeavyHammerAnimation;
+import ua.rp.chat.HeavyHammerItemTransform;
 import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
 
 @Mixin(PlayerModel.class)
@@ -88,6 +89,24 @@ public class PlayerModelMixin {
         // one bone without changing vanilla placement when the bend is zero.
         forearm.translateAndRotate(poseStack);
         poseStack.translate(-forearm.x / 16.0f, -forearm.y / 16.0f, -forearm.z / 16.0f);
+
+        if (side == HumanoidArm.RIGHT) {
+            Player player = eclipse$getRenderedPlayer(state);
+            HeavyHammerAnimation.Sample hammer = HeavyHammerClientState.poseFor(player, state.ageInTicks);
+            if (hammer != null) {
+                eclipse$orientProceduralHammer(poseStack, arm, forearm, hammer);
+            }
+        }
+    }
+
+    @Unique
+    private void eclipse$orientProceduralHammer(
+            PoseStack poseStack, ModelPart arm, ModelPart forearm, HeavyHammerAnimation.Sample hammer) {
+        HeavyHammerItemTransform.Result transform = HeavyHammerItemTransform.solve(hammer,
+                arm.xRot, arm.yRot, arm.zRot, forearm.xRot, forearm.yRot, forearm.zRot);
+        poseStack.mulPose(transform.correction());
+        poseStack.translate(transform.compensation().x,
+                transform.compensation().y, transform.compensation().z);
     }
 
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
@@ -539,16 +558,16 @@ public class PlayerModelMixin {
         HeavyHammerAnimation.Sample pose = HeavyHammerClientState.poseFor(player, state.ageInTicks);
         if (pose == null) return;
 
-        // Правая кисть держит конец рукояти, левая принимает вес выше середины.
-        // Во время замаха обе руки ведут один круг, а левая кисть скользит вниз к удару.
+        // Сначала движется жёсткий молот, затем обе руки решаются к его реальным
+        // точкам хвата. Углы ниже являются результатом IK, а не ручными ключами.
         model.body.xRot += pose.bodyX();
         model.body.yRot += pose.bodyY();
-        model.rightArm.xRot = eclipse$lerp(model.rightArm.xRot, pose.rightX(), 0.94f);
-        model.rightArm.yRot = eclipse$lerp(model.rightArm.yRot, pose.rightY(), 0.94f);
-        model.rightArm.zRot = eclipse$lerp(model.rightArm.zRot, pose.rightZ(), 0.94f);
-        model.leftArm.xRot = eclipse$lerp(model.leftArm.xRot, pose.leftX(), 0.94f);
-        model.leftArm.yRot = eclipse$lerp(model.leftArm.yRot, pose.leftY(), 0.94f);
-        model.leftArm.zRot = eclipse$lerp(model.leftArm.zRot, pose.leftZ(), 0.94f);
+        model.rightArm.xRot = pose.rightX();
+        model.rightArm.yRot = pose.rightY();
+        model.rightArm.zRot = pose.rightZ();
+        model.leftArm.xRot = pose.leftX();
+        model.leftArm.yRot = pose.leftY();
+        model.leftArm.zRot = pose.leftZ();
         eclipse$setLowerArm(model.rightArm, model.rightSleeve, pose.rightLower());
         eclipse$setLowerArm(model.leftArm, model.leftSleeve, pose.leftLower());
 

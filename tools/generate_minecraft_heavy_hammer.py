@@ -20,6 +20,8 @@ RUNTIME = ROOT / "client-mod-gradle" / "src" / "main" / "resources" / "assets" /
 SIZE = 128
 MAIN_GRIP_Y = 2.4
 OFFHAND_GRIP_Y = 9.6
+RUNTIME_GRIP_Y = 8.0
+RUNTIME_Y_SHIFT = RUNTIME_GRIP_Y - MAIN_GRIP_Y
 
 REGIONS = {
     "iron": (0, 0, 8, 8),
@@ -72,19 +74,23 @@ def faces_for(region: tuple[int, int, int, int]) -> dict:
 
 def minecraft_model(parts: list[Cube]) -> dict:
     return {
-        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.1",
+        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.2",
         "parent": "minecraft:item/handheld",
         "ambientocclusion": True,
         "texture_size": [SIZE, SIZE],
         "textures": {"0": "eclipseclient:item/heavy_hammer", "particle": "eclipseclient:item/heavy_hammer"},
         "elements": [
-            {"name": part.name, "from": list(part.start), "to": list(part.end),
+            {"name": part.name,
+             "from": [part.start[0], part.start[1] + RUNTIME_Y_SHIFT, part.start[2]],
+             "to": [part.end[0], part.end[1] + RUNTIME_Y_SHIFT, part.end[2]],
              "shade": True, "faces": faces_for(REGIONS[part.material])}
             for part in parts
         ],
         "display": {
-            "thirdperson_righthand": {"rotation": [0, -90, 55], "translation": [0, 3.9, 0.5], "scale": [0.57, 0.57, 0.57]},
-            "thirdperson_lefthand": {"rotation": [0, 90, -55], "translation": [0, 3.9, 0.5], "scale": [0.57, 0.57, 0.57]},
+            # В третьем лице ориентацию задаёт процедурный контроллер. Точка нижнего
+            # хвата находится точно в центре ItemTransform и не гуляет при вращении.
+            "thirdperson_righthand": {"rotation": [0, 0, 0], "translation": [0, 0, 0], "scale": [0.57, 0.57, 0.57]},
+            "thirdperson_lefthand": {"rotation": [0, 0, 0], "translation": [0, 0, 0], "scale": [0.57, 0.57, 0.57]},
             "firstperson_righthand": {"rotation": [0, -90, 25], "translation": [1.13, 3.2, 1.13], "scale": [0.61, 0.61, 0.61]},
             "firstperson_lefthand": {"rotation": [0, 90, -25], "translation": [1.13, 3.2, 1.13], "scale": [0.61, 0.61, 0.61]},
             "ground": {"rotation": [0, 0, 78], "translation": [0, 2.4, 0], "scale": [0.34, 0.34, 0.34]},
@@ -315,7 +321,8 @@ def main() -> None:
     }
     manifest = {"style": "Утилитарный средневековый инструмент в стилистике Minecraft", "texture": [SIZE, SIZE],
                 "cuboids": len(parts), "triangles": len(parts)*12, "animations": list(animation["clips"]),
-                "mainGripY": MAIN_GRIP_Y, "offhandGripY": OFFHAND_GRIP_Y, "bounds": bounds,
+                "mainGripY": MAIN_GRIP_Y, "offhandGripY": OFFHAND_GRIP_Y,
+                "runtimeGripY": RUNTIME_GRIP_Y, "bounds": bounds,
                 "runtimeModel": "eclipseclient:models/item/heavy_hammer.json"}
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (OUT / "README.md").write_text(
