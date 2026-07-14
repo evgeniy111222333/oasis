@@ -1,3 +1,5 @@
 {
+  "key.eclipseclient.microvoxel_mode": "Microvoxel editing mode",
+  "key.eclipseclient.microvoxel_convert": "Convert block to microvoxels",
   "key.eclipseclient.body_status": "Character status"
 }

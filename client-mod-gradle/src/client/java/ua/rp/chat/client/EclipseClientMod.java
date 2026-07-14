@@ -16,6 +16,11 @@ import org.apache.logging.log4j.Logger;
 import ua.rp.chat.client.camera.EclipseHudOverlay;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.vitals.VitalsClientState;
+import ua.rp.chat.client.microvoxel.MicrovoxelActionPayload;
+import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
+import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
+import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
+import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -28,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "breathing-shoulders-20260713-1";
+    public static final String DIAGNOSTIC_BUILD = "microvoxels-20260714-1";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
@@ -42,6 +47,8 @@ public class EclipseClientMod implements ClientModInitializer {
                 + ", java=" + System.getProperty("java.version")
                 + ", os=" + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         EclipseHudOverlay.register();
+        MicrovoxelClientRenderer.register();
+        MicrovoxelInteractionController.register();
         bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.body_status",
                 InputConstants.Type.KEYSYM,
@@ -55,6 +62,8 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(AcquaintancePayload.TYPE, AcquaintancePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(CombatIntentPayload.TYPE, CombatIntentPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -68,11 +77,15 @@ public class EclipseClientMod implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(AcquaintancePayload.TYPE, (payload, context) -> {
             context.client().execute(() -> AcquaintanceClientState.handle(payload));
         });
+        ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> MicrovoxelClientState.handle(payload)));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
             SmartCameraManager.getInstance().clientTick(client);
             AcquaintanceClientState.clientTick(client);
+            MicrovoxelClientState.clientTick(client);
+            MicrovoxelInteractionController.tick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);
         });

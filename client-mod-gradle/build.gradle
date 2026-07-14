@@ -114,6 +114,14 @@ tasks.register("verifyBreathingShoulderLayout", JavaExec) {
 	mainClass = "ua.rp.chat.BreathingShoulderLayoutTest"
 }
 
+tasks.register("verifyMicrovoxelCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks 16x16x16 greedy meshing, neighbour culling, ray traversal and collision merging."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.MicrovoxelCoreTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -126,6 +134,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyBreathingTorsoLayout")
 	dependsOn tasks.named("verifyBreathingTorsoRenderer")
 	dependsOn tasks.named("verifyBreathingShoulderLayout")
+	dependsOn tasks.named("verifyMicrovoxelCore")
 }
 
 java {

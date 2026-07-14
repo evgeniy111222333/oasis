@@ -59,4 +59,12 @@ commands:
     description: Debug combat profiles and damage calculation.
     usage: /rpcombatdebug
     permission: rpchat.admin
+  microvoxel:
+    description: Управление микровоксельными блоками.
+    usage: /microvoxel [convert|restore|status]
+    permission: rpchat.microvoxels.edit
+permissions:
+  rpchat.microvoxels.edit:
+    description: Разрешает преобразование и редактирование микровоксельных блоков.
+    default: op
 

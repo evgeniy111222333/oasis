@@ -9,10 +9,24 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.camera.SmartCameraManager;
+import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
+    @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelAttack(CallbackInfoReturnable<Boolean> cir) {
+        Minecraft minecraft = (Minecraft) (Object) this;
+        if (MicrovoxelInteractionController.handleAttack(minecraft)) cir.setReturnValue(true);
+    }
+
+    @Inject(method = "startUseItem", at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelUse(CallbackInfo ci) {
+        Minecraft minecraft = (Minecraft) (Object) this;
+        if (MicrovoxelInteractionController.handleUse(minecraft)) ci.cancel();
+    }
+
     @Inject(method = "pickBlockOrEntity", at = @At("RETURN"))
     private void eclipse$blockPickThroughOccludedCamera(CallbackInfo ci) {
         if (!SmartCameraManager.getInstance().isCameraFailClosed()) {

@@ -8,6 +8,7 @@
     "EntityRenderDispatcherMixin",
     "EntityEyePositionMixin",
     "MinecraftMixin",
+    "BlockStateMicrovoxelMixin",
     "LevelRendererMixin",
     "PlayerTabOverlayMixin",
     "PlayerRendererMixin",

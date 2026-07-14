@@ -5,6 +5,7 @@ import ua.rp.chat.acquaintance.AcquaintanceManager;
 import ua.rp.chat.auth.*;
 import ua.rp.chat.combat.CombatManager;
 import ua.rp.chat.vitals.StaminaManager;
+import ua.rp.chat.microvoxel.MicrovoxelManager;
 
 import java.sql.SQLException;
 
@@ -19,6 +20,7 @@ public class RPChat extends JavaPlugin {
     private RpChatService rpChatService;
     private CombatManager combatManager;
     private AcquaintanceManager acquaintanceManager;
+    private MicrovoxelManager microvoxelManager;
 
     @Override
     public void onEnable() {
@@ -52,6 +54,8 @@ public class RPChat extends JavaPlugin {
         getServer().getPluginManager().registerEvents(combatManager, this);
         acquaintanceManager = new AcquaintanceManager(this);
         acquaintanceManager.start();
+        microvoxelManager = new MicrovoxelManager(this);
+        microvoxelManager.start();
         
         // Initialize and register GUI Manager
         authGuiManager = new AuthGuiManager(this, authManager);
@@ -136,6 +140,9 @@ public class RPChat extends JavaPlugin {
         }
         if (authWebServer != null) {
             authWebServer.stop();
+        }
+        if (microvoxelManager != null) {
+            microvoxelManager.shutdown();
         }
         if (authDatabase != null) {
             authDatabase.disconnect();
