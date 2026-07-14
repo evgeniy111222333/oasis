@@ -11,9 +11,11 @@ const {
     buildFabricDisableArgument
 } = require('./optional-mods');
 const updateNetwork = require('./update-network');
+const { UpdateOperationMutex } = require('./update-operation-mutex');
 
 let mainWindow;
 let isGameRunning = false;
+const updateOperationMutex = new UpdateOperationMutex();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -88,12 +90,19 @@ function joinUrl(baseUrl, relativePath) {
     return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 }
 
-function downloadFile(url, dest, onProgress, timeoutMs = 20000) {
-    return updateNetwork.downloadFileAtomic(url, dest, onProgress, timeoutMs, logLauncher);
-}
-
-function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000) {
-    return updateNetwork.downloadFileWithFallback(urls, dest, onProgress, timeoutMs, logLauncher, 2);
+function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000, descriptor = {}) {
+    return updateNetwork.downloadFileAdaptive({
+        urls,
+        dest,
+        descriptor,
+        onProgress,
+        timeoutMs,
+        probeBytes: 256 * 1024,
+        probeTimeoutMs: 8000,
+        rounds: 2,
+        healthStore: mirrorHealthStore,
+        log: logLauncher
+    });
 }
 
 function requestJson(url, timeoutMs = 8000) {
@@ -373,6 +382,11 @@ function removeObsoleteManagedMods(gamePath, requiredMods) {
 const CONFIG_PATH = path.join(app.getPath('userData'), 'launcher-config.json');
 const DEBUG_LOG_PATH = path.join(app.getPath('userData'), 'launcher-debug.log');
 const DISTRIBUTION_CACHE_PATH = path.join(app.getPath('userData'), 'distribution-cache.json');
+const MIRROR_HEALTH_CACHE_PATH = path.join(app.getPath('userData'), 'mirror-health.json');
+const mirrorHealthStore = new updateNetwork.MirrorHealthStore({
+    cachePath: MIRROR_HEALTH_CACHE_PATH,
+    log: logLauncher
+});
 
 function logLauncher(message) {
     const line = `[${new Date().toISOString()}] ${message}\n`;
@@ -427,10 +441,13 @@ async function fetchDistributionManifest() {
     return result.manifest;
 }
 
-async function fetchRequiredModsFromSources() {
+async function fetchClientDistributionFromSources() {
     try {
         const distribution = await fetchDistributionManifest();
-        return distribution.client.mods;
+        return {
+            mods: distribution.client.mods,
+            profile: distribution.client.profile || null
+        };
     } catch (error) {
         logLauncher(`Authoritative distribution manifest unavailable: ${error.message}`);
     }
@@ -439,13 +456,18 @@ async function fetchRequiredModsFromSources() {
         const localList = readLocalClientManifest();
         if (Array.isArray(localList)) {
             logLauncher(`Loaded client manifest from local source ${getLocalClientSource('mods.json')}`);
-            return localList;
+            return { mods: localList, profile: null };
         }
     } catch (error) {
         logLauncher(`Local client manifest unavailable: ${error.message}`);
     }
 
     throw new Error('No authoritative or cached client manifest is available. Refusing an unsafe downgrade.');
+}
+
+async function fetchRequiredModsFromSources() {
+    const client = await fetchClientDistributionFromSources();
+    return client.mods;
 }
 
 async function loadOptionalModsState() {
@@ -482,10 +504,11 @@ function catalogAsManifest(catalog) {
     }));
 }
 
-async function downloadClientAsset(relativePath, dest, onProgress) {
+async function downloadClientAsset(relativePath, dest, onProgress, descriptor = {}) {
     const cleanPath = relativePath.replace(/\\/g, '/');
     const distributionPath = `client/${cleanPath}`;
     const candidates = updateNetwork.uniqueUrls([
+        descriptor.url,
         joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath),
         joinUrl(DISTRIBUTION_BASE_URL, distributionPath),
         joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath)
@@ -493,7 +516,10 @@ async function downloadClientAsset(relativePath, dest, onProgress) {
     
     let lastError;
     try {
-        await downloadFileWithFallback(candidates, dest, onProgress, 10000);
+        await downloadFileWithFallback(candidates, dest, onProgress, 20000, descriptor);
+        if ((descriptor.sha1 || descriptor.sha256 || descriptor.size) && !isManagedFileValid(dest, descriptor)) {
+            throw new Error(`${relativePath} failed descriptor validation after download`);
+        }
         logLauncher(`Downloaded ${relativePath} successfully`);
         return;
     } catch (error) {
@@ -504,6 +530,10 @@ async function downloadClientAsset(relativePath, dest, onProgress) {
     if (fs.existsSync(localSource)) {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.copyFileSync(localSource, dest);
+        if ((descriptor.sha1 || descriptor.sha256 || descriptor.size) && !isManagedFileValid(dest, descriptor)) {
+            fs.unlinkSync(dest);
+            throw new Error(`Local development source does not match the signed descriptor for ${relativePath}`);
+        }
         logLauncher(`Copied ${relativePath} from local development source.`);
         return;
     }
@@ -521,22 +551,14 @@ async function repairManagedMod(mod, dest, onProgress) {
     ]);
 
     let lastError;
-    for (let round = 1; round <= 2; round++) {
-        for (const url of candidates) {
-            try {
-                await downloadFile(url, dest, onProgress, 20000);
-                if (isManagedFileValid(dest, mod)) {
-                    logLauncher(`Downloaded and verified ${mod.name} from ${url} (round ${round})`);
-                    return;
-                }
-                lastError = new Error(`${mod.name} checksum mismatch after download`);
-                fs.unlink(dest, () => {});
-            } catch (error) {
-                lastError = error;
-                logLauncher(`Failed to download ${mod.name} from ${url} (round ${round}): ${error.message}`);
-            }
-        }
-        if (round < 2) await new Promise(resolve => setTimeout(resolve, 400));
+    try {
+        const selectedUrl = await downloadFileWithFallback(candidates, dest, onProgress, 20000, mod);
+        if (!isManagedFileValid(dest, mod)) throw new Error(`${mod.name} checksum mismatch after adaptive download`);
+        logLauncher(`Downloaded and verified ${mod.name} from ${selectedUrl}`);
+        return;
+    } catch (error) {
+        lastError = error;
+        logLauncher(`Adaptive download failed for ${mod.name}: ${error.message}`);
     }
 
     const localSource = getLocalClientSource(mod.path);
@@ -743,8 +765,25 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
 });
 
 ipcMain.on('trigger-update', async (event, { gamePath }) => {
+    const updateToken = updateOperationMutex.tryAcquire({
+        progress: 0,
+        message: 'Preparing update...'
+    });
+    if (!updateToken) {
+        const activeUpdate = updateOperationMutex.snapshot();
+        logLauncher(`Ignored concurrent update request; operation ${activeUpdate ? activeUpdate.id : 'unknown'} is already active.`);
+        event.reply('update-progress', {
+            status: 'busy',
+            progress: activeUpdate && Number.isFinite(activeUpdate.progress) ? activeUpdate.progress : 0,
+            message: activeUpdate && activeUpdate.message ? activeUpdate.message : 'Update is already running.',
+            alreadyRunning: true
+        });
+        return;
+    }
+
     const activeGamePath = gamePath || path.join(app.getPath('appData'), '.eclipse-rp');
     let activeRelease = null;
+    let keepUpdateLockUntilExit = false;
     
     try {
         const distribution = await fetchDistributionManifest();
@@ -755,6 +794,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         const launcherVersionDelta = updateNetwork.compareVersions(remoteLauncherVersion, currentLauncherVersion);
         if (remoteLauncherVersion && launcherVersionDelta > 0) {
             const updateProgress = (message, progress) => {
+                updateOperationMutex.update(updateToken, { message, progress });
                 event.reply('update-progress', { status: 'downloading', progress, message });
             };
             
@@ -772,7 +812,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
                 const mbReceived = (received / (1024 * 1024)).toFixed(1);
                 const mbTotal = (total / (1024 * 1024)).toFixed(1);
                 updateProgress(`Скачивание установщика лаунчера: ${percent}% [${mbReceived} MB / ${mbTotal} MB]...`, Math.round(10 + percent * 0.8));
-            }, 20000);
+            }, 20000, distribution.launcher);
 
             const installerSha256 = verifyDownloadedFile(installerDest, distribution.launcher);
             logLauncher(`Launcher setup verified: size=${fs.statSync(installerDest).size}, sha256=${installerSha256}`);
@@ -780,6 +820,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             updateProgress('Запуск установщика...', 95);
             const installerPid = await startDetachedInstaller(installerDest);
             logLauncher(`Detached launcher setup started: path=${installerDest}, pid=${installerPid}, args=/S --updated`);
+            keepUpdateLockUntilExit = true;
             updateProgress('Установщик запущен. Лаунчер будет перезапущен после обновления.', 100);
 
             setTimeout(() => {
@@ -801,6 +842,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         let currentStep = 0;
 
         const updateProgress = (message, progress) => {
+            updateOperationMutex.update(updateToken, { message, progress });
             event.reply('update-progress', { status: 'downloading', progress, message });
         };
 
@@ -808,7 +850,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         const versionJsonPath = getClientProfilePath(activeGamePath);
         if (!isClientProfileValid(versionJsonPath)) {
             updateProgress('Загрузка профиля запуска...', Math.round((currentStep / totalSteps) * 100));
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath);
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, distribution.client.profile || {});
         }
         currentStep++;
 
@@ -847,6 +889,10 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
     } catch (err) {
         console.error('Update failed:', err);
         event.reply('update-status', { updateRequired: true, error: err.message, release: activeRelease });
+    } finally {
+        if (!keepUpdateLockUntilExit && updateOperationMutex.release(updateToken)) {
+            logLauncher(`Update operation ${updateToken.id} released.`);
+        }
     }
 });
 
@@ -936,12 +982,13 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         // Quick fallback verification (just in case they deleted files since last check)
         const versionJsonPath = getClientProfilePath(activeGamePath);
 
+        const clientDistribution = await fetchClientDistributionFromSources();
         if (!isClientProfileValid(versionJsonPath)) {
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath);
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, clientDistribution.profile || {});
         }
 
         // Quick mod check
-        const requiredMods = await fetchRequiredModsFromSources();
+        const requiredMods = clientDistribution.mods;
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
