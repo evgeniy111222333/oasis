@@ -146,6 +146,29 @@ tasks.register("verifyHeavyHammerItemTransform", JavaExec) {
 	mainClass = "ua.rp.chat.HeavyHammerItemTransformTest"
 }
 
+tasks.register("verifyHeavyHammerModelBounds") {
+	group = "verification"
+	description = "Проверяет допустимые координаты кубоидов и наличие текстуры тяжёлого молота."
+	def modelFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/models/item/heavy_hammer.json")
+	def textureFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/textures/item/heavy_hammer.png")
+	inputs.files(modelFile, textureFile)
+
+	doLast {
+		def model = new JsonSlurper().parse(modelFile.asFile)
+		assert model.elements && !model.elements.isEmpty(): "Модель тяжёлого молота не содержит кубоидов"
+		model.elements.each { element ->
+			["from", "to"].each { key ->
+				element[key].eachWithIndex { coordinate, axis ->
+					assert coordinate >= -16.0 && coordinate <= 32.0:
+						"${element.name} ${key}[${axis}]=${coordinate} выходит за пределы Minecraft [-16, 32]"
+				}
+			}
+		}
+		assert textureFile.asFile.length() > 0: "Текстура тяжёлого молота отсутствует или пуста"
+		println "Heavy hammer model bounds: all cuboids are valid and texture is present"
+	}
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -162,6 +185,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyHeavyHammerAnimation")
 	dependsOn tasks.named("verifyHeavyHammerGrip")
 	dependsOn tasks.named("verifyHeavyHammerItemTransform")
+	dependsOn tasks.named("verifyHeavyHammerModelBounds")
 }
 
 java {
