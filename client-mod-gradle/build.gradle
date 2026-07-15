@@ -169,6 +169,14 @@ tasks.register("verifyHeavyHammerModelBounds") {
 	}
 }
 
+tasks.register("verifyHeavyHammerSpatialRules", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет, что боёк не пересекает голову и корпус и сохраняет читаемый силуэт."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerSpatialRulesTest"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -186,6 +194,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyHeavyHammerGrip")
 	dependsOn tasks.named("verifyHeavyHammerItemTransform")
 	dependsOn tasks.named("verifyHeavyHammerModelBounds")
+	dependsOn tasks.named("verifyHeavyHammerSpatialRules")
 }
 
 java {

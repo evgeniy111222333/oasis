@@ -37,10 +37,10 @@ REGIONS = {
     "wedge": (12, 8, 16, 12),
 }
 COLORS = {
-    "iron": np.array((47, 50, 52)),
-    "iron_dark": np.array((30, 33, 35)),
+    "iron": np.array((72, 76, 80)),
+    "iron_dark": np.array((45, 49, 53)),
     "wood": np.array((113, 65, 31)),
-    "face": np.array((91, 94, 97)),
+    "face": np.array((119, 123, 127)),
     "wedge": np.array((155, 86, 33)),
 }
 
@@ -67,8 +67,8 @@ def cubes() -> list[Cube]:
         Cube("right_cap", (19.0, 22.75, 4.35), (20.45, 30.25, 11.65), "iron_dark", "head"),
         Cube("left_striking_face", (-4.65, 23.45, 5.05), (-4.43, 29.55, 10.95), "face", "head"),
         Cube("right_striking_face", (20.43, 23.45, 5.05), (20.65, 29.55, 10.95), "face", "head"),
-        Cube("wood_wedge", (5.85, 30.0, 6.55), (10.15, 30.75, 9.45), "wedge", "head"),
-        Cube("cross_wedge", (7.35, 30.72, 5.9), (8.65, 31.15, 10.1), "iron_dark", "head"),
+        Cube("wood_wedge", (5.85, 29.85, 6.55), (10.15, 30.85, 9.45), "wedge", "head"),
+        Cube("cross_wedge", (7.35, 30.68, 5.9), (8.65, 31.15, 10.1), "iron_dark", "head"),
     ]
 
 
@@ -101,7 +101,7 @@ def validate_minecraft_model(model: dict) -> None:
 
 def minecraft_model(parts: list[Cube]) -> dict:
     model = {
-        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.3",
+        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.4",
         "parent": "minecraft:item/handheld",
         "ambientocclusion": True,
         "texture_size": [SIZE, SIZE],
@@ -135,14 +135,14 @@ def make_textures() -> tuple[Image.Image, Image.Image, Image.Image]:
 
     # Матовые крупные тона без каменной крошки, ржавой каши и случайного шума.
     color[0:64, 0:64] = COLORS["iron"]
-    color[0:8, 0:64] = (57, 60, 62)
-    color[56:64, 0:64] = (39, 42, 44)
-    color[16:48, 24:32] = (52, 55, 57)
+    color[0:8, 0:64] = (91, 96, 101)
+    color[56:64, 0:64] = (57, 61, 65)
+    color[16:48, 24:32] = (81, 85, 89)
     spec[0:64, 0:64] = 34
 
     color[64:128, 0:64] = COLORS["iron_dark"]
-    color[64:72, 0:64] = (38, 41, 43)
-    color[120:128, 0:64] = (24, 27, 29)
+    color[64:72, 0:64] = (59, 64, 69)
+    color[120:128, 0:64] = (34, 38, 42)
     spec[64:128, 0:64] = 24
 
     # Древко читается вертикальными пиксельными полосами, как в исходном рендере.
@@ -154,9 +154,9 @@ def make_textures() -> tuple[Image.Image, Image.Image, Image.Image]:
     spec[:, 64:96] = 10
 
     color[0:64, 96:128] = COLORS["face"]
-    color[0:6, 96:128] = (111, 114, 117)
-    color[58:64, 96:128] = (70, 73, 76)
-    color[8:56, 102:108] = (98, 101, 104)
+    color[0:6, 96:128] = (148, 152, 156)
+    color[58:64, 96:128] = (91, 95, 99)
+    color[8:56, 102:108] = (131, 135, 139)
     spec[0:64, 96:128] = 48
 
     color[64:96, 96:128] = COLORS["wedge"]

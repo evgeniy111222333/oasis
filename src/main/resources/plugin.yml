@@ -1,5 +1,5 @@
 name: RPChat
-version: 1.4.3
+version: 1.4.4
 main: ua.rp.chat.RPChat
 api-version: '1.21'
 author: Antigravity

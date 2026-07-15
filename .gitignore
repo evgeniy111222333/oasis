@@ -48,6 +48,8 @@ target/
 .DS_Store
 tools/*
 !tools/generate_minecraft_heavy_hammer.py
+!tools/request_hammer_render.py
+!tools/inspect_hammer_render.py
 node_modules/
 launcher/dist/
 /distribution-build/

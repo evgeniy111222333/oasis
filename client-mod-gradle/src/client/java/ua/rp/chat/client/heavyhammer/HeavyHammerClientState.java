@@ -8,6 +8,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import ua.rp.chat.HeavyHammerAnimation;
 import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.client.debug.HammerRenderQaController;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -67,6 +68,8 @@ public final class HeavyHammerClientState {
 
     public static HeavyHammerAnimation.Sample poseFor(Player player, float ageTicks) {
         if (player == null || !isHolding(player.getMainHandItem())) return null;
+        HeavyHammerAnimation.Sample diagnosticPose = HammerRenderQaController.poseOverride(player, ageTicks);
+        if (diagnosticPose != null) return diagnosticPose;
         Strike strike = STRIKES.get(player.getUUID());
         float locomotion = (float) player.getDeltaMovement().horizontalDistance();
         return strike == null ? HeavyHammerAnimation.idle(ageTicks, locomotion)

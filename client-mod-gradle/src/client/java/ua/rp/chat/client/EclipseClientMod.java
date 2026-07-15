@@ -25,6 +25,7 @@ import ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload;
 import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
 import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
 import ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload;
+import ua.rp.chat.client.debug.HammerRenderQaController;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -37,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-model-bounds-20260715-4";
+    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-live-render-20260715-5";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
@@ -53,6 +54,7 @@ public class EclipseClientMod implements ClientModInitializer {
         EclipseHudOverlay.register();
         MicrovoxelClientRenderer.register();
         MicrovoxelInteractionController.register();
+        HammerRenderQaController.register();
         bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.body_status",
                 InputConstants.Type.KEYSYM,
@@ -96,6 +98,7 @@ public class EclipseClientMod implements ClientModInitializer {
             MicrovoxelInteractionController.tick(client);
             HeavyHammerInteractionController.tick(client);
             HeavyHammerClientState.clientTick(client);
+            HammerRenderQaController.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);
         });

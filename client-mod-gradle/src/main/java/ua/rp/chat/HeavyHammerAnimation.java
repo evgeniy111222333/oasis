@@ -31,7 +31,7 @@ public final class HeavyHammerAnimation {
         HeavyHammerGripSolver.Point main = right.target();
 
         HeavyHammerProceduralMotion.Vec3 gripVector = frame.shaft()
-                .scale(HeavyHammerProceduralMotion.GRIP_DISTANCE);
+                .scale(frame.gripDistance());
         HeavyHammerGripSolver.Point requestedOffhand = main.add(gripVector.x(), gripVector.y(), gripVector.z());
         HeavyHammerGripSolver.Solution left = HeavyHammerGripSolver.solve(LEFT_SHOULDER, requestedOffhand);
 

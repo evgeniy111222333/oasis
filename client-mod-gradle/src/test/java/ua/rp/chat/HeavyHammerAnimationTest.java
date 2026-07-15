@@ -31,22 +31,35 @@ public final class HeavyHammerAnimationTest {
         HeavyHammerAnimation.Sample previous = HeavyHammerAnimation.strike(0.0f);
         float maximumDelta = 0.0f;
         int maximumDeltaSample = 0;
+        float maximumAxisDelta = 0.0f;
+        int maximumAxisDeltaSample = 0;
         for (int sample = 1; sample <= 680; sample++) {
             HeavyHammerAnimation.Sample current = HeavyHammerAnimation.strike(sample / 20.0f);
             require(finite(current), "Все каналы процедурной анимации должны оставаться конечными");
-            require(gripError(current) < 0.05f, "Левая ладонь не должна соскальзывать с древка");
+            require(gripError(current) < 0.05f,
+                    "Левая ладонь не должна соскальзывать с древка: sample=" + sample
+                            + ", error=" + gripError(current) + ", main=" + current.mainClampDistance()
+                            + ", offhand=" + current.gripClampDistance());
             require(current.mainClampDistance() < 0.03f && current.gripClampDistance() < 0.03f,
-                    "Процедурная траектория не должна растягивать руки");
+                    "Процедурная траектория не должна растягивать руки: sample=" + sample
+                            + ", main=" + current.mainClampDistance() + ", offhand=" + current.gripClampDistance());
             require(orthonormal(current), "Ориентация молота не должна накапливать сдвиг или масштаб");
             float delta = distance(previous, current);
             if (delta > maximumDelta) {
                 maximumDelta = delta;
                 maximumDeltaSample = sample;
             }
+            float axisDelta = axisDistance(previous, current);
+            if (axisDelta > maximumAxisDelta) {
+                maximumAxisDelta = axisDelta;
+                maximumAxisDeltaSample = sample;
+            }
             previous = current;
         }
         require(maximumDelta < 0.58f, "Между соседними кадрами не должно быть рывка: sample="
                 + maximumDeltaSample + ", delta=" + maximumDelta);
+        require(maximumAxisDelta < 0.10f, "Ось бойка не должна переворачиваться между кадрами: sample="
+                + maximumAxisDeltaSample + ", delta=" + maximumAxisDelta);
         HeavyHammerAnimation.Sample end = HeavyHammerAnimation.strike(HeavyHammerAnimation.DURATION_TICKS);
         require(distance(idle, end) < 0.03f, "Удар должен бесшовно возвращаться в рабочую стойку");
         System.out.println("HeavyHammerAnimationTest passed");
@@ -99,6 +112,13 @@ public final class HeavyHammerAnimationTest {
         HeavyHammerGripSolver.Point offhand = HeavyHammerGripSolver.hand(HeavyHammerAnimation.LEFT_SHOULDER,
                 sample.leftX(), sample.leftY(), sample.leftZ(), sample.leftLower());
         return target.distanceTo(offhand);
+    }
+
+    private static float axisDistance(HeavyHammerAnimation.Sample left, HeavyHammerAnimation.Sample right) {
+        return length(left.headAxisX() - right.headAxisX(), left.headAxisY() - right.headAxisY(),
+                left.headAxisZ() - right.headAxisZ())
+                + length(left.depthAxisX() - right.depthAxisX(), left.depthAxisY() - right.depthAxisY(),
+                left.depthAxisZ() - right.depthAxisZ());
     }
 
     private static float length(float x, float y, float z) {

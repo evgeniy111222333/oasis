@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.camera.SmartCameraManager;
+import ua.rp.chat.client.debug.HammerRenderQaController;
 
 @Mixin(Camera.class)
 public abstract class CameraMixin {
@@ -26,9 +27,25 @@ public abstract class CameraMixin {
     @Shadow public abstract float getFov();
     @Shadow public abstract Camera.NearPlane getNearPlane(float fov);
     @Shadow protected abstract void setPosition(Vec3 position);
+    @Shadow protected abstract void setRotation(float yRot, float xRot);
 
     @Inject(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Camera;prepareCullFrustum(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4f;Lnet/minecraft/world/phys/Vec3;)V"))
     private void eclipse$afterUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
+        HammerRenderQaController.CameraRig qaRig = HammerRenderQaController.cameraRig();
+        if (this.entity instanceof Player player && qaRig != null) {
+            float yaw = player.getYRot() + qaRig.yawOffset();
+            float pitch = qaRig.pitch();
+            double yawRadians = Math.toRadians(yaw);
+            double pitchRadians = Math.toRadians(pitch);
+            double horizontal = Math.cos(pitchRadians);
+            Vec3 forward = new Vec3(-Math.sin(yawRadians) * horizontal,
+                    -Math.sin(pitchRadians), Math.cos(yawRadians) * horizontal);
+            Vec3 focus = player.position().add(0.0, qaRig.focusHeight(), 0.0);
+            this.setRotation(yaw, pitch);
+            this.setPosition(focus.subtract(forward.scale(qaRig.distance())));
+            this.detached = true;
+            return;
+        }
         if (this.entity instanceof Player player && SmartCameraManager.getInstance().isCameraMotionActiveFor(player) && !this.detached) {
             float partialTick = this.getCameraEntityPartialTicks(deltaTracker);
             SmartCameraManager manager = SmartCameraManager.getInstance();

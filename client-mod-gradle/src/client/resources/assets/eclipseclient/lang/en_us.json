@@ -1,5 +1,6 @@
 {
   "key.eclipseclient.microvoxel_mode": "Microvoxel editing mode",
   "key.eclipseclient.microvoxel_convert": "Convert block to microvoxels",
-  "key.eclipseclient.body_status": "Character status"
+  "key.eclipseclient.body_status": "Character status",
+  "key.eclipseclient.hammer_render_qa": "Heavy hammer QA render"
 }
