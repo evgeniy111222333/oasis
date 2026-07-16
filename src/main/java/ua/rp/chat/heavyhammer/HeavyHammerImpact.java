@@ -54,5 +54,11 @@ public final class HeavyHammerImpact {
             this.dy = dy;
             this.dz = dz;
         }
+
+        public int dx() { return dx; }
+
+        public int dy() { return dy; }
+
+        public int dz() { return dz; }
     }
 }

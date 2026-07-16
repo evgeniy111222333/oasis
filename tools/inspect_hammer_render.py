@@ -41,10 +41,23 @@ def main() -> int:
         raise SystemExit(f"Число PNG ({len(images)}) не совпадает с manifest ({manifest.get('captured')})")
 
     reports = [read_json(path.with_suffix(".json")) for path in images]
+    collision_fields = (
+        "headIntersectsPlayerHead", "headIntersectsPlayerTorso",
+        "handleIntersectsPlayerHead", "handleIntersectsPlayerTorso",
+        "mainGripIntersectsPlayer", "offhandGripIntersectsPlayer",
+    )
     collisions = [report["scene"] for report in reports
-                  if report.get("headIntersectsPlayerHead") or report.get("headIntersectsPlayerTorso")]
+                  if any(report.get(field, False) for field in collision_fields)]
     clamped = [report["scene"] for report in reports
                if report.get("mainClampDistance", 0) > 0.03 or report.get("offhandClampDistance", 0) > 0.03]
+    ground_penetrations = [report["scene"] for report in reports
+                           if report.get("headGroundClearance", 0) < -0.15]
+    missed_contacts = [report["scene"] for report in reports
+                       if report.get("phase") == "impact"
+                       and abs(report.get("headGroundClearance", 999)) > 0.25]
+    unsafe_elbows = [report["scene"] for report in reports
+                     if min(report.get("rightElbowAngle", 1), report.get("leftElbowAngle", 1)) < 0.4
+                     or max(report.get("rightElbowAngle", 1), report.get("leftElbowAngle", 1)) > 2.25]
 
     columns = max(1, args.columns)
     label_height = 34
@@ -54,8 +67,9 @@ def main() -> int:
         height = round(image.height * args.thumb_width / image.width)
         image.thumbnail((args.thumb_width, height), Image.Resampling.LANCZOS)
         label = (f"{report['scene']}  phase={report['phase']}  "
-                 f"head={report.get('headIntersectsPlayerHead', False)}  "
-                 f"clamp={report.get('offhandClampDistance', 0):.3f}")
+                 f"collision={any(report.get(field, False) for field in collision_fields)}  "
+                 f"clamp={report.get('offhandClampDistance', 0):.3f}  "
+                 f"ground={report.get('headGroundClearance', 0):.2f}")
         prepared.append((image.copy(), label))
         image.close()
 
@@ -78,9 +92,12 @@ def main() -> int:
         "images": len(images),
         "collisions": collisions,
         "clamped": clamped,
+        "groundPenetrations": ground_penetrations,
+        "missedContacts": missed_contacts,
+        "unsafeElbows": unsafe_elbows,
         "contactSheet": str(output),
     }, ensure_ascii=False, indent=2))
-    return 1 if collisions or clamped else 0
+    return 1 if collisions or clamped or ground_penetrations or missed_contacts or unsafe_elbows else 0
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import ua.rp.chat.RPChat;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
+import ua.rp.chat.microvoxel.MicrovoxelVolume;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -126,6 +127,11 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
             sendCancel(player, clientSequence);
             return;
         }
+        if (!physicallyReachable(player, target)) {
+            player.sendActionBar(Component.text("Подойдите ближе: тяжёлый молот не достаёт до точки удара."));
+            sendCancel(player, clientSequence);
+            return;
+        }
         if (!plugin.getStaminaManager().consumeWorkEffort(
                 player, HeavyHammerRules.STAMINA_COST, HeavyHammerRules.FATIGUE_GAIN)) {
             player.sendActionBar(Component.text("Не хватает выносливости для тяжёлого замаха."));
@@ -140,7 +146,9 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
         cooldowns.put(id, now + HeavyHammerRules.COOLDOWN_TICKS * 50L);
         player.setSprinting(false);
         broadcast(player, HeavyHammerProtocol.start(id, sequence,
-                HeavyHammerRules.DURATION_TICKS, HeavyHammerRules.IMPACT_TICK));
+                HeavyHammerRules.DURATION_TICKS, HeavyHammerRules.IMPACT_TICK,
+                target.key().x(), target.key().y(), target.key().z(), target.anchorCell(),
+                HeavyHammerProtocol.Face.valueOf(target.face().name())));
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> impact(player, strike), HeavyHammerRules.IMPACT_TICK);
         Bukkit.getScheduler().runTaskLater(plugin, () -> finish(player, strike), HeavyHammerRules.DURATION_TICKS);
@@ -150,7 +158,8 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
         if (!expected.equals(strikes.get(player.getUniqueId()))) return;
         boolean validGrip = player.isOnline() && !player.isDead()
                 && isHeavyHammer(player.getInventory().getItemInMainHand())
-                && player.getInventory().getItemInOffHand().getType().isAir();
+                && player.getInventory().getItemInOffHand().getType().isAir()
+                && physicallyReachable(player, expected.target());
         int removed = validGrip ? microvoxels.commitHammerImpact(player, expected.target()) : 0;
         boolean success = removed > 0;
         broadcast(player, HeavyHammerProtocol.impact(player.getUniqueId(), expected.sequence(), success));
@@ -158,9 +167,11 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
 
         ItemStack hammer = player.getInventory().getItemInMainHand();
         player.getInventory().setItemInMainHand(hammer.damage(1, player));
+        TargetPoint point = targetPoint(expected.target());
         var location = player.getWorld().getBlockAt(
                 expected.target().key().x(), expected.target().key().y(), expected.target().key().z())
-                .getLocation().add(0.5, 0.5, 0.5);
+                .getLocation().add(point.x() - expected.target().key().x(),
+                        point.y() - expected.target().key().y(), point.z() - expected.target().key().z());
         player.getWorld().spawnParticle(Particle.SMOKE, location, Math.min(20, 5 + removed / 4), 0.22, 0.22, 0.22, 0.015);
         player.getWorld().playSound(location, Sound.BLOCK_ANVIL_LAND, 0.72f, 0.62f);
         player.getWorld().playSound(location, Sound.BLOCK_STONE_BREAK, 0.85f, 0.72f);
@@ -168,6 +179,31 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
 
     private void finish(Player player, PendingStrike expected) {
         strikes.remove(player.getUniqueId(), expected);
+    }
+
+    private boolean physicallyReachable(Player player, MicrovoxelManager.HammerTarget target) {
+        if (player == null || target == null || !player.isOnline() || player.isDead()) return false;
+        TargetPoint point = targetPoint(target);
+        var playerLocation = player.getLocation();
+        double dx = point.x() - playerLocation.getX();
+        double dy = point.y() - playerLocation.getY();
+        double dz = point.z() - playerLocation.getZ();
+        double horizontalSquared = dx * dx + dz * dz;
+        return horizontalSquared <= HeavyHammerRules.MAX_HORIZONTAL_TARGET_DISTANCE
+                * HeavyHammerRules.MAX_HORIZONTAL_TARGET_DISTANCE
+                && dy >= HeavyHammerRules.MIN_TARGET_HEIGHT
+                && dy <= HeavyHammerRules.MAX_TARGET_HEIGHT
+                && horizontalSquared + dy * dy <= HeavyHammerRules.MAX_TARGET_DISTANCE
+                * HeavyHammerRules.MAX_TARGET_DISTANCE;
+    }
+
+    private static TargetPoint targetPoint(MicrovoxelManager.HammerTarget target) {
+        double scale = 1.0 / MicrovoxelVolume.RESOLUTION;
+        int cell = target.anchorCell();
+        return new TargetPoint(
+                target.key().x() + (MicrovoxelVolume.x(cell) + 0.5 + target.face().dx() * 0.5) * scale,
+                target.key().y() + (MicrovoxelVolume.y(cell) + 0.5 + target.face().dy() * 0.5) * scale,
+                target.key().z() + (MicrovoxelVolume.z(cell) + 0.5 + target.face().dz() * 0.5) * scale);
     }
 
     private void sendCancel(Player player, int clientSequence) {
@@ -221,5 +257,8 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
     }
 
     private record PendingStrike(int sequence, MicrovoxelManager.HammerTarget target) {
+    }
+
+    private record TargetPoint(double x, double y, double z) {
     }
 }

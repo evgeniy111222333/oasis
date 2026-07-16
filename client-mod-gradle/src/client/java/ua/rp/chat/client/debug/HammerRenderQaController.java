@@ -45,20 +45,30 @@ public final class HammerRenderQaController {
     private static final DateTimeFormatter SESSION_TIME = DateTimeFormatter
             .ofPattern("uuuuMMdd-HHmmss", Locale.ROOT).withZone(ZoneOffset.UTC);
     private static final int SETTLE_TICKS = 3;
+    private static final HeavyHammerProceduralMotion.Target QA_TARGET =
+            new HeavyHammerProceduralMotion.Target(0.0f, 24.0f, -12.0f,
+                    HeavyHammerProceduralMotion.Surface.UP, 0.0f, 1.0f, 0.0f);
     private static final List<Scene> FULL_SCENES = List.of(
             new Scene("idle_front", "idle", -1.0f, 180.0f, 8.0f, 4.6f),
+            new Scene("idle_grip_close", "idle", -1.0f, 225.0f, 7.0f, 3.9f),
             new Scene("idle_front_left", "idle", -1.0f, 225.0f, 8.0f, 4.6f),
             new Scene("idle_left", "idle", -1.0f, 270.0f, 8.0f, 4.6f),
             new Scene("idle_back", "idle", -1.0f, 0.0f, 8.0f, 4.6f),
             new Scene("idle_right", "idle", -1.0f, 90.0f, 8.0f, 4.6f),
             new Scene("lift_front", "lift", 3.4f, 180.0f, 10.0f, 4.8f),
+            new Scene("lift_close_left", "lift", 6.2f, 250.0f, 9.0f, 4.1f),
             new Scene("backswing_left", "backswing", 9.5f, 270.0f, 10.0f, 4.9f),
             new Scene("backswing_back_left", "backswing", 9.5f, 45.0f, 12.0f, 4.9f),
             new Scene("overhead_front", "overhead", 14.6f, 180.0f, 14.0f, 5.0f),
             new Scene("overhead_left", "overhead", 14.6f, 270.0f, 14.0f, 5.0f),
+            new Scene("acceleration_front_left", "acceleration", 18.4f, 230.0f, 11.0f, 4.6f),
+            new Scene("preimpact_left", "preimpact", 20.2f, 270.0f, 9.0f, 4.3f),
             new Scene("impact_front", "impact", HeavyHammerAnimation.IMPACT_TICK, 180.0f, 10.0f, 4.9f),
             new Scene("impact_left", "impact", HeavyHammerAnimation.IMPACT_TICK, 270.0f, 10.0f, 4.9f),
+            new Scene("impact_close_front_left", "impact", HeavyHammerAnimation.IMPACT_TICK, 225.0f, 8.0f, 4.0f),
+            new Scene("postimpact_front_left", "postimpact", 21.8f, 225.0f, 9.0f, 4.4f),
             new Scene("follow_front_left", "follow", 24.8f, 225.0f, 10.0f, 4.9f),
+            new Scene("recover_left", "recover", 29.2f, 270.0f, 9.0f, 4.5f),
             new Scene("recover_front", "recover", 29.2f, 180.0f, 8.0f, 4.7f)
     );
 
@@ -129,7 +139,7 @@ public final class HammerRenderQaController {
         if (session == null || scene == null || player == null) return null;
         return scene.elapsedTicks < 0.0f
                 ? HeavyHammerAnimation.idle(0.0f, 0.0f)
-                : HeavyHammerAnimation.strike(scene.elapsedTicks);
+                : HeavyHammerAnimation.strike(scene.elapsedTicks, QA_TARGET);
     }
 
     private static void start(Minecraft client, String mode) {
@@ -267,13 +277,14 @@ public final class HammerRenderQaController {
                                          int index, Path output) {
         HeavyHammerProceduralMotion.Frame frame = scene.elapsedTicks < 0.0f
                 ? HeavyHammerProceduralMotion.idle(0.0f, 0.0f)
-                : HeavyHammerProceduralMotion.strike(scene.elapsedTicks / HeavyHammerAnimation.DURATION_TICKS);
+                : HeavyHammerProceduralMotion.strike(
+                        scene.elapsedTicks / HeavyHammerAnimation.DURATION_TICKS, QA_TARGET);
         HeavyHammerAnimation.Sample pose = scene.elapsedTicks < 0.0f
                 ? HeavyHammerAnimation.idle(0.0f, 0.0f)
-                : HeavyHammerAnimation.strike(scene.elapsedTicks);
+                : HeavyHammerAnimation.strike(scene.elapsedTicks, QA_TARGET);
 
         JsonObject json = new JsonObject();
-        json.addProperty("schema", 1);
+        json.addProperty("schema", 2);
         json.addProperty("session", current.id);
         json.addProperty("index", index);
         json.addProperty("scene", scene.name);
@@ -296,10 +307,26 @@ public final class HammerRenderQaController {
         json.addProperty("headRoll", frame.headRoll());
         json.addProperty("headIntersectsPlayerHead", HeavyHammerSpatialRules.intersectsPlayerHead(frame));
         json.addProperty("headIntersectsPlayerTorso", HeavyHammerSpatialRules.intersectsPlayerTorso(frame));
+        json.addProperty("handleIntersectsPlayerHead", HeavyHammerSpatialRules.handleIntersectsPlayerHead(frame));
+        json.addProperty("handleIntersectsPlayerTorso", HeavyHammerSpatialRules.handleIntersectsPlayerTorso(frame));
+        json.addProperty("mainGripIntersectsPlayer", HeavyHammerSpatialRules.mainGripIntersectsPlayer(frame));
+        json.addProperty("offhandGripIntersectsPlayer", HeavyHammerSpatialRules.offhandGripIntersectsPlayer(frame));
+        json.addProperty("headGroundClearance", HeavyHammerSpatialRules.headGroundClearance(frame));
         json.addProperty("frontProjectedHeadLength", HeavyHammerSpatialRules.projectedLongAxisLength(frame,
                 new HeavyHammerProceduralMotion.Vec3(0.0f, 0.0f, 1.0f)));
+        json.addProperty("cameraProjectedHeadLength", HeavyHammerSpatialRules.projectedLongAxisLength(frame,
+                cameraForward(scene)));
         json.addProperty("mainClampDistance", pose.mainClampDistance());
         json.addProperty("offhandClampDistance", pose.gripClampDistance());
+        json.addProperty("rightElbowAngle", pose.rightLower());
+        json.addProperty("leftElbowAngle", pose.leftLower());
+        json.addProperty("torsoPitch", pose.bodyX());
+        json.addProperty("torsoYaw", pose.bodyY());
+        json.addProperty("torsoRoll", pose.bodyZ());
+        json.addProperty("rightKnee", pose.rightKnee());
+        json.addProperty("leftKnee", pose.leftKnee());
+        json.addProperty("stanceWidth", pose.stanceWidth());
+        json.add("target", target(QA_TARGET));
         json.add("item", item(client.player == null ? ItemStack.EMPTY : client.player.getMainHandItem()));
         writeJson(output, json);
     }
@@ -358,6 +385,28 @@ public final class HammerRenderQaController {
         json.addProperty("y", vector.y());
         json.addProperty("z", vector.z());
         return json;
+    }
+
+    private static JsonObject target(HeavyHammerProceduralMotion.Target target) {
+        JsonObject json = new JsonObject();
+        json.addProperty("x", target.x());
+        json.addProperty("y", target.y());
+        json.addProperty("z", target.z());
+        json.addProperty("surface", target.surface().name());
+        json.addProperty("normalX", target.normalX());
+        json.addProperty("normalY", target.normalY());
+        json.addProperty("normalZ", target.normalZ());
+        return json;
+    }
+
+    private static HeavyHammerProceduralMotion.Vec3 cameraForward(Scene scene) {
+        double yaw = Math.toRadians(scene.yawOffset);
+        double pitch = Math.toRadians(scene.pitch);
+        float horizontal = (float) Math.cos(pitch);
+        return new HeavyHammerProceduralMotion.Vec3(
+                (float) Math.sin(yaw) * horizontal,
+                (float) Math.sin(pitch),
+                (float) -Math.cos(yaw) * horizontal).normalized();
     }
 
     private static JsonObject item(ItemStack stack) {

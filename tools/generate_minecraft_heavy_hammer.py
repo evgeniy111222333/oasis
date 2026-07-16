@@ -19,14 +19,14 @@ OUT = ROOT / "art" / "heavy_hammer_minecraft"
 RUNTIME = ROOT / "client-mod-gradle" / "src" / "main" / "resources" / "assets" / "eclipseclient"
 SIZE = 128
 MAIN_GRIP_Y = 2.4
-OFFHAND_GRIP_Y = 9.6
+OFFHAND_GRIP_Y = 12.9
 RUNTIME_GRIP_Y = 8.0
 # Minecraft принимает координаты элементов только в пределах [-16, 32].
 # Исходная модель выше, поэтому координаты Y сжимаются вокруг нижнего хвата.
 # Масштабы отображения компенсируют сжатие: пропорции сохраняются, а хват
 # остаётся точно в центре ItemTransform [8, 8, 8].
 RUNTIME_MAX_Y = 31.75
-AUTHORED_MAX_Y = 31.15
+AUTHORED_MAX_Y = 40.15
 RUNTIME_Y_SCALE = (RUNTIME_MAX_Y - RUNTIME_GRIP_Y) / (AUTHORED_MAX_Y - MAIN_GRIP_Y)
 
 REGIONS = {
@@ -58,17 +58,17 @@ def cubes() -> list[Cube]:
     # Простая ремонтопригодная конструкция из референса: длинное цельное древко,
     # прямоугольный кованый боёк, ступенчатые шейки и светлые рабочие торцы.
     return [
-        Cube("ash_haft", (7.0, 0.0, 7.0), (9.0, 25.0, 9.0), "wood", "handle"),
-        Cube("socket", (6.35, 21.0, 6.25), (9.65, 26.0, 9.75), "iron_dark", "head"),
-        Cube("head_core", (-0.5, 23.0, 4.65), (16.5, 30.0, 11.35), "iron", "head"),
-        Cube("left_neck", (-3.0, 23.5, 5.15), (-0.5, 29.5, 10.85), "iron_dark", "head"),
-        Cube("right_neck", (16.5, 23.5, 5.15), (19.0, 29.5, 10.85), "iron_dark", "head"),
-        Cube("left_cap", (-4.45, 22.75, 4.35), (-3.0, 30.25, 11.65), "iron_dark", "head"),
-        Cube("right_cap", (19.0, 22.75, 4.35), (20.45, 30.25, 11.65), "iron_dark", "head"),
-        Cube("left_striking_face", (-4.65, 23.45, 5.05), (-4.43, 29.55, 10.95), "face", "head"),
-        Cube("right_striking_face", (20.43, 23.45, 5.05), (20.65, 29.55, 10.95), "face", "head"),
-        Cube("wood_wedge", (5.85, 29.85, 6.55), (10.15, 30.85, 9.45), "wedge", "head"),
-        Cube("cross_wedge", (7.35, 30.68, 5.9), (8.65, 31.15, 10.1), "iron_dark", "head"),
+        Cube("ash_haft", (7.0, 0.0, 7.0), (9.0, 34.0, 9.0), "wood", "handle"),
+        Cube("socket", (6.35, 30.0, 6.25), (9.65, 35.0, 9.75), "iron_dark", "head"),
+        Cube("head_core", (-0.5, 32.0, 4.65), (16.5, 39.0, 11.35), "iron", "head"),
+        Cube("left_neck", (-3.0, 32.5, 5.15), (-0.5, 38.5, 10.85), "iron_dark", "head"),
+        Cube("right_neck", (16.5, 32.5, 5.15), (19.0, 38.5, 10.85), "iron_dark", "head"),
+        Cube("left_cap", (-4.45, 31.75, 4.35), (-3.0, 39.25, 11.65), "iron_dark", "head"),
+        Cube("right_cap", (19.0, 31.75, 4.35), (20.45, 39.25, 11.65), "iron_dark", "head"),
+        Cube("left_striking_face", (-4.65, 32.45, 5.05), (-4.43, 38.55, 10.95), "face", "head"),
+        Cube("right_striking_face", (20.43, 32.45, 5.05), (20.65, 38.55, 10.95), "face", "head"),
+        Cube("wood_wedge", (5.85, 38.85, 6.55), (10.15, 39.85, 9.45), "wedge", "head"),
+        Cube("cross_wedge", (7.35, 39.68, 5.9), (8.65, 40.15, 10.1), "iron_dark", "head"),
     ]
 
 
@@ -101,7 +101,7 @@ def validate_minecraft_model(model: dict) -> None:
 
 def minecraft_model(parts: list[Cube]) -> dict:
     model = {
-        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.4",
+        "credit": "Процедурный тяжёлый рабочий молот Eclipse RP 1.4.5",
         "parent": "minecraft:item/handheld",
         "ambientocclusion": True,
         "texture_size": [SIZE, SIZE],

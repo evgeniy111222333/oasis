@@ -81,7 +81,8 @@ public final class MicrovoxelServerCoreTest {
                 "Сервер не должен разрушать материал до контакта");
 
         byte[] hammerStart = HeavyHammerProtocol.start(UUID.fromString("00000000-0000-0000-0000-000000000123"),
-                17, HeavyHammerRules.DURATION_TICKS, HeavyHammerRules.IMPACT_TICK);
+                17, HeavyHammerRules.DURATION_TICKS, HeavyHammerRules.IMPACT_TICK,
+                -12, 64, 27, hammerAnchor, HeavyHammerProtocol.Face.WEST);
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(hammerStart))) {
             require(input.readUnsignedByte() == HeavyHammerProtocol.START, "Пакет молота должен содержать тип START");
             require(input.readLong() == 0L && input.readLong() == 0x123L, "UUID анимации должен передаваться без потерь");
@@ -89,6 +90,11 @@ public final class MicrovoxelServerCoreTest {
             require(input.readUnsignedShort() == HeavyHammerRules.DURATION_TICKS
                             && input.readUnsignedShort() == HeavyHammerRules.IMPACT_TICK,
                     "Клиент и сервер должны получать одинаковый тайминг");
+            require(input.readInt() == -12 && input.readInt() == 64 && input.readInt() == 27,
+                    "START обязан передавать блок фактической цели");
+            require(input.readUnsignedShort() == hammerAnchor
+                            && input.readUnsignedByte() == HeavyHammerProtocol.Face.WEST.ordinal(),
+                    "START обязан передавать микровоксель и грань контакта");
             require(input.available() == 0, "В пакете молота не должно быть лишних байтов");
         }
 

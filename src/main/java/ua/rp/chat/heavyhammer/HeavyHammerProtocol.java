@@ -15,14 +15,24 @@ public final class HeavyHammerProtocol {
     private HeavyHammerProtocol() {
     }
 
-    public static byte[] start(UUID playerId, int sequence, int durationTicks, int impactTick) {
+    public static byte[] start(UUID playerId, int sequence, int durationTicks, int impactTick,
+                               int blockX, int blockY, int blockZ, int cell, Face face) {
         return write(output -> {
             output.writeByte(START);
             writeUuid(output, playerId);
             output.writeInt(sequence);
             output.writeShort(durationTicks);
             output.writeShort(impactTick);
+            output.writeInt(blockX);
+            output.writeInt(blockY);
+            output.writeInt(blockZ);
+            output.writeShort(cell);
+            output.writeByte(face.ordinal());
         });
+    }
+
+    public enum Face {
+        DOWN, UP, NORTH, SOUTH, WEST, EAST
     }
 
     public static byte[] impact(UUID playerId, int sequence, boolean success) {

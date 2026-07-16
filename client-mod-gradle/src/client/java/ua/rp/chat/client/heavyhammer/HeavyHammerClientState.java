@@ -7,8 +7,11 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import ua.rp.chat.HeavyHammerAnimation;
+import ua.rp.chat.HeavyHammerProceduralMotion;
 import ua.rp.chat.client.EclipseClientMod;
 import ua.rp.chat.client.debug.HammerRenderQaController;
+import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
+import ua.rp.chat.microvoxel.MicrovoxelVolume;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -26,11 +29,13 @@ public final class HeavyHammerClientState {
     private HeavyHammerClientState() {
     }
 
-    public static int startPrediction(Player player) {
+    public static int startPrediction(Player player, MicrovoxelRaycaster.Hit hit) {
         int sequence = nextPrediction--;
         if (nextPrediction >= 0) nextPrediction = -1;
         STRIKES.put(player.getUUID(), new Strike(sequence, System.nanoTime(),
-                (int) HeavyHammerAnimation.DURATION_TICKS, (int) HeavyHammerAnimation.IMPACT_TICK, false));
+                (int) HeavyHammerAnimation.DURATION_TICKS, (int) HeavyHammerAnimation.IMPACT_TICK, false,
+                new TargetSnapshot(hit.entry().x(), hit.entry().y(), hit.entry().z(),
+                        hit.cell(), hit.face().ordinal())));
         return sequence;
     }
 
@@ -42,8 +47,15 @@ public final class HeavyHammerClientState {
             if (type == 1) {
                 int duration = input.readUnsignedShort();
                 int impact = input.readUnsignedShort();
-                if (input.available() == 0 && duration >= 1 && duration <= 200 && impact < duration) {
-                    STRIKES.put(playerId, new Strike(sequence, System.nanoTime(), duration, impact, true));
+                int blockX = input.readInt();
+                int blockY = input.readInt();
+                int blockZ = input.readInt();
+                int cell = input.readUnsignedShort();
+                int face = input.readUnsignedByte();
+                if (input.available() == 0 && duration >= 1 && duration <= 200 && impact < duration
+                        && cell < MicrovoxelVolume.CELL_COUNT && face < 6) {
+                    STRIKES.put(playerId, new Strike(sequence, System.nanoTime(), duration, impact, true,
+                            new TargetSnapshot(blockX, blockY, blockZ, cell, face)));
                 }
             } else if (type == 2) {
                 boolean success = input.readBoolean();
@@ -73,7 +85,7 @@ public final class HeavyHammerClientState {
         Strike strike = STRIKES.get(player.getUUID());
         float locomotion = (float) player.getDeltaMovement().horizontalDistance();
         return strike == null ? HeavyHammerAnimation.idle(ageTicks, locomotion)
-                : HeavyHammerAnimation.strike(elapsedTicks(strike, System.nanoTime()));
+                : HeavyHammerAnimation.strike(elapsedTicks(strike, System.nanoTime()), targetFor(player, strike.target));
     }
 
     public static boolean striking(Player player) {
@@ -93,6 +105,32 @@ public final class HeavyHammerClientState {
         return Math.max(0.0f, (now - strike.startedNanos) / 50_000_000.0f);
     }
 
+    private static HeavyHammerProceduralMotion.Target targetFor(Player player, TargetSnapshot target) {
+        int cellX = MicrovoxelVolume.x(target.cell);
+        int cellY = MicrovoxelVolume.y(target.cell);
+        int cellZ = MicrovoxelVolume.z(target.cell);
+        int faceX = target.face == 4 ? -1 : target.face == 5 ? 1 : 0;
+        int faceY = target.face == 0 ? -1 : target.face == 1 ? 1 : 0;
+        int faceZ = target.face == 2 ? -1 : target.face == 3 ? 1 : 0;
+        double worldX = target.blockX + (cellX + 0.5 + faceX * 0.5) / 16.0;
+        double worldY = target.blockY + (cellY + 0.5 + faceY * 0.5) / 16.0;
+        double worldZ = target.blockZ + (cellZ + 0.5 + faceZ * 0.5) / 16.0;
+        double dx = worldX - player.getX();
+        double dz = worldZ - player.getZ();
+        double yaw = Math.toRadians(player.getYRot());
+        float localX = (float) ((dx * Math.cos(yaw) + dz * Math.sin(yaw)) * 16.0);
+        float localZ = (float) ((dx * Math.sin(yaw) - dz * Math.cos(yaw)) * 16.0);
+        float localY = (float) ((player.getY() - worldY) * 16.0 + 24.0);
+        HeavyHammerProceduralMotion.Surface surface = target.face == 1
+                ? HeavyHammerProceduralMotion.Surface.UP
+                : target.face == 0 ? HeavyHammerProceduralMotion.Surface.DOWN
+                : HeavyHammerProceduralMotion.Surface.SIDE;
+        float normalX = (float) (faceX * Math.cos(yaw) + faceZ * Math.sin(yaw));
+        float normalZ = (float) (faceX * Math.sin(yaw) - faceZ * Math.cos(yaw));
+        return new HeavyHammerProceduralMotion.Target(localX, localY, localZ, surface,
+                normalX, faceY, normalZ);
+    }
+
     private static final class Strike {
         private final int sequence;
         private final long startedNanos;
@@ -101,14 +139,20 @@ public final class HeavyHammerClientState {
         private final int impactTick;
         @SuppressWarnings("unused")
         private final boolean authoritative;
+        private final TargetSnapshot target;
         private boolean confirmedImpact;
 
-        private Strike(int sequence, long startedNanos, int durationTicks, int impactTick, boolean authoritative) {
+        private Strike(int sequence, long startedNanos, int durationTicks, int impactTick,
+                       boolean authoritative, TargetSnapshot target) {
             this.sequence = sequence;
             this.startedNanos = startedNanos;
             this.durationTicks = durationTicks;
             this.impactTick = impactTick;
             this.authoritative = authoritative;
+            this.target = target;
         }
+    }
+
+    private record TargetSnapshot(int blockX, int blockY, int blockZ, int cell, int face) {
     }
 }

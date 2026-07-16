@@ -14,17 +14,21 @@ public final class HeavyHammerAnimationTest {
                     "Инерция при ходьбе не должна разрывать двуручный хват");
         }
 
-        HeavyHammerProceduralMotion.Frame behind = HeavyHammerProceduralMotion.strike(0.28f);
+        HeavyHammerProceduralMotion.Frame behind = HeavyHammerProceduralMotion.strike(0.30f);
         HeavyHammerProceduralMotion.Frame overhead = HeavyHammerProceduralMotion.strike(0.43f);
         HeavyHammerProceduralMotion.Frame impactFrame = HeavyHammerProceduralMotion.strike(
                 HeavyHammerProceduralMotion.IMPACT_PROGRESS);
         require(behind.headCenter().z() > 3.0f, "Круговой замах должен уводить головку за спину");
-        require(overhead.headCenter().y() < -7.0f, "Перед ускорением головка должна пройти над плечами");
-        require(impactFrame.headCenter().y() > 13.0f && impactFrame.headCenter().z() < -7.0f,
+        require(overhead.headCenter().y() < -12.0f, "Перед ускорением головка должна пройти над плечами");
+        require(impactFrame.headCenter().y() > 18.0f && impactFrame.headCenter().z() < -9.0f,
                 "В контакте головка должна быть направлена вниз и вперёд");
 
         HeavyHammerAnimation.Sample impact = HeavyHammerAnimation.strike(HeavyHammerAnimation.IMPACT_TICK);
         require(impact.bodyX() > 0.10f, "Кадр контакта должен переносить вес корпуса вперёд");
+        require(impact.stanceWidth() > idle.stanceWidth() + 0.40f,
+                "В контакте ноги должны расширять опору под тяжёлым инструментом");
+        require(impact.rightKnee() > 0.25f && impact.leftKnee() > 0.20f,
+                "Удар должен амортизироваться обоими коленями");
         require(HeavyHammerAnimation.impactReached(20.9f, 21.0f), "Контакт должен срабатывать ровно один раз");
         require(!HeavyHammerAnimation.impactReached(21.0f, 21.1f), "Контакт нельзя повторять после прохождения кадра");
 
@@ -44,6 +48,10 @@ public final class HeavyHammerAnimationTest {
                     "Процедурная траектория не должна растягивать руки: sample=" + sample
                             + ", main=" + current.mainClampDistance() + ", offhand=" + current.gripClampDistance());
             require(orthonormal(current), "Ориентация молота не должна накапливать сдвиг или масштаб");
+            require(current.rightLower() >= 0.40f && current.leftLower() >= 0.40f,
+                    "Локоть не должен входить в почти прямую сингулярность: sample=" + sample);
+            require(current.rightLower() <= 2.25f && current.leftLower() <= 2.25f,
+                    "Локоть не должен складываться за анатомический предел: sample=" + sample);
             float delta = distance(previous, current);
             if (delta > maximumDelta) {
                 maximumDelta = delta;
@@ -60,6 +68,34 @@ public final class HeavyHammerAnimationTest {
                 + maximumDeltaSample + ", delta=" + maximumDelta);
         require(maximumAxisDelta < 0.10f, "Ось бойка не должна переворачиваться между кадрами: sample="
                 + maximumAxisDeltaSample + ", delta=" + maximumAxisDelta);
+        HeavyHammerProceduralMotion.Target groundTarget = new HeavyHammerProceduralMotion.Target(
+                0.0f, 24.0f, -12.0f, HeavyHammerProceduralMotion.Surface.UP,
+                0.0f, 1.0f, 0.0f);
+        HeavyHammerAnimation.Sample previousTargeted = HeavyHammerAnimation.strike(0.0f, groundTarget);
+        float targetedAxisDelta = 0.0f;
+        for (int sample = 1; sample <= 680; sample++) {
+            HeavyHammerAnimation.Sample targeted = HeavyHammerAnimation.strike(sample / 20.0f, groundTarget);
+            require(targeted.mainClampDistance() < 0.03f && targeted.gripClampDistance() < 0.03f,
+                    "Наведение на поверхность не должно растягивать руки: sample=" + sample);
+            require(targeted.rightLower() >= 0.40f && targeted.leftLower() >= 0.40f,
+                    "Целевой удар не должен выпрямлять локоть в сингулярность: sample=" + sample);
+            targetedAxisDelta = Math.max(targetedAxisDelta, axisDistance(previousTargeted, targeted));
+            previousTargeted = targeted;
+        }
+        require(targetedAxisDelta < 0.11f,
+                "Разворот рабочей грани к цели должен оставаться непрерывным: delta=" + targetedAxisDelta);
+        HeavyHammerProceduralMotion.Target wallTarget = new HeavyHammerProceduralMotion.Target(
+                0.0f, 10.0f, -12.0f, HeavyHammerProceduralMotion.Surface.SIDE,
+                0.0f, 0.0f, -1.0f);
+        HeavyHammerAnimation.Sample previousWall = HeavyHammerAnimation.strike(0.0f, wallTarget);
+        float wallAxisDelta = 0.0f;
+        for (int sample = 1; sample <= 680; sample++) {
+            HeavyHammerAnimation.Sample wall = HeavyHammerAnimation.strike(sample / 20.0f, wallTarget);
+            wallAxisDelta = Math.max(wallAxisDelta, axisDistance(previousWall, wall));
+            previousWall = wall;
+        }
+        require(wallAxisDelta < 0.11f,
+                "Доворот бойка к стене не должен переворачивать ось: delta=" + wallAxisDelta);
         HeavyHammerAnimation.Sample end = HeavyHammerAnimation.strike(HeavyHammerAnimation.DURATION_TICKS);
         require(distance(idle, end) < 0.03f, "Удар должен бесшовно возвращаться в рабочую стойку");
         System.out.println("HeavyHammerAnimationTest passed");
@@ -67,6 +103,11 @@ public final class HeavyHammerAnimationTest {
 
     private static boolean finite(HeavyHammerAnimation.Sample sample) {
         return Float.isFinite(sample.progress()) && Float.isFinite(sample.bodyX()) && Float.isFinite(sample.bodyY())
+                && Float.isFinite(sample.bodyZ()) && Float.isFinite(sample.headX())
+                && Float.isFinite(sample.headY()) && Float.isFinite(sample.rightLegX())
+                && Float.isFinite(sample.leftLegX()) && Float.isFinite(sample.rightLegZ())
+                && Float.isFinite(sample.leftLegZ()) && Float.isFinite(sample.rightKnee())
+                && Float.isFinite(sample.leftKnee()) && Float.isFinite(sample.stanceWidth())
                 && Float.isFinite(sample.rightX()) && Float.isFinite(sample.rightY())
                 && Float.isFinite(sample.rightZ()) && Float.isFinite(sample.rightLower())
                 && Float.isFinite(sample.leftX()) && Float.isFinite(sample.leftY())
@@ -97,6 +138,15 @@ public final class HeavyHammerAnimationTest {
 
     private static float distance(HeavyHammerAnimation.Sample left, HeavyHammerAnimation.Sample right) {
         return Math.abs(left.bodyX() - right.bodyX()) + Math.abs(left.bodyY() - right.bodyY())
+                + Math.abs(left.bodyZ() - right.bodyZ())
+                + Math.abs(left.headX() - right.headX()) + Math.abs(left.headY() - right.headY())
+                + Math.abs(left.rightLegX() - right.rightLegX())
+                + Math.abs(left.leftLegX() - right.leftLegX())
+                + Math.abs(left.rightLegZ() - right.rightLegZ())
+                + Math.abs(left.leftLegZ() - right.leftLegZ())
+                + Math.abs(left.rightKnee() - right.rightKnee())
+                + Math.abs(left.leftKnee() - right.leftKnee())
+                + Math.abs(left.stanceWidth() - right.stanceWidth())
                 + Math.abs(left.rightX() - right.rightX()) + Math.abs(left.rightZ() - right.rightZ())
                 + Math.abs(left.rightLower() - right.rightLower())
                 + Math.abs(left.leftX() - right.leftX()) + Math.abs(left.leftZ() - right.leftZ())

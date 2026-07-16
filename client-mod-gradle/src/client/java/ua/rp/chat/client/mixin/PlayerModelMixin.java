@@ -559,9 +559,13 @@ public class PlayerModelMixin {
         if (pose == null) return;
 
         // Сначала движется жёсткий молот, затем обе руки решаются к его реальным
-        // точкам хвата. Углы ниже являются результатом IK, а не ручными ключами.
+        // точкам хвата. Корпус и ноги переносят массу по той же фазе, поэтому
+        // удар не выглядит как вращение неподвижной стойки с приклеенными руками.
         model.body.xRot += pose.bodyX();
         model.body.yRot += pose.bodyY();
+        model.body.zRot += pose.bodyZ();
+        model.head.xRot += pose.headX();
+        model.head.yRot += pose.headY();
         model.rightArm.xRot = pose.rightX();
         model.rightArm.yRot = pose.rightY();
         model.rightArm.zRot = pose.rightZ();
@@ -571,11 +575,14 @@ public class PlayerModelMixin {
         eclipse$setLowerArm(model.rightArm, model.rightSleeve, pose.rightLower());
         eclipse$setLowerArm(model.leftArm, model.leftSleeve, pose.leftLower());
 
-        float brace = 0.05f + Math.abs(pose.bodyY()) * 0.11f;
-        model.rightLeg.zRot -= brace;
-        model.leftLeg.zRot += brace;
-        model.rightLeg.xRot -= brace * 0.45f;
-        model.leftLeg.xRot += brace * 0.28f;
+        model.rightLeg.x -= pose.stanceWidth();
+        model.leftLeg.x += pose.stanceWidth();
+        model.rightLeg.xRot += pose.rightLegX();
+        model.leftLeg.xRot += pose.leftLegX();
+        model.rightLeg.zRot += pose.rightLegZ();
+        model.leftLeg.zRot += pose.leftLegZ();
+        eclipse$setLowerLeg(model.rightLeg, model.rightPants, pose.rightKnee());
+        eclipse$setLowerLeg(model.leftLeg, model.leftPants, pose.leftKnee());
         eclipse$syncWearableLayers(model);
     }
 

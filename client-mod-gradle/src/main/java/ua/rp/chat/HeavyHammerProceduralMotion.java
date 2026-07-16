@@ -1,51 +1,72 @@
 package ua.rp.chat;
 
 /**
- * Траектория жёсткого двуручного молота. Здесь описывается движение инструмента,
- * а не углы рук: суставы решаются отдельно по двум точкам хвата.
+ * Физическая траектория тяжёлого двуручного молота. Сначала задаётся непрерывное
+ * движение жёсткого инструмента и центра тяжести, затем руки решаются по двум
+ * точкам хвата. Ни одна фаза не должна требовать прохождения древка сквозь тело.
  */
 public final class HeavyHammerProceduralMotion {
     public static final float ITEM_SCALE = 0.57f;
-    public static final float IDLE_GRIP_DISTANCE = 11.5f * ITEM_SCALE;
-    public static final float HEAD_DISTANCE = 24.1f * ITEM_SCALE;
+    public static final float IDLE_GRIP_DISTANCE = 10.5f * ITEM_SCALE;
+    public static final float HEAD_DISTANCE = 33.1f * ITEM_SCALE;
     public static final float IMPACT_PROGRESS = HeavyHammerAnimation.IMPACT_TICK
             / HeavyHammerAnimation.DURATION_TICKS;
 
     private static final Anchor[] STRIKE_PATH = {
-            // Рабочая стойка: правая рука внизу, головка лежит выше левого плеча.
-            new Anchor(0.00f, new Vec3(-1.20f, 8.80f, -2.40f), new Vec3(0.76f, -0.45f, 0.48f),
-                    new Vec3(0.0f, 0.0f, -1.0f), IDLE_GRIP_DISTANCE),
-            // Снятие веса и начало кругового движения.
-            new Anchor(0.10f, new Vec3(-0.80f, 8.00f, -1.50f), new Vec3(0.70f, -0.48f, 0.53f),
-                    new Vec3(0.0f, 0.0f, -1.0f), 6.00f),
-            // Молот уходит за правое плечо, но обе точки хвата остаются достижимы.
-            new Anchor(0.28f, new Vec3(1.50f, 5.00f, -5.00f), new Vec3(0.60f, -0.30f, 0.74f),
-                    new Vec3(0.55f, 0.75f, -0.20f), 4.80f),
-            new Anchor(0.31f, new Vec3(1.20f, 4.00f, -4.80f), new Vec3(0.68f, -0.42f, 0.60f),
-                    new Vec3(0.35f, 0.70f, -0.60f), 4.00f),
-            // Перед верхней точкой боёк проходит снаружи левого плеча, а не сквозь голову.
-            new Anchor(0.35f, new Vec3(1.20f, 3.00f, -4.50f), new Vec3(0.75f, -0.55f, 0.35f),
-                    new Vec3(0.20f, 0.65f, -0.75f), 4.80f),
-            new Anchor(0.40f, new Vec3(1.00f, 0.00f, -4.00f), new Vec3(0.65f, -0.72f, 0.25f),
-                    new Vec3(0.75f, 0.35f, -0.45f), 5.00f),
-            // Верхняя точка с коротким накоплением веса.
-            new Anchor(0.43f, new Vec3(-0.20f, 0.20f, -4.00f), new Vec3(0.40f, -0.87f, 0.30f),
-                    new Vec3(1.0f, 0.0f, 0.0f), 5.20f),
-            // Проход через переднюю горизонталь не даёт направлению древка
-            // интерполироваться сквозь нулевой вектор между верхом и контактом.
-            new Anchor(0.54f, new Vec3(-1.00f, 2.50f, -3.00f), new Vec3(0.20f, -0.20f, -0.96f),
-                    new Vec3(1.0f, 0.0f, 0.0f), 4.60f),
-            // Контакт: головка направлена вниз и вперёд, руки не растягиваются.
-            new Anchor(IMPACT_PROGRESS, new Vec3(-1.00f, 3.00f, -2.00f), new Vec3(0.35f, 0.82f, -0.45f),
-                    new Vec3(1.0f, 0.0f, 0.0f), 4.50f),
-            // Инерционное сопровождение удара.
-            new Anchor(0.73f, new Vec3(0.00f, 5.00f, -1.00f), new Vec3(0.50f, 0.70f, -0.50f),
-                    new Vec3(1.0f, 0.0f, 0.0f), 4.80f),
-            // Гашение импульса перед возвратом.
-            new Anchor(0.86f, new Vec3(-0.50f, 8.00f, -2.20f), new Vec3(0.971f, 0.235f, -0.050f),
-                    new Vec3(0.226f, -0.964f, -0.140f), 5.80f),
-            new Anchor(1.00f, new Vec3(-1.20f, 8.80f, -2.40f), new Vec3(0.76f, -0.45f, 0.48f),
-                    new Vec3(0.0f, 0.0f, -1.0f), IDLE_GRIP_DISTANCE)
+            // Устойчивая стойка: древко целиком перед корпусом, боёк вынесен над левым плечом.
+            anchor(0.00f, -1.50f, 8.80f, -4.20f, 0.72f, -0.44f, -0.54f,
+                    0.686f, 0.343f, 0.636f, IDLE_GRIP_DISTANCE,
+                    pose(0.03f, 0.08f, 0.00f, -0.03f, 0.00f,
+                            -0.08f, -0.03f, -0.08f, 0.08f, 0.12f, 0.08f, 0.25f)),
+            // Снятие веса с головки без разрыва хвата.
+            anchor(0.10f, -1.00f, 8.60f, -4.30f, 0.72f, -0.40f, -0.56f,
+                    0.686f, 0.343f, 0.637f, 5.60f,
+                    pose(-0.08f, -0.12f, -0.03f, -0.02f, 0.08f,
+                            -0.10f, -0.05f, -0.10f, 0.10f, 0.15f, 0.10f, 0.45f)),
+            // Начало кругового заноса: кисти уходят вперёд и наружу, а не сквозь грудь.
+            anchor(0.20f, -0.50f, 6.50f, -5.00f, 0.88f, -0.25f, -0.40f,
+                    0.474f, 0.474f, 0.747f, 5.00f,
+                    pose(-0.14f, -0.28f, -0.06f, 0.00f, 0.12f,
+                            -0.13f, -0.08f, -0.13f, 0.13f, 0.18f, 0.12f, 0.55f)),
+            // Древко пересекает плоскость спины только после выхода сбоку от силуэта.
+            anchor(0.30f, -0.50f, 5.00f, -7.00f, 0.82f, -0.15f, 0.55f,
+                    0.18f, 0.98f, 0.00f, 4.50f,
+                    pose(-0.18f, -0.38f, -0.08f, 0.02f, 0.14f,
+                            -0.15f, -0.09f, -0.15f, 0.15f, 0.22f, 0.14f, 0.65f)),
+            // Подхват массы ногами и тазом.
+            anchor(0.38f, -0.30f, 3.00f, -6.50f, 0.55f, -0.82f, -0.15f,
+                    0.83f, 0.56f, 0.00f, 5.00f,
+                    pose(-0.12f, -0.25f, -0.05f, 0.06f, 0.10f,
+                            -0.14f, -0.12f, -0.16f, 0.16f, 0.20f, 0.18f, 0.68f)),
+            // Верхняя точка: головка над и перед персонажем, локти остаются согнутыми.
+            anchor(0.43f, 0.00f, 2.00f, -5.50f, 0.15f, -0.985f, -0.08f,
+                    0.99f, 0.15f, 0.00f, 5.00f,
+                    pose(-0.10f, -0.12f, -0.03f, 0.12f, 0.06f,
+                            -0.16f, -0.15f, -0.17f, 0.17f, 0.22f, 0.22f, 0.70f)),
+            // Разгон по дуге: кисти ведут рукоять, а корпус догоняет инструмент.
+            anchor(0.54f, -0.50f, 2.50f, -5.00f, 0.15f, -0.20f, -0.968f,
+                    0.99f, 0.10f, 0.133f, 2.80f,
+                    pose(0.08f, 0.08f, 0.02f, 0.18f, 0.02f,
+                            -0.20f, -0.16f, -0.19f, 0.19f, 0.28f, 0.22f, 0.75f)),
+            // Контакт: нижняя грань бойка доходит до плоскости земли перед ногами.
+            anchor(IMPACT_PROGRESS, -1.00f, 1.45f, -5.40f, 0.20f, 0.90f, -0.39f,
+                    0.98f, -0.20f, 0.00f, 3.30f,
+                    pose(0.30f, 0.22f, 0.05f, 0.28f, -0.03f,
+                            -0.25f, -0.20f, -0.22f, 0.22f, 0.35f, 0.28f, 0.80f)),
+            // Сопровождение удара без мгновенной остановки массы.
+            anchor(0.73f, -0.50f, 2.55f, -5.40f, 0.45f, 0.72f, -0.53f,
+                    0.85f, -0.53f, 0.00f, 3.20f,
+                    pose(0.32f, 0.30f, 0.08f, 0.24f, -0.06f,
+                            -0.22f, -0.17f, -0.20f, 0.20f, 0.30f, 0.24f, 0.72f)),
+            // Гашение импульса. Боёк остаётся поперечным древку и не превращается в «якорь».
+            anchor(0.86f, -1.00f, 8.00f, -4.20f, 0.55f, -0.35f, -0.76f,
+                    0.835f, 0.209f, 0.509f, 3.50f,
+                    pose(0.14f, 0.16f, 0.03f, 0.08f, -0.03f,
+                            -0.13f, -0.08f, -0.12f, 0.12f, 0.18f, 0.14f, 0.48f)),
+            anchor(1.00f, -1.50f, 8.80f, -4.20f, 0.72f, -0.44f, -0.54f,
+                    0.686f, 0.343f, 0.636f, IDLE_GRIP_DISTANCE,
+                    pose(0.03f, 0.08f, 0.00f, -0.03f, 0.00f,
+                            -0.08f, -0.03f, -0.08f, 0.08f, 0.12f, 0.08f, 0.25f))
     };
 
     private HeavyHammerProceduralMotion() {
@@ -64,11 +85,43 @@ public final class HeavyHammerProceduralMotion {
                 breath * 0.06f + Math.abs(carrySway) * 0.08f, carrySway * 0.18f);
         Vec3 shaft = base.shaft.add(0.0f, 0.0f,
                 breath * 0.012f + carrySway * 0.025f).normalized();
-        return compose(0.0f, main, shaft, base.headRoll, base.gripDistance);
+        BodyPose breathingPose = base.bodyPose.withBreath(breath * 0.008f);
+        return compose(0.0f, main, shaft, base.headRoll, base.gripDistance, breathingPose);
     }
 
     public static Frame strike(float progress) {
         return frame(clamp(progress, 0.0f, 1.0f));
+    }
+
+    public static Frame strike(float progress, Target target) {
+        Frame base = strike(progress);
+        if (target == null) return base;
+
+        float influence = contactInfluence(progress);
+        // Направление персонажа даёт основное наведение. Саму жёсткую траекторию
+        // нельзя телескопически переносить к далёкой цели — такие цели отклоняет сервер.
+        float horizontal = Math.max(1.0f, (float) Math.sqrt(target.x * target.x + target.z * target.z));
+        float desiredHeadYaw = clamp((float) Math.atan2(target.x, -target.z), -0.32f, 0.32f);
+        float desiredHeadPitch = clamp((float) Math.atan2(target.y + 4.0f, horizontal) - 0.55f,
+                -0.20f, 0.38f);
+        BodyPose aimedBody = base.bodyPose.withAim(desiredHeadPitch, desiredHeadYaw,
+                desiredHeadYaw * 0.30f, 0.35f + influence * 0.65f);
+        Vec3 surfaceNormal = new Vec3(target.normalX, target.normalY, target.normalZ);
+        float aimedRoll = base.headRoll;
+        if (surfaceNormal.length() > 0.5f) {
+            // У бойка две равноправные рабочие стороны. Выбираем знак нормали один
+            // раз относительно базового кадра контакта, иначе ±нормаль заставляет
+            // ось визуально переворачиваться на 180° между соседними кадрами.
+            if (surfaceNormal.dot(frame(IMPACT_PROGRESS).headAxis) < 0.0f) {
+                surfaceNormal = surfaceNormal.scale(-1.0f);
+            }
+            float surfaceWeight = target.surface == Surface.SIDE ? 0.45f : 1.00f;
+            float orientationTiming = target.surface == Surface.SIDE
+                    ? sideSurfaceInfluence(progress) : surfaceInfluence(progress);
+            float surfaceRoll = rollFor(base.shaft, surfaceNormal);
+            aimedRoll += shortestAngle(aimedRoll, surfaceRoll) * orientationTiming * surfaceWeight;
+        }
+        return compose(progress, base.mainGrip, base.shaft, aimedRoll, base.gripDistance, aimedBody);
     }
 
     private static Frame frame(float progress) {
@@ -87,29 +140,22 @@ public final class HeavyHammerProceduralMotion {
         Vec3 shaft = Vec3.lerp(from.shaft, to.shaft, eased).normalized();
         float fromRoll = rollFor(from.shaft, from.headHint);
         float roll = fromRoll + shortestAngle(fromRoll, rollFor(to.shaft, to.headHint)) * eased;
-        float gripDistance = from.gripDistance + (to.gripDistance - from.gripDistance) * eased;
-        return compose(progress, main, shaft, roll, gripDistance);
+        float gripDistance = lerp(from.gripDistance, to.gripDistance, eased);
+        return compose(progress, main, shaft, roll, gripDistance,
+                BodyPose.lerp(from.bodyPose, to.bodyPose, eased));
     }
 
     private static Frame compose(float progress, Vec3 mainGrip, Vec3 shaft,
-                                 float headRoll, float gripDistance) {
+                                 float headRoll, float gripDistance, BodyPose bodyPose) {
         Vec3 normalizedShaft = shaft.normalized();
-        // Направление древка не задаёт поворот бойка вокруг него. Стабильный
-        // базис и отдельный непрерывный roll закрывают эту степень свободы:
-        // даже при смене фазы опорный вектор не может совпасть с древком.
         Vec3 referenceHead = referenceHead(normalizedShaft);
         Vec3 referenceDepth = referenceHead.cross(normalizedShaft).normalized();
         Vec3 headAxis = referenceHead.scale((float) Math.cos(headRoll))
                 .add(referenceDepth.scale((float) Math.sin(headRoll))).normalized();
         Vec3 depthAxis = headAxis.cross(normalizedShaft).normalized();
         Vec3 headCenter = mainGrip.add(normalizedShaft.scale(HEAD_DISTANCE));
-
-        // Корпус компенсирует положение центра тяжести и направление инерции молота.
-        float bodyY = clamp((headCenter.x - 1.5f) * 0.035f - normalizedShaft.z * 0.22f, -0.55f, 0.55f);
-        float bodyX = clamp((headCenter.y - 5.0f) * 0.025f
-                - Math.abs(normalizedShaft.z) * 0.05f, -0.16f, 0.24f);
         return new Frame(progress, mainGrip, normalizedShaft, headAxis, depthAxis,
-                headCenter, gripDistance, headRoll, bodyX, bodyY);
+                headCenter, gripDistance, headRoll, bodyPose);
     }
 
     private static float rollFor(Vec3 shaft, Vec3 headHint) {
@@ -121,10 +167,27 @@ public final class HeavyHammerProceduralMotion {
     }
 
     private static Vec3 referenceHead(Vec3 normalizedShaft) {
-        // Во всей траектории древко остаётся достаточно далеко от мировой Y,
-        // поэтому верх даёт непрерывный базис без переключений между осями.
         Vec3 worldUp = new Vec3(0.0f, 1.0f, 0.0f);
         return worldUp.subtract(normalizedShaft.scale(worldUp.dot(normalizedShaft))).normalized();
+    }
+
+    private static Anchor anchor(float time, float mainX, float mainY, float mainZ,
+                                 float shaftX, float shaftY, float shaftZ,
+                                 float hintX, float hintY, float hintZ,
+                                 float gripDistance, BodyPose pose) {
+        return new Anchor(time, new Vec3(mainX, mainY, mainZ),
+                new Vec3(shaftX, shaftY, shaftZ).normalized(),
+                new Vec3(hintX, hintY, hintZ), gripDistance, pose);
+    }
+
+    private static BodyPose pose(float torsoPitch, float torsoYaw, float torsoRoll,
+                                 float headPitch, float headYaw,
+                                 float rightLegPitch, float leftLegPitch,
+                                 float rightLegRoll, float leftLegRoll,
+                                 float rightKnee, float leftKnee, float stanceWidth) {
+        return new BodyPose(torsoPitch, torsoYaw, torsoRoll, headPitch, headYaw,
+                rightLegPitch, leftLegPitch, rightLegRoll, leftLegRoll,
+                rightKnee, leftKnee, stanceWidth);
     }
 
     private static float shortestAngle(float from, float to) {
@@ -138,20 +201,87 @@ public final class HeavyHammerProceduralMotion {
         return value * value * value * (value * (value * 6.0f - 15.0f) + 10.0f);
     }
 
+    private static float contactInfluence(float progress) {
+        float rise = smootherStep(clamp((progress - 0.28f) / 0.34f, 0.0f, 1.0f));
+        float fall = 1.0f - smootherStep(clamp((progress - 0.73f) / 0.20f, 0.0f, 1.0f));
+        return rise * fall;
+    }
+
+    private static float surfaceInfluence(float progress) {
+        float rise = smootherStep(clamp((progress - 0.43f) / (IMPACT_PROGRESS - 0.43f), 0.0f, 1.0f));
+        float fall = 1.0f - smootherStep(clamp((progress - 0.73f) / 0.16f, 0.0f, 1.0f));
+        return rise * fall;
+    }
+
+    private static float sideSurfaceInfluence(float progress) {
+        float rise = smootherStep(clamp((progress - 0.50f) / (IMPACT_PROGRESS - 0.50f), 0.0f, 1.0f));
+        float fall = 1.0f - smootherStep(clamp((progress - 0.73f) / 0.16f, 0.0f, 1.0f));
+        return rise * fall;
+    }
+
+    private static float lerp(float from, float to, float amount) {
+        return from + (to - from) * amount;
+    }
+
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
 
     private record Anchor(float time, Vec3 mainGrip, Vec3 shaft,
-                          Vec3 headHint, float gripDistance) {
+                          Vec3 headHint, float gripDistance, BodyPose bodyPose) {
+    }
+
+    public record BodyPose(float torsoPitch, float torsoYaw, float torsoRoll,
+                           float headPitch, float headYaw,
+                           float rightLegPitch, float leftLegPitch,
+                           float rightLegRoll, float leftLegRoll,
+                           float rightKnee, float leftKnee, float stanceWidth) {
+        private BodyPose withBreath(float amount) {
+            return new BodyPose(torsoPitch + amount, torsoYaw, torsoRoll,
+                    headPitch - amount * 0.65f, headYaw,
+                    rightLegPitch, leftLegPitch, rightLegRoll, leftLegRoll,
+                    rightKnee, leftKnee, stanceWidth);
+        }
+
+        private BodyPose withAim(float pitch, float yaw, float torsoYawOffset, float amount) {
+            return new BodyPose(torsoPitch, torsoYaw + torsoYawOffset * amount, torsoRoll,
+                    HeavyHammerProceduralMotion.lerp(headPitch, pitch, amount),
+                    HeavyHammerProceduralMotion.lerp(headYaw, yaw, amount),
+                    rightLegPitch, leftLegPitch, rightLegRoll, leftLegRoll,
+                    rightKnee, leftKnee, stanceWidth);
+        }
+
+        private static BodyPose lerp(BodyPose from, BodyPose to, float amount) {
+            return new BodyPose(
+                    HeavyHammerProceduralMotion.lerp(from.torsoPitch, to.torsoPitch, amount),
+                    HeavyHammerProceduralMotion.lerp(from.torsoYaw, to.torsoYaw, amount),
+                    HeavyHammerProceduralMotion.lerp(from.torsoRoll, to.torsoRoll, amount),
+                    HeavyHammerProceduralMotion.lerp(from.headPitch, to.headPitch, amount),
+                    HeavyHammerProceduralMotion.lerp(from.headYaw, to.headYaw, amount),
+                    HeavyHammerProceduralMotion.lerp(from.rightLegPitch, to.rightLegPitch, amount),
+                    HeavyHammerProceduralMotion.lerp(from.leftLegPitch, to.leftLegPitch, amount),
+                    HeavyHammerProceduralMotion.lerp(from.rightLegRoll, to.rightLegRoll, amount),
+                    HeavyHammerProceduralMotion.lerp(from.leftLegRoll, to.leftLegRoll, amount),
+                    HeavyHammerProceduralMotion.lerp(from.rightKnee, to.rightKnee, amount),
+                    HeavyHammerProceduralMotion.lerp(from.leftKnee, to.leftKnee, amount),
+                    HeavyHammerProceduralMotion.lerp(from.stanceWidth, to.stanceWidth, amount));
+        }
     }
 
     public record Frame(float progress, Vec3 mainGrip, Vec3 shaft,
                         Vec3 headAxis, Vec3 depthAxis, Vec3 headCenter,
-                        float gripDistance, float headRoll, float bodyX, float bodyY) {
+                        float gripDistance, float headRoll, BodyPose bodyPose) {
         public Vec3 offhandGrip() {
             return mainGrip.add(shaft.scale(gripDistance));
         }
+    }
+
+    public record Target(float x, float y, float z, Surface surface,
+                         float normalX, float normalY, float normalZ) {
+    }
+
+    public enum Surface {
+        UP, DOWN, SIDE
     }
 
     public record Vec3(float x, float y, float z) {
@@ -186,8 +316,8 @@ public final class HeavyHammerProceduralMotion {
         }
 
         public Vec3 normalized() {
-            float length = length();
-            return length < 0.0001f ? new Vec3(0.0f, -1.0f, 0.0f) : scale(1.0f / length);
+            float vectorLength = length();
+            return vectorLength < 0.0001f ? new Vec3(0.0f, -1.0f, 0.0f) : scale(1.0f / vectorLength);
         }
 
         public float distanceTo(Vec3 other) {
@@ -195,9 +325,9 @@ public final class HeavyHammerProceduralMotion {
         }
 
         public static Vec3 lerp(Vec3 from, Vec3 to, float amount) {
-            return new Vec3(from.x + (to.x - from.x) * amount,
-                    from.y + (to.y - from.y) * amount,
-                    from.z + (to.z - from.z) * amount);
+            return new Vec3(HeavyHammerProceduralMotion.lerp(from.x, to.x, amount),
+                    HeavyHammerProceduralMotion.lerp(from.y, to.y, amount),
+                    HeavyHammerProceduralMotion.lerp(from.z, to.z, amount));
         }
     }
 }
