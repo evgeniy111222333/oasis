@@ -16,18 +16,18 @@ public final class PickupPromptRulesTest {
         require(PickupPromptRules.advanceFade(0.95f, true) == 1.0f,
                 "Prompt fade-in must clamp cleanly at full opacity");
 
-        PickupPromptLayout.Layout normal = PickupPromptLayout.forTitle(1920, 260);
-        require(normal.titleRight() + PickupPromptLayout.TITLE_TO_MOUSE_GAP == normal.mouseX(),
-                "Title-to-mouse gutter must stay exactly fixed");
+        PickupPromptLayout.Layout normal = PickupPromptLayout.forFocusPrompt(1920, 260, 32);
+        require(normal.titleRight() + PickupPromptLayout.TITLE_TO_ACTION_GAP == normal.actionX(),
+                "Title-to-action gutter must stay exactly fixed");
         require(normal.titleCapacity() >= 260,
                 "Normal HUD widths must reserve the complete title before the mouse column");
 
-        PickupPromptLayout.Layout narrow = PickupPromptLayout.forTitle(180, 600);
+        PickupPromptLayout.Layout narrow = PickupPromptLayout.forFocusPrompt(180, 600, 32);
         require(narrow.cardWidth() <= 180 - PickupPromptLayout.CARD_SIDE_MARGIN * 2
                         || narrow.cardWidth() == 168,
                 "Narrow HUD layout must remain bounded by the safe card width");
-        require(narrow.titleRight() < narrow.mouseX(),
-                "Mouse icon column must remain to the right of the title boundary");
+        require(narrow.titleRight() < narrow.actionX(),
+                "Action group must remain to the right of the title boundary");
     }
 
     private static void require(boolean condition, String message) {

@@ -56,34 +56,37 @@ public final class PickupClientState {
         if (client.font == null || client.screen != null || targetedItem == null) return;
 
         Font font = client.font;
-        PickupPromptLayout.Layout layout = PickupPromptLayout.forTitle(width, font.width(lastItemName));
+        String action = "Взять";
+        int actionLabelWidth = font.width(action);
+        PickupPromptLayout.Layout layout = PickupPromptLayout.forFocusPrompt(width, font.width(lastItemName), actionLabelWidth);
         String itemName = fit(font, lastItemName, layout.titleCapacity());
         // Re-run geometry using the rendered (possibly ellipsized) title width. This pins the
-        // title's right edge exactly TITLE_TO_MOUSE_GAP pixels before the mouse icon column.
-        layout = PickupPromptLayout.forTitle(width, font.width(itemName));
+        // title's right edge exactly TITLE_TO_ACTION_GAP pixels before the action lane.
+        layout = PickupPromptLayout.forFocusPrompt(width, font.width(itemName), actionLabelWidth);
         int cardWidth = layout.cardWidth();
         int x = width / 2 - cardWidth / 2;
-        int y = height / 2 + 48;
-        float pulse = 0.84f + 0.16f * (float) Math.sin(System.nanoTime() * 0.0000000045d);
-        int alpha = Math.round(promptAlpha * 220.0f);
+        int y = height / 2 + 32;
+        float pulse = 0.92f + 0.08f * (float) Math.sin(System.nanoTime() * 0.0000000045d);
+        int alpha = Math.round(promptAlpha * 208.0f);
         int accentAlpha = Math.round(alpha * pulse);
 
-        // Quiet, two-level card: the grounded item remains visually clean and the interaction stays readable.
-        graphics.fill(x - 2, y - 2, x + cardWidth + 2, y + 38, color(0x020202, alpha / 2));
-        graphics.fill(x, y, x + cardWidth, y + 36, color(0x10100F, alpha));
-        graphics.fill(x, y, x + cardWidth, y + 1, color(0xD6B77E, accentAlpha));
-        graphics.fill(x, y + 35, x + cardWidth, y + 36, color(0x5E4C32, alpha / 2));
+        // Focus prompt: quiet surface, no banner chrome. The object and action read as one sentence.
+        graphics.fill(x - 1, y - 1, x + cardWidth + 1, y + 31, color(0x010101, alpha / 2));
+        graphics.fill(x, y, x + cardWidth, y + 30, color(0x12100E, alpha));
+        graphics.fill(x, y + 5, x + 1, y + 25, color(0xD6B77E, accentAlpha));
 
         int itemX = x + 10;
-        graphics.fill(itemX - 3, y + 8, itemX + 19, y + 30, color(0x201A13, alpha));
-        graphics.item(targetedItem.getItem(), itemX, y + 11);
-        graphics.verticalLine(x + 35, y + 8, y + 29, color(0x4C3D2B, alpha));
+        graphics.item(targetedItem.getItem(), itemX, y + 7);
+        graphics.verticalLine(x + 29, y + 7, y + 22, color(0x4C3D2B, alpha));
 
-        int textX = x + 45;
-        graphics.text(font, itemName, textX, y + 8, color(0xFFF7E9, alpha), false);
-        graphics.text(font, "ВЗЯТЬ ПРЕДМЕТ", textX, y + 21, color(0xC5AF8E, accentAlpha), false);
+        int textX = x + PickupPromptLayout.TEXT_X;
+        graphics.text(font, itemName, textX, y + 11, color(0xFFF7E9, alpha), false);
 
-        drawRightClickMouse(graphics, x + layout.mouseX(), y + 8, alpha, accentAlpha);
+        int actionX = x + layout.actionX();
+        graphics.verticalLine(actionX - 6, y + 8, y + 21, color(0x4C3D2B, alpha));
+        drawRightClickMouse(graphics, actionX, y + 8, alpha, accentAlpha);
+        graphics.text(font, action, actionX + PickupPromptLayout.MOUSE_ICON_WIDTH
+                + PickupPromptLayout.MOUSE_TO_LABEL_GAP, y + 11, color(0xDEC59A, accentAlpha), false);
     }
 
     private static ItemEntity findTarget(Minecraft client) {
@@ -135,34 +138,28 @@ public final class PickupClientState {
     }
 
     /**
-     * Compact angular mouse glyph (D): it has no enclosing keycap, so it stays optically centred
-     * in its action column. Only the upper-right button receives the living gold accent.
+     * Compact mouse glyph: a supporting input hint, not a competing UI button.
      */
     private static void drawRightClickMouse(GuiGraphicsExtractor graphics, int x, int y, int alpha, int accentAlpha) {
         int bodyWidth = PickupPromptLayout.MOUSE_ICON_WIDTH;
-        int bodyHeight = 20;
+        int bodyHeight = 14;
         int border = color(0xF0DFC1, alpha);
         int interior = color(0x16120F, alpha);
         int seam = color(0x70583A, alpha);
 
-        // Five horizontal strips make the small silhouette read as a real angular mouse,
-        // rather than as a square button or a floating UI frame.
-        graphics.fill(x + 4, y, x + bodyWidth - 4, y + 1, border);
+        graphics.fill(x + 3, y, x + bodyWidth - 3, y + 1, border);
         graphics.fill(x + 2, y + 1, x + bodyWidth - 2, y + 2, border);
         graphics.fill(x + 1, y + 2, x + bodyWidth - 1, y + bodyHeight - 2, border);
         graphics.fill(x + 2, y + bodyHeight - 2, x + bodyWidth - 2, y + bodyHeight - 1, border);
-        graphics.fill(x + 4, y + bodyHeight - 1, x + bodyWidth - 4, y + bodyHeight, border);
+        graphics.fill(x + 3, y + bodyHeight - 1, x + bodyWidth - 3, y + bodyHeight, border);
 
         graphics.fill(x + 3, y + 3, x + bodyWidth - 3, y + bodyHeight - 3, interior);
         int split = x + bodyWidth / 2;
-        graphics.fill(split, y + 3, split + 1, y + 9, seam);
-        graphics.fill(x + 3, y + 3, split, y + 9, color(0x30261B, alpha));
-        graphics.fill(split + 1, y + 3, x + bodyWidth - 3, y + 9, color(0xD8B773, accentAlpha));
-        graphics.fill(x + 3, y + 10, x + bodyWidth - 3, y + 11, seam);
-
-        // Wheel: intentionally lower and centred, leaving the gold right button unambiguous.
-        graphics.fill(split - 1, y + 13, split + 2, y + 17, color(0xE7C98F, accentAlpha));
-        graphics.fill(split, y + 14, split + 1, y + 16, color(0x5A442B, alpha));
+        graphics.fill(split, y + 3, split + 1, y + 7, seam);
+        graphics.fill(x + 3, y + 3, split, y + 7, color(0x30261B, alpha));
+        graphics.fill(split + 1, y + 3, x + bodyWidth - 3, y + 7, color(0xD8B773, accentAlpha));
+        graphics.fill(x + 3, y + 8, x + bodyWidth - 3, y + 9, seam);
+        graphics.fill(split - 1, y + 10, split + 2, y + 12, color(0xE7C98F, accentAlpha));
     }
 
     private static int color(int rgb, int alpha) {
