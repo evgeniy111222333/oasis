@@ -19,6 +19,8 @@ import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import ua.rp.chat.HeavyHammerHolsterLayout;
 import ua.rp.chat.HeavyHammerProceduralMotion;
+import ua.rp.chat.BreathingTorsoLayout;
+import ua.rp.chat.client.render.BreathingPoseState;
 
 /** Рисует один экземпляр молота во всём цикле: подвес, передача и рабочий хват. */
 public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderState, PlayerModel> {
@@ -54,7 +56,7 @@ public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderS
 
         if (holsterEquipped) {
             submitHolster(player, poseStack, collector, light, state.outlineColor,
-                    visual == null ? 1.0f : visual.carry().latchClosed());
+                    visual == null ? 1.0f : visual.carry().latchClosed(), state);
         }
         if (visual == null) return;
         if (!holsterEquipped && !HeavyHammerClientState.isHolding(player.getMainHandItem())) return;
@@ -83,7 +85,7 @@ public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderS
     }
 
     private void submitHolster(Player player, PoseStack poseStack, SubmitNodeCollector collector,
-                               int light, int outline, float latchClosed) {
+                               int light, int outline, float latchClosed, AvatarRenderState state) {
         // ItemStack нельзя создавать при загрузке класса: в этот момент Minecraft
         // ещё не привязал компоненты реестра. Первый submit выполняется уже после
         // полной инициализации клиента и является безопасной точкой.
@@ -103,6 +105,47 @@ public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderS
             return;
         }
         model.body.translateAndRotate(poseStack);
+
+        // Apply Left-Shoulder Pivot Yaw Compensation to prevent thigh clipping
+        float yaw = model.body.yRot;
+        float xShoulder = 2.0f / 16.0f; // left shoulder pivot
+        poseStack.translate(xShoulder, 0.0f, 0.0f);
+        poseStack.mulPose(new Quaternionf().rotationY(-0.45f * yaw));
+        poseStack.translate(-xShoulder, 0.0f, 0.0f);
+
+        // Apply Dynamic Breathing and Jacket scaling to prevent chest/back clipping
+        BreathingPoseState.Sample breath = BreathingPoseState.sample(state);
+        float calm = breath.calm();
+        boolean firstPerson = breath.firstPerson();
+        var respiration = breath.respiration();
+
+        float grow = state.showJacket ? BreathingTorsoLayout.OUTER_LAYER_GROW : 0.0f;
+
+        // Calculate breathing expansion at Y = 6.0 (middle of the torso)
+        float height01 = 0.5f;
+        float regionalBreath = BreathingTorsoLayout.regionalBreath(respiration.phase(), height01);
+        float amplitude = BreathingTorsoLayout.amplitude(respiration.intensity(), calm, firstPerson);
+        float weighted = amplitude * BreathingTorsoLayout.profile(3) * regionalBreath; // profile at ring 3 is 0.78f
+
+        float side = weighted * 0.72f;
+        float front = weighted;
+        float back = weighted * (0.62f + height01 * 0.18f);
+
+        float baseWidth = 8.0f + 2.0f * grow;
+        float baseDepth = 4.0f + 2.0f * grow;
+
+        float dynamicWidth = baseWidth + 2.0f * side;
+        float dynamicDepth = baseDepth + front + back;
+
+        // Holster model is designed for jacket thickness (grow = 0.25)
+        float refWidth = 8.0f + 2.0f * BreathingTorsoLayout.OUTER_LAYER_GROW; // 8.5f
+        float refDepth = 4.0f + 2.0f * BreathingTorsoLayout.OUTER_LAYER_GROW; // 4.5f
+
+        float scaleX = dynamicWidth / refWidth;
+        float scaleZ = dynamicDepth / refDepth;
+
+        poseStack.scale(scaleX, 1.0f, scaleZ);
+
         HeavyHammerHolsterLayout.Point attachment = HeavyHammerHolsterLayout.bodyAttachment(latchClosed);
         poseStack.translate(attachment.x() / 16.0f, attachment.y() / 16.0f, attachment.z() / 16.0f);
         holster.submit(poseStack, collector, light, 0, outline);
