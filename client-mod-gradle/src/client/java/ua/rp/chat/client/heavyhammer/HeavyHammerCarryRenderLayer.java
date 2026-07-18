@@ -21,6 +21,7 @@ import ua.rp.chat.HeavyHammerHolsterLayout;
 import ua.rp.chat.HeavyHammerProceduralMotion;
 import ua.rp.chat.BreathingTorsoLayout;
 import ua.rp.chat.client.render.BreathingPoseState;
+import ua.rp.chat.HeavyHammerCarryMachine;
 
 /** Рисует один экземпляр молота во всём цикле: подвес, передача и рабочий хват. */
 public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderState, PlayerModel> {
@@ -61,11 +62,12 @@ public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderS
         if (visual == null) return;
         if (!holsterEquipped && !HeavyHammerClientState.isHolding(player.getMainHandItem())) return;
         submitHammer(player, visual.hammer(), visual.frame(), poseStack, collector,
-                light, state.outlineColor);
+                light, state.outlineColor, state, visual.carry());
     }
 
     private void submitHammer(Player player, ItemStack stack, HeavyHammerProceduralMotion.Frame frame,
-                              PoseStack poseStack, SubmitNodeCollector collector, int light, int outline) {
+                              PoseStack poseStack, SubmitNodeCollector collector, int light, int outline,
+                              AvatarRenderState state, HeavyHammerCarryMachine.Sample carry) {
         ItemStackRenderState renderState = new ItemStackRenderState();
         itemModelResolver.updateForLiving(renderState, stack, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND, player);
         if (renderState.isEmpty()) return;
@@ -77,6 +79,53 @@ public final class HeavyHammerCarryRenderLayer extends RenderLayer<AvatarRenderS
         Quaternionf rotation = new Quaternionf().setFromNormalized(basis);
 
         poseStack.pushPose();
+
+        // If stowed (within the holster threshold), align with the body bone and match holster transformations
+        if (carry != null && carry.position() <= 0.18f) {
+            PlayerModel model = getParentModel();
+            if (model != null && model.body != null) {
+                model.body.translateAndRotate(poseStack);
+            }
+
+            // Apply Left-Shoulder Pivot Yaw Compensation to match holster
+            float yaw = model != null && model.body != null ? model.body.yRot : 0.0f;
+            float xShoulder = 2.0f / 16.0f; // left shoulder pivot
+            poseStack.translate(xShoulder, 0.0f, 0.0f);
+            poseStack.mulPose(new Quaternionf().rotationY(-0.45f * yaw));
+            poseStack.translate(-xShoulder, 0.0f, 0.0f);
+
+            // Apply Dynamic Breathing and Jacket scaling to match holster
+            BreathingPoseState.Sample breath = BreathingPoseState.sample(state);
+            float calm = breath.calm();
+            boolean firstPerson = breath.firstPerson();
+            var respiration = breath.respiration();
+
+            float grow = state.showJacket ? BreathingTorsoLayout.OUTER_LAYER_GROW : 0.0f;
+
+            float height01 = 0.5f;
+            float regionalBreath = BreathingTorsoLayout.regionalBreath(respiration.phase(), height01);
+            float amplitude = BreathingTorsoLayout.amplitude(respiration.intensity(), calm, firstPerson);
+            float weighted = amplitude * BreathingTorsoLayout.profile(3) * regionalBreath;
+
+            float side = weighted * 0.72f;
+            float front = weighted;
+            float back = weighted * (0.62f + height01 * 0.18f);
+
+            float baseWidth = 8.0f + 2.0f * grow;
+            float baseDepth = 4.0f + 2.0f * grow;
+
+            float dynamicWidth = baseWidth + 2.0f * side;
+            float dynamicDepth = baseDepth + front + back;
+
+            float refWidth = 8.0f + 2.0f * BreathingTorsoLayout.OUTER_LAYER_GROW;
+            float refDepth = 4.0f + 2.0f * BreathingTorsoLayout.OUTER_LAYER_GROW;
+
+            float scaleX = dynamicWidth / refWidth;
+            float scaleZ = dynamicDepth / refDepth;
+
+            poseStack.scale(scaleX, 1.0f, scaleZ);
+        }
+
         poseStack.translate(frame.mainGrip().x() / 16.0f,
                 frame.mainGrip().y() / 16.0f, frame.mainGrip().z() / 16.0f);
         poseStack.mulPose(rotation);

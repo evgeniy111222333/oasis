@@ -14,10 +14,10 @@ public final class HeavyHammerHolsterLayoutTest {
         require(Math.abs(shaft.dot(head)) < 0.0001f, "Оси древка и бойка должны быть ортогональны");
         require(close(distance(grip, seat), HeavyHammerHolsterLayout.MAIN_GRIP_TO_SOCKET, 0.001f),
                 "Втулка молота обязана точно попадать на дно капелы");
-        require(seat.x() < -4.4f && seat.x() > -4.7f,
+        require(grip.x() < -4.4f && grip.x() > -4.7f,
                 "Петля должна находиться у правого бедра, а не на центре спины");
-        require(grip.y() > 22.0f && grip.y() < 24.5f,
-                "Конец длинного древка должен висеть у ноги, не проваливаясь под землю");
+        require(seat.y() < -8.5f && seat.y() > -9.5f,
+                "Боёк должен находиться у плеча, не проваливаясь под землю");
 
         require(close(openAttachment.x(), HeavyHammerHolsterLayout.ROOT_X, 0.0001f)
                         && close(openAttachment.y(), HeavyHammerHolsterLayout.ROOT_Y, 0.0001f),

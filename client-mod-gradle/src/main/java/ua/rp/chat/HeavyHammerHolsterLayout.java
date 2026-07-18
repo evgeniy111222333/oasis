@@ -34,9 +34,9 @@ public final class HeavyHammerHolsterLayout {
 
     /** Положение нижней грани втулки после fixed-поворота модели на 180 градусов. */
     public static Point socketSeat() {
-        float x = ROOT_X - (FROG_AXIS_X - MODEL_CENTER) * FIXED_SCALE;
-        float y = ROOT_Y + (MODEL_CENTER - HAMMER_SEAT_Y) * FIXED_SCALE;
-        return new Point(x, y, ROOT_Z);
+        Point grip = mainGrip();
+        Point shaft = shaftAxis();
+        return grip.add(shaft.scale(MAIN_GRIP_TO_SOCKET));
     }
 
     /** Ось древка от нижнего хвата к бойку в координатах модели игрока. */
@@ -52,9 +52,9 @@ public final class HeavyHammerHolsterLayout {
     }
 
     public static Point mainGrip() {
-        Point seat = socketSeat();
-        Point shaft = shaftAxis();
-        return seat.subtract(shaft.scale(MAIN_GRIP_TO_SOCKET));
+        float x = ROOT_X - (FROG_AXIS_X - MODEL_CENTER) * FIXED_SCALE;
+        float y = ROOT_Y + (MODEL_CENTER - HAMMER_SEAT_Y) * FIXED_SCALE;
+        return new Point(x, y, ROOT_Z);
     }
 
     public record Point(float x, float y, float z) {
@@ -64,6 +64,10 @@ public final class HeavyHammerHolsterLayout {
 
         public Point subtract(Point value) {
             return new Point(x - value.x, y - value.y, z - value.z);
+        }
+
+        public Point add(Point value) {
+            return new Point(x + value.x, y + value.y, z + value.z);
         }
 
         public float dot(Point value) {
