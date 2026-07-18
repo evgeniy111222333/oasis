@@ -83,14 +83,20 @@ public final class MicrovoxelClientRenderer {
         for (RenderPass pass : RenderPass.values()) drawCalls.put(pass, new ArrayList<>());
 
         int scheduled = 0;
+        BlockPos lastPos = null;
+        boolean lastPosValid = false;
         outer:
         for (MicrovoxelClientState.ChunkBatch batch
                 : MicrovoxelClientState.batchesNear(camera.x, camera.z, RENDER_DISTANCE)) {
             for (MicrovoxelClientState.ChunkFace chunkFace : batch.faces()) {
                 BlockPos position = chunkFace.position();
-                BlockState marker = minecraft.level.getBlockState(position);
-                if (!marker.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID)
-                        && !marker.is(net.minecraft.world.level.block.Blocks.LIGHT)) {
+                if (lastPos == null || !lastPos.equals(position)) {
+                    lastPos = position;
+                    BlockState marker = minecraft.level.getBlockState(position);
+                    lastPosValid = marker.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID)
+                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT);
+                }
+                if (!lastPosValid) {
                     continue;
                 }
                 double dx = position.getX() + 0.5 - camera.x;
@@ -206,8 +212,20 @@ public final class MicrovoxelClientRenderer {
     private static FaceMaterial faceMaterial(Minecraft minecraft, String materialName,
                                              MicrovoxelGreedyMesher.Direction face, BlockPos position) {
         MaterialModel material = MATERIALS.computeIfAbsent(materialName, name -> resolveMaterial(minecraft, name));
+        FaceMaterial staticMaterial = material.staticFaceMaterials.get(face);
+        if (staticMaterial != null) return staticMaterial;
+
         List<FaceLayer> templates = material.faces.computeIfAbsent(face,
                 direction -> resolveFaceLayers(minecraft, material.state, direction));
+        
+        boolean hasTint = false;
+        for (FaceLayer template : templates) {
+            if (template.tintIndex >= 0) {
+                hasTint = true;
+                break;
+            }
+        }
+        
         List<ResolvedLayer> layers = new ArrayList<>(templates.size());
         for (FaceLayer template : templates) {
             int color = 0xFFFFFFFF;
@@ -221,12 +239,18 @@ public final class MicrovoxelClientRenderer {
             layers.add(new ResolvedLayer(template.uv, template.renderType, color, emission,
                     template.pass(emission)));
         }
-        return new FaceMaterial(List.copyOf(layers));
+        FaceMaterial faceMat = new FaceMaterial(List.copyOf(layers));
+        if (!hasTint) {
+            material.staticFaceMaterials.put(face, faceMat);
+        }
+        return faceMat;
     }
 
     private static MaterialModel resolveMaterial(Minecraft minecraft, String value) {
         BlockState state = parseBlockState(value);
-        return new MaterialModel(state, new EnumMap<>(MicrovoxelGreedyMesher.Direction.class));
+        return new MaterialModel(state,
+                new EnumMap<>(MicrovoxelGreedyMesher.Direction.class),
+                new EnumMap<>(MicrovoxelGreedyMesher.Direction.class));
     }
 
     /**
@@ -340,10 +364,12 @@ public final class MicrovoxelClientRenderer {
     }
 
 
+    private static final ThreadLocal<int[]> COLOR_BUFFER = ThreadLocal.withInitial(() -> new int[4]);
+
     /** Per-vertex ambient occlusion sampled from the actual neighbouring microvolume topology. */
     private static int[] ambientColors(BlockPos base, MicrovoxelGreedyMesher.Face face,
                                        Vertex[] vertices, int color) {
-        int[] result = new int[4];
+        int[] result = COLOR_BUFFER.get();
         for (int index = 0; index < vertices.length; index++) {
             Vertex vertex = vertices[index];
             int occlusion = cornerOcclusion(base, face.direction(), vertex);
@@ -428,7 +454,8 @@ public final class MicrovoxelClientRenderer {
     private enum RenderPass { OPAQUE, CUTOUT, TRANSLUCENT, EMISSIVE }
 
     private record MaterialModel(BlockState state,
-                                 EnumMap<MicrovoxelGreedyMesher.Direction, List<FaceLayer>> faces) {
+                                 EnumMap<MicrovoxelGreedyMesher.Direction, List<FaceLayer>> faces,
+                                 EnumMap<MicrovoxelGreedyMesher.Direction, FaceMaterial> staticFaceMaterials) {
     }
 
     private record FaceMaterial(List<ResolvedLayer> layers) {

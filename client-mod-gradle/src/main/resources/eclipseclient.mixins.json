@@ -27,7 +27,8 @@
     "ItemEntityRendererMixin",
     "InventoryScreenMixin",
     "AvatarRenderStateMixin",
-    "MultiPlayerGameModeMixin"
+    "MultiPlayerGameModeMixin",
+    "ItemStackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

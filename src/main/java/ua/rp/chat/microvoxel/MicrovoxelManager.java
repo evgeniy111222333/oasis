@@ -35,7 +35,9 @@ import ua.rp.chat.RPChat;
 import ua.rp.chat.heavyhammer.HeavyHammerImpact;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,6 +65,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private final Map<UUID, PlayerSyncPosition> syncPositions = new HashMap<>();
     private final Map<UUID, Map<MicrovoxelKey, Integer>> syncedRevisions = new HashMap<>();
     private final Map<UUID, RateWindow> actionRates = new HashMap<>();
+    private final Map<UUID, Long> miningStartTimes = new HashMap<>();
     private boolean saveScheduled;
     private boolean storageAvailable = true;
 
@@ -537,6 +540,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         syncPositions.remove(event.getPlayer().getUniqueId());
         syncedRevisions.remove(event.getPlayer().getUniqueId());
         actionRates.remove(event.getPlayer().getUniqueId());
+        miningStartTimes.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -545,11 +549,175 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         if (store.get(key) != null) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void protectMarker(BlockBreakEvent event) {
-        MicrovoxelKey key = key(event.getBlock());
-        if (store.get(key) != null) event.setCancelled(true);
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onBlockDamage(org.bukkit.event.block.BlockDamageEvent event) {
+        Block block = event.getBlock();
+        MicrovoxelKey key = key(block);
+        MicrovoxelVolume volume = store.get(key);
+        if (volume == null) return;
+        
+        miningStartTimes.put(event.getPlayer().getUniqueId(), System.currentTimeMillis());
     }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        MicrovoxelKey key = key(block);
+        MicrovoxelVolume volume = store.get(key);
+        if (volume == null) return;
+
+        Player player = event.getPlayer();
+        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
+            Long startTime = miningStartTimes.get(player.getUniqueId());
+            if (startTime == null) {
+                event.setCancelled(true);
+                return;
+            }
+            
+            Material baseMaterial = Material.STONE;
+            String matStr = firstMaterial(volume);
+            if (matStr != null) {
+                try {
+                    baseMaterial = Bukkit.createBlockData(matStr).getMaterial();
+                } catch (Exception ignored) {}
+            }
+            
+            double requiredTime = getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
+            double elapsed = System.currentTimeMillis() - startTime;
+            if (elapsed < requiredTime - 150) { // 150ms network latency tolerance
+                event.setCancelled(true);
+                return;
+            }
+        }
+        
+        miningStartTimes.remove(player.getUniqueId());
+
+        // Cancel default block drops
+        event.setDropItems(false);
+
+        // Remove from database and notify clients
+        store.remove(key);
+        broadcastRemove(key);
+        markDirty();
+
+        // Determine drop material from palette
+        Material dropMaterial = Material.STRUCTURE_VOID;
+        String matStr = firstMaterial(volume);
+        if (matStr != null) {
+            try {
+                dropMaterial = Bukkit.createBlockData(matStr).getMaterial();
+            } catch (Exception ignored) {}
+        }
+
+        ItemStack dropItem = new ItemStack(dropMaterial);
+        org.bukkit.inventory.meta.ItemMeta meta = dropItem.getItemMeta();
+        if (meta != null) {
+            
+            List<Component> lore = new ArrayList<>();
+            boolean isWood = dropMaterial.name().contains("LOG") || dropMaterial.name().contains("PLANKS") || dropMaterial.name().contains("WOOD");
+            boolean isStone = dropMaterial.name().contains("STONE") || dropMaterial.name().contains("DEEPSLATE") || dropMaterial.name().contains("TUFF") || dropMaterial.name().contains("BRICK");
+            
+            if (isWood) {
+                lore.add(Component.text("«Тонкая столярная работа»")
+                        .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, true)
+                        .color(net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            } else if (isStone) {
+                lore.add(Component.text("«Искусная каменная кладка»")
+                        .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, true)
+                        .color(net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            } else {
+                lore.add(Component.text("«Мастерски вырезанное изделие»")
+                        .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, true)
+                        .color(net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            }
+            
+            int count = MicrovoxelVolume.CELL_COUNT - volume.occupiedCount();
+            int starsCount = 1;
+            if (count <= 100) starsCount = 1;
+            else if (count <= 500) starsCount = 2;
+            else if (count <= 1200) starsCount = 3;
+            else if (count <= 2500) starsCount = 4;
+            else starsCount = 5;
+            
+            lore.add(Component.text("Сложность работы: ")
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
+                    .color(net.kyori.adventure.text.format.NamedTextColor.GRAY)
+                    .append(Component.text("★".repeat(starsCount)).color(net.kyori.adventure.text.format.NamedTextColor.GOLD))
+                    .append(Component.text("★".repeat(5 - starsCount)).color(net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY)));
+            
+            meta.lore(lore);
+
+            org.bukkit.persistence.PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            org.bukkit.NamespacedKey nbtKey = new org.bukkit.NamespacedKey(plugin, "microvoxel_volume");
+            try {
+                pdc.set(nbtKey, org.bukkit.persistence.PersistentDataType.BYTE_ARRAY, serializeVolume(volume));
+            } catch (IOException e) {
+                plugin.getLogger().severe("Failed to serialize volume on break: " + e.getMessage());
+            }
+            dropItem.setItemMeta(meta);
+        }
+
+        Location dropLoc = block.getLocation().add(0.5, 0.5, 0.5);
+        block.getWorld().dropItemNaturally(dropLoc, dropItem);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        ItemStack item = event.getItemInHand();
+        if (item == null || !item.hasItemMeta()) return;
+        
+        org.bukkit.persistence.PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+        org.bukkit.NamespacedKey nbtKey = new org.bukkit.NamespacedKey(plugin, "microvoxel_volume");
+        byte[] bytes = pdc.get(nbtKey, org.bukkit.persistence.PersistentDataType.BYTE_ARRAY);
+        if (bytes == null) return;
+
+        Block placed = event.getBlockPlaced();
+        MicrovoxelKey key = key(placed);
+        try {
+            MicrovoxelVolume volume = deserializeVolume(bytes);
+            // Reset revision to 1 on place
+            MicrovoxelVolume copy = MicrovoxelVolume.restore(1, volume.palette(), volume.cellsCopy());
+            store.put(key, copy);
+            updateMarker(key, copy);
+            broadcastUpsert(key, copy);
+            markDirty();
+        } catch (IOException e) {
+            plugin.getLogger().severe("Failed to deserialize volume on place: " + e.getMessage());
+        }
+    }
+
+    private byte[] serializeVolume(MicrovoxelVolume volume) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream dos = new DataOutputStream(bos)) {
+            dos.writeInt(volume.revision());
+            dos.writeByte(volume.palette().size());
+            for (String material : volume.palette()) {
+                byte[] utf8 = material.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                dos.writeShort(utf8.length);
+                dos.write(utf8);
+            }
+            dos.write(volume.cellsCopy());
+        }
+        return bos.toByteArray();
+    }
+
+    private MicrovoxelVolume deserializeVolume(byte[] bytes) throws IOException {
+        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+        try (DataInputStream dis = new DataInputStream(bis)) {
+            int revision = dis.readInt();
+            int paletteSize = dis.readUnsignedByte();
+            List<String> palette = new ArrayList<>(paletteSize);
+            for (int i = 0; i < paletteSize; i++) {
+                int length = dis.readUnsignedShort();
+                byte[] utf8 = dis.readNBytes(length);
+                palette.add(new String(utf8, java.nio.charset.StandardCharsets.UTF_8));
+            }
+            byte[] cells = dis.readNBytes(MicrovoxelVolume.CELL_COUNT);
+            return MicrovoxelVolume.restore(revision, palette, cells);
+        }
+    }
+
+
 
     /**
      * An ordinary block shares a plane with an adjacent microvoxel volume.  The client correctly
@@ -938,6 +1106,28 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             if (volume.occupied(cell)) return volume.material(cell);
         }
         return null;
+    }
+
+    private double getRequiredBreakTimeMs(Material blockMat, org.bukkit.inventory.ItemStack tool) {
+        boolean isWood = blockMat.name().contains("LOG") || blockMat.name().contains("PLANKS") || blockMat.name().contains("WOOD");
+        boolean isStone = blockMat.name().contains("STONE") || blockMat.name().contains("DEEPSLATE") || blockMat.name().contains("TUFF") || blockMat.name().contains("BRICK");
+        
+        if (isWood) {
+            boolean hasAxe = tool != null && tool.getType().name().contains("AXE");
+            if (hasAxe) {
+                return 200; // safe threshold for tools
+            } else {
+                return 2000; // 2s for hand
+            }
+        } else if (isStone) {
+            boolean hasPickaxe = tool != null && tool.getType().name().contains("PICKAXE");
+            if (hasPickaxe) {
+                return 200; // safe threshold for tools
+            } else {
+                return 4000; // 4s for hand
+            }
+        }
+        return 100; // default fallback
     }
 
     @Override

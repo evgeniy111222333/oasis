@@ -4,5 +4,6 @@
   "key.eclipseclient.microvoxel_convert": "Преобразовать блок в микровоксели",
   "key.eclipseclient.body_status": "Состояние персонажа",
   "key.eclipseclient.hammer_render_qa": "QA-рендер тяжёлого молота",
-  "item.eclipseclient.heavy_hammer_holster": "Кожаная портупея тяжёлого молота"
+  "item.eclipseclient.heavy_hammer_holster": "Кожаная портупея тяжёлого молота",
+  "item.eclipseclient.microvoxel_carved_prefix": "Резной "
 }

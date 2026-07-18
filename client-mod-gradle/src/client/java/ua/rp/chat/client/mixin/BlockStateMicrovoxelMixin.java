@@ -57,6 +57,27 @@ public abstract class BlockStateMicrovoxelMixin {
         eclipse$replaceShape("support", position, cir);
     }
 
+    @Inject(method = "getDestroyProgress(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelDestroyProgress(net.minecraft.world.entity.player.Player player, net.minecraft.world.level.BlockGetter level, BlockPos pos,
+                                                 CallbackInfoReturnable<Float> cir) {
+        if (!eclipse$isMicrovoxelMarker()) return;
+        BlockState baseState = MicrovoxelClientState.getBaseBlockState(pos);
+        System.out.println("[MICROVOXEL-DEBUG-MINING] pos=" + pos + " baseState=" + baseState);
+        if (baseState != null) {
+            cir.setReturnValue(baseState.getDestroyProgress(player, level, pos));
+        }
+    }
+
+    @Inject(method = "getFaceOcclusionShape(Lnet/minecraft/core/Direction;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelFaceOcclusion(net.minecraft.core.Direction direction,
+                                                 CallbackInfoReturnable<VoxelShape> cir) {
+        if (eclipse$isMicrovoxelMarker()) {
+            cir.setReturnValue(net.minecraft.world.phys.shapes.Shapes.empty());
+        }
+    }
+
     private void eclipse$replaceShape(String hook, BlockPos position, CallbackInfoReturnable<VoxelShape> cir) {
         if (!eclipse$isMicrovoxelMarker()) return;
         VoxelShape shape = MicrovoxelClientState.collisionShape(position);

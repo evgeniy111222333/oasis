@@ -95,6 +95,7 @@ public final class MicrovoxelClientState {
                 return;
             }
             if (type != UPSERT) return;
+            long tStart = System.nanoTime();
             BlockPos position = readPosition(input);
             int revision = input.readInt();
             int paletteSize = input.readUnsignedByte();
@@ -103,6 +104,7 @@ public final class MicrovoxelClientState {
             for (int index = 0; index < paletteSize; index++) palette.add(readUtf8(input));
             byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
             int encoding = input.readUnsignedByte();
+            long tDecodeStart = System.nanoTime();
             if (encoding == 0) {
                 if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
             } else if (encoding == 1) {
@@ -119,23 +121,47 @@ public final class MicrovoxelClientState {
             } else {
                 throw new IOException("Unknown cell encoding");
             }
+            long tDecodeEnd = System.nanoTime();
             if (input.available() != 0) throw new IOException("Trailing microvoxel payload bytes");
             MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
             BlockPos immutable = position.immutable();
             if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
             
-            CachedVolume cachedVolume = new CachedVolume(volume);
             CachedVolume oldCached = VOLUMES.get(immutable);
+            VoxelShape fallback = (oldCached != null) ? oldCached.getShape() : null;
+            CachedVolume cachedVolume = new CachedVolume(immutable, volume, fallback);
             if (oldCached != null) {
                 cachedVolume.mesh = oldCached.mesh;
             }
             VOLUMES.put(immutable, cachedVolume);
             
+            long tRebuildStart = System.nanoTime();
             rebuild(immutable);
-            queueRebuild(immutable);
-            scheduleBoundaryRebuild(immutable);
-            EclipseClientMod.LOGGER.info("[MICROVOXEL] SYNC_UPSERT pos=" + immutable.toShortString()
-                    + " revision=" + revision + " palette=" + paletteSize);
+            long tRebuildEnd = System.nanoTime();
+            
+            long tQueueStart = System.nanoTime();
+            boolean touchBoundary = (oldCached == null || changesTouchBoundary(oldCached.volume, volume));
+            if (touchBoundary) {
+                queueNeighborsRebuild(immutable);
+                scheduleBoundaryRebuild(immutable);
+            }
+            long tQueueEnd = System.nanoTime();
+            
+            long tTotal = System.nanoTime() - tStart;
+            double decodeUs = (tDecodeEnd - tDecodeStart) / 1000.0;
+            double rebuildUs = (tRebuildEnd - tRebuildStart) / 1000.0;
+            double queueUs = (tQueueEnd - tQueueStart) / 1000.0;
+            double totalUs = tTotal / 1000.0;
+            
+            EclipseClientMod.LOGGER.info("[MICROVOXEL-PERF] SYNC_UPSERT pos={} | Total: {}us (Decode: {}us, Rebuild: {}us, Queue: {}us) | Faces: {} | BoundaryTouch: {}",
+                    immutable.toShortString(),
+                    String.format("%.2f", totalUs),
+                    String.format("%.2f", decodeUs),
+                    String.format("%.2f", rebuildUs),
+                    String.format("%.2f", queueUs),
+                    cachedVolume.mesh.size(),
+                    touchBoundary
+            );
         } catch (IOException | RuntimeException error) {
             EclipseClientMod.LOGGER.warn("[MICROVOXEL] Rejected sync payload: " + error.getMessage());
         }
@@ -147,7 +173,7 @@ public final class MicrovoxelClientState {
 
     public static VoxelShape collisionShape(BlockPos position) {
         CachedVolume cached = VOLUMES.get(position);
-        return cached == null ? null : cached.shape;
+        return cached == null ? null : cached.getShape();
     }
 
     public static void probeShape(String hook, BlockPos position, VoxelShape shape) {
@@ -225,10 +251,56 @@ public final class MicrovoxelClientState {
     }
 
     private static void rebuild(BlockPos position) {
-        CachedVolume cached = VOLUMES.get(position);
-        if (cached == null) return;
-        cached.mesh = MicrovoxelGreedyMesher.build(cached.volume,
-                (x, y, z) -> meshingMaterialAt(position, x, y, z));
+        CachedVolume center = VOLUMES.get(position);
+        if (center == null) return;
+
+        CachedVolume downVol = VOLUMES.get(position.below());
+        CachedVolume upVol = VOLUMES.get(position.above());
+        CachedVolume northVol = VOLUMES.get(position.north());
+        CachedVolume southVol = VOLUMES.get(position.south());
+        CachedVolume westVol = VOLUMES.get(position.west());
+        CachedVolume eastVol = VOLUMES.get(position.east());
+
+        boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(position.below()).isSolidRender();
+        boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(position.above()).isSolidRender();
+        boolean northSolid = (northVol == null && activeLevel != null) && activeLevel.getBlockState(position.north()).isSolidRender();
+        boolean southSolid = (southVol == null && activeLevel != null) && activeLevel.getBlockState(position.south()).isSolidRender();
+        boolean westSolid = (westVol == null && activeLevel != null) && activeLevel.getBlockState(position.west()).isSolidRender();
+        boolean eastSolid = (eastVol == null && activeLevel != null) && activeLevel.getBlockState(position.east()).isSolidRender();
+
+        center.mesh = MicrovoxelGreedyMesher.build(center.volume, (x, y, z) -> {
+            if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16) {
+                return center.volume.materialAt(x, y, z);
+            }
+            int ox = Math.floorDiv(x, 16);
+            int oy = Math.floorDiv(y, 16);
+            int oz = Math.floorDiv(z, 16);
+            CachedVolume neighbourVol = null;
+            boolean neighbourSolid = false;
+            if (ox == -1) {
+                neighbourVol = westVol;
+                neighbourSolid = westSolid;
+            } else if (ox == 1) {
+                neighbourVol = eastVol;
+                neighbourSolid = eastSolid;
+            } else if (oy == -1) {
+                neighbourVol = downVol;
+                neighbourSolid = downSolid;
+            } else if (oy == 1) {
+                neighbourVol = upVol;
+                neighbourSolid = upSolid;
+            } else if (oz == -1) {
+                neighbourVol = northVol;
+                neighbourSolid = northSolid;
+            } else if (oz == 1) {
+                neighbourVol = southVol;
+                neighbourSolid = southSolid;
+            }
+            if (neighbourVol != null) {
+                return neighbourVol.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16));
+            }
+            return neighbourSolid ? 1 : 0;
+        });
         queueChunkBatch(position);
     }
 
@@ -237,34 +309,46 @@ public final class MicrovoxelClientState {
         return materialAt(base, x, y, z) != 0;
     }
 
+    private static final ThreadLocal<BlockPos.MutableBlockPos> SCRATCH_POS =
+            ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+
     private static int materialAt(BlockPos base, int x, int y, int z) {
         int offsetX = Math.floorDiv(x, 16);
         int offsetY = Math.floorDiv(y, 16);
         int offsetZ = Math.floorDiv(z, 16);
-        CachedVolume cached = VOLUMES.get(base.offset(offsetX, offsetY, offsetZ));
-        if (cached == null) return 0;
-        return cached.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16));
+        if (offsetX == 0 && offsetY == 0 && offsetZ == 0) {
+            CachedVolume cached = VOLUMES.get(base);
+            return cached != null ? cached.volume.materialAt(x, y, z) : 0;
+        }
+        BlockPos.MutableBlockPos scratch = SCRATCH_POS.get();
+        scratch.set(base.getX() + offsetX, base.getY() + offsetY, base.getZ() + offsetZ);
+        CachedVolume cached = VOLUMES.get(scratch);
+        return cached != null ? cached.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16)) : 0;
     }
 
-    /**
-     * A generated face must not sit directly on the identical face of a neighbouring ordinary
-     * full block.  That coplanar pair causes depth-buffer fighting (the familiar black flicker
-     * at the outer microvoxel border).  Neighbouring microvolumes retain their exact 1/16 data;
-     * only an unconverted solid block suppresses the shared outside face.
-     */
-    private static int meshingMaterialAt(BlockPos base, int x, int y, int z) {
-        int material = materialAt(base, x, y, z);
-        if (material != 0 || MicrovoxelVolume.inside(x, y, z)) return material;
-        int offsetX = Math.floorDiv(x, 16);
-        int offsetY = Math.floorDiv(y, 16);
-        int offsetZ = Math.floorDiv(z, 16);
-        BlockPos neighbour = base.offset(offsetX, offsetY, offsetZ);
-        if (VOLUMES.containsKey(neighbour) || activeLevel == null) return 0;
-        return activeLevel.getBlockState(neighbour).isSolidRender() ? 1 : 0;
+    private static boolean changesTouchBoundary(MicrovoxelVolume oldVolume, MicrovoxelVolume newVolume) {
+        if (oldVolume == null) return true;
+        byte[] oldCells = oldVolume.cellsCopy();
+        byte[] newCells = newVolume.cellsCopy();
+        for (int i = 0; i < oldCells.length; i++) {
+            if (oldCells[i] != newCells[i]) {
+                int cx = MicrovoxelVolume.x(i);
+                int cy = MicrovoxelVolume.y(i);
+                int cz = MicrovoxelVolume.z(i);
+                if (cx == 0 || cx == 15 || cy == 0 || cy == 15 || cz == 0 || cz == 15) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void queueRebuild(BlockPos position) {
         MESH_QUEUE.add(position.immutable());
+        queueNeighborsRebuild(position);
+    }
+
+    private static void queueNeighborsRebuild(BlockPos position) {
         MESH_QUEUE.add(position.offset(1, 0, 0));
         MESH_QUEUE.add(position.offset(-1, 0, 0));
         MESH_QUEUE.add(position.offset(0, 1, 0));
@@ -362,8 +446,16 @@ public final class MicrovoxelClientState {
         return ((long) x << 32) ^ (z & 0xFFFFFFFFL);
     }
 
+    private static VoxelShape combineShapes(VoxelShape[] shapes, int start, int end) {
+        if (start >= end) return Shapes.empty();
+        if (start == end - 1) return shapes[start];
+        int mid = (start + end) / 2;
+        return Shapes.or(combineShapes(shapes, start, mid), combineShapes(shapes, mid, end));
+    }
+
     private static VoxelShape buildShape(MicrovoxelVolume volume) {
         List<MicrovoxelVolume.Cuboid> cuboids = volume.collisionCuboids();
+        if (cuboids.isEmpty()) return Shapes.empty();
         VoxelShape[] parts = new VoxelShape[cuboids.size()];
         for (int index = 0; index < cuboids.size(); index++) {
             MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
@@ -371,7 +463,7 @@ public final class MicrovoxelClientState {
                     cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
                     cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
         }
-        return Shapes.or(Shapes.empty(), parts).optimize();
+        return combineShapes(parts, 0, parts.length).optimize();
     }
 
     private static BlockPos readPosition(DataInputStream input) throws IOException {
@@ -385,14 +477,91 @@ public final class MicrovoxelClientState {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    public static final class CachedVolume {
-        public final MicrovoxelVolume volume;
-        public final VoxelShape shape;
-        public volatile List<MicrovoxelGreedyMesher.Face> mesh = List.of();
+    private static final java.util.concurrent.ExecutorService SHAPE_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "Microvoxel-Shape-Generator");
+                thread.setDaemon(true);
+                return thread;
+            });
 
-        private CachedVolume(MicrovoxelVolume volume) {
+    public static net.minecraft.world.level.block.state.BlockState getBaseBlockState(BlockPos pos) {
+        CachedVolume cached = VOLUMES.get(pos);
+        if (cached == null) return null;
+        return cached.getBaseBlockState();
+    }
+
+    public static final class CachedVolume {
+        public final BlockPos position;
+        public final MicrovoxelVolume volume;
+        private final VoxelShape fallback;
+        private volatile VoxelShape shape;
+        private volatile boolean shapeGenerating = false;
+        public volatile List<MicrovoxelGreedyMesher.Face> mesh = List.of();
+        private net.minecraft.world.level.block.state.BlockState baseBlockState;
+
+        private CachedVolume(BlockPos position, MicrovoxelVolume volume, VoxelShape fallback) {
+            this.position = position.immutable();
             this.volume = volume;
-            this.shape = buildShape(volume);
+            this.fallback = fallback;
+        }
+
+        public net.minecraft.world.level.block.state.BlockState getBaseBlockState() {
+            if (baseBlockState == null) {
+                String matStr = null;
+                for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
+                    if (volume.occupied(cell)) {
+                        matStr = volume.material(cell);
+                        break;
+                    }
+                }
+                if (matStr != null && !matStr.isEmpty()) {
+                    baseBlockState = parseBlockState(matStr);
+                } else {
+                    baseBlockState = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+                }
+            }
+            return baseBlockState;
+        }
+
+        private static net.minecraft.world.level.block.state.BlockState parseBlockState(String value) {
+            try {
+                int propertiesStart = value.indexOf('[');
+                String identifierText = propertiesStart < 0 ? value : value.substring(0, propertiesStart);
+                net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(
+                        net.minecraft.resources.Identifier.parse(identifierText));
+                return block.defaultBlockState();
+            } catch (RuntimeException error) {
+                return net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+            }
+        }
+
+        public VoxelShape getShape() {
+            VoxelShape s = shape;
+            if (s == null) {
+                triggerAsyncShapeGen();
+                return fallback != null ? fallback : Shapes.block();
+            }
+            return s;
+        }
+
+        private synchronized void triggerAsyncShapeGen() {
+            if (shapeGenerating || shape != null) return;
+            shapeGenerating = true;
+            SHAPE_EXECUTOR.submit(() -> {
+                try {
+                    long start = System.nanoTime();
+                    VoxelShape newShape = buildShape(volume);
+                    this.shape = newShape;
+                    long durationNs = System.nanoTime() - start;
+                    int cuboids = volume.collisionCuboids().size();
+                    EclipseClientMod.LOGGER.info("[MICROVOXEL-PERF] ASYNC_SHAPE_GEN pos={} | Duration: {}us | Cuboids: {}",
+                            position.toShortString(), String.format("%.2f", durationNs / 1000.0), cuboids);
+                } catch (Throwable t) {
+                    EclipseClientMod.LOGGER.error("Failed to generate async shape", t);
+                } finally {
+                    shapeGenerating = false;
+                }
+            });
         }
     }
 
