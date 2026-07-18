@@ -13,19 +13,19 @@
     "carry_walk"
   ],
   "mainGripY": 2.4,
-  "offhandGripY": 12.9,
+  "offhandGripY": 24.154385964912283,
   "runtimeGripY": 8.0,
-  "runtimeYScale": 0.6291390728476821,
+  "runtimeYScale": 0.6020546574459096,
   "runtimeMaxY": 31.75,
   "bounds": {
     "min": [
       -4.65,
-      0.0,
+      -5.056140350877193,
       4.35
     ],
     "max": [
       20.65,
-      40.15,
+      41.848245614035086,
       11.65
     ]
   },

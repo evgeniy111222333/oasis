@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -24,10 +26,12 @@ def read_json(path: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("full", "idle"), default="full")
+    parser.add_argument("--mode", choices=("full", "idle", "motion"), default="full")
     parser.add_argument("--root", type=Path, default=default_root())
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--no-wait", action="store_true")
+    parser.add_argument("--skip-inspect", action="store_true",
+                        help="Не запускать валидатор и contact-sheet после захвата")
     args = parser.parse_args()
 
     args.root.mkdir(parents=True, exist_ok=True)
@@ -53,6 +57,12 @@ def main() -> int:
                 return 2
             if latest.get("complete"):
                 print(f"HAMMER_QA_COMPLETE directory={latest['directory']} captured={latest.get('captured', 0)}")
+                if not args.skip_inspect:
+                    inspector = Path(__file__).with_name("inspect_hammer_render.py")
+                    result = subprocess.run([sys.executable, str(inspector), latest["directory"]])
+                    if result.returncode != 0:
+                        print("HAMMER_QA_INSPECTION_FAILED")
+                        return 4
                 return 0
         if (error.get("timestamp") and error.get("timestamp") != previous_error_timestamp
                 and not request_path.exists()):

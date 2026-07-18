@@ -11,6 +11,7 @@ public final class HeavyHammerProtocol {
     public static final int START = 1;
     public static final int IMPACT = 2;
     public static final int CANCEL = 3;
+    public static final int CARRY = 4;
 
     private HeavyHammerProtocol() {
     }
@@ -49,6 +50,16 @@ public final class HeavyHammerProtocol {
             output.writeByte(CANCEL);
             writeUuid(output, playerId);
             output.writeInt(sequence);
+        });
+    }
+
+    public static byte[] carry(UUID playerId, int revision, boolean present, boolean selected) {
+        return write(output -> {
+            output.writeByte(CARRY);
+            writeUuid(output, playerId);
+            output.writeInt(revision);
+            output.writeBoolean(present);
+            output.writeBoolean(selected);
         });
     }
 

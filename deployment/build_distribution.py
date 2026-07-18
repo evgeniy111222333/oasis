@@ -22,8 +22,8 @@ def digest(path: Path, algorithm: str) -> str:
     return hasher.hexdigest()
 
 
-def descriptor(path: Path, key: str, public_base_url: str) -> dict:
-    return {
+def descriptor(path: Path, key: str, public_base_url: str, *, cache_bust: bool = False) -> dict:
+    result = {
         "name": path.name,
         "path": key,
         "url": f"{public_base_url.rstrip('/')}/{key}",
@@ -31,6 +31,11 @@ def descriptor(path: Path, key: str, public_base_url: str) -> dict:
         "sha1": digest(path, "sha1"),
         "sha256": digest(path, "sha256"),
     }
+    # Имена управляемых файлов стабильны между релизами. Хеш в URL не даёт
+    # CDN вернуть предыдущий JAR из immutable-кеша после публикации обновления.
+    if cache_bust:
+        result["url"] = f'{result["url"]}?sha256={result["sha256"]}'
+    return result
 
 
 def build(repo: Path, output: Path, public_base_url: str) -> Path:
@@ -59,7 +64,9 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
     client_output = output / "client"
     launcher_output = output / "launcher" / "stable"
     manifests_output = output / "manifests"
-    shutil.copytree(client_source, client_output)
+    # Повторный запуск после прерванной сборки должен безопасно дописать staging,
+    # даже если Windows не успела удалить уже созданный каталог client.
+    shutil.copytree(client_source, client_output, dirs_exist_ok=True)
     launcher_output.mkdir(parents=True, exist_ok=True)
     manifests_output.mkdir(parents=True, exist_ok=True)
 
@@ -74,7 +81,12 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
         source = client_source / relative_path
         if not source.is_file():
             raise FileNotFoundError(f"Manifest references missing file: {source}")
-        current = descriptor(source, f"client/{relative_path}", public_base_url)
+        current = descriptor(
+            source,
+            f"client/{relative_path}",
+            public_base_url,
+            cache_bust=True,
+        )
         if entry.get("size") and current["size"] != int(entry["size"]):
             raise ValueError(f"Size mismatch in source manifest for {relative_path}")
         if entry.get("sha1") and current["sha1"] != str(entry["sha1"]).lower():
@@ -103,7 +115,12 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
     launcher["version"] = launcher_version
     launcher["productName"] = package["build"]["productName"]
 
-    profile = descriptor(profile_source, f"client/{profile_relative}", public_base_url)
+    profile = descriptor(
+        profile_source,
+        f"client/{profile_relative}",
+        public_base_url,
+        cache_bust=True,
+    )
     profile["path"] = profile_relative
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     release = json.loads(release_source.read_text(encoding="utf-8")) if release_source.exists() else {"published": False}

@@ -22,6 +22,8 @@
     "HumanoidArmorLayerMixin",
     "CustomHeadLayerMixin",
     "ItemInHandRendererMixin",
+    "ItemInHandLayerMixin",
+    "InventoryScreenMixin",
     "AvatarRenderStateMixin",
     "MultiPlayerGameModeMixin"
   ],

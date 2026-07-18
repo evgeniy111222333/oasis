@@ -63,6 +63,22 @@ async function main() {
             response.end(body);
             return;
         }
+        if (request.url.startsWith('/delayed-newer-manifest')) {
+            const body = Buffer.from(JSON.stringify(newest));
+            setTimeout(() => {
+                response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': body.length });
+                response.end(body);
+            }, 80);
+            return;
+        }
+        if (request.url.startsWith('/slow-older-manifest')) {
+            const body = Buffer.from(JSON.stringify(older));
+            setTimeout(() => {
+                response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': body.length });
+                response.end(body);
+            }, 180);
+            return;
+        }
         response.writeHead(404);
         response.end('missing');
     });
@@ -107,6 +123,28 @@ async function main() {
         });
         assert.strictEqual(raced.cached, false);
         assert(Date.now() - raceStarted < 700, 'A stalled mirror delayed a healthy mirror');
+
+        const mirrorRaceCachePath = path.join(root, 'mirror-race-cache.json');
+        const newestAcrossMirrors = await fetchDistributionManifest({
+            urls: [`${base}/older-manifest`, `${base}/delayed-newer-manifest`],
+            cachePath: mirrorRaceCachePath,
+            timeoutMs: 1000,
+            log
+        });
+        assert.strictEqual(newestAcrossMirrors.manifest.release.id, newest.release.id,
+            'A faster stale mirror replaced the newest production manifest');
+
+        const concurrentCachePath = path.join(root, 'concurrent-cache.json');
+        await Promise.all([
+            fetchDistributionManifest({
+                urls: [`${base}/newer-manifest`], cachePath: concurrentCachePath, timeoutMs: 1000, log
+            }),
+            fetchDistributionManifest({
+                urls: [`${base}/slow-older-manifest`], cachePath: concurrentCachePath, timeoutMs: 1000, log
+            })
+        ]);
+        assert.strictEqual(readManifestCache(concurrentCachePath).manifest.release.id, newest.release.id,
+            'A concurrent stale check overwrote a newer cache entry');
 
         const downgradeAttempt = await fetchDistributionManifest({
             urls: [`${base}/older-manifest`], cachePath, timeoutMs: 500, log

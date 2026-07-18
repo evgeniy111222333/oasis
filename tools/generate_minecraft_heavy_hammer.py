@@ -18,15 +18,22 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "art" / "heavy_hammer_minecraft"
 RUNTIME = ROOT / "client-mod-gradle" / "src" / "main" / "resources" / "assets" / "eclipseclient"
 SIZE = 128
+ITEM_SCALE = 0.57
 MAIN_GRIP_Y = 2.4
-OFFHAND_GRIP_Y = 12.9
+IDLE_GRIP_DISTANCE = 12.4
+MAIN_END_MARGIN = 4.25
+SOCKET_CLEARANCE = 2.5
+HEAD_MOUNT_DISTANCE = 14.2 + SOCKET_CLEARANCE
+OFFHAND_GRIP_Y = MAIN_GRIP_Y + IDLE_GRIP_DISTANCE / ITEM_SCALE
+HANDLE_BOTTOM_Y = MAIN_GRIP_Y - MAIN_END_MARGIN / ITEM_SCALE
+HEAD_SHIFT_Y = MAIN_GRIP_Y + HEAD_MOUNT_DISTANCE / ITEM_SCALE - 30.0
 RUNTIME_GRIP_Y = 8.0
 # Minecraft принимает координаты элементов только в пределах [-16, 32].
 # Исходная модель выше, поэтому координаты Y сжимаются вокруг нижнего хвата.
 # Масштабы отображения компенсируют сжатие: пропорции сохраняются, а хват
 # остаётся точно в центре ItemTransform [8, 8, 8].
 RUNTIME_MAX_Y = 31.75
-AUTHORED_MAX_Y = 40.15
+AUTHORED_MAX_Y = 40.15 + HEAD_SHIFT_Y
 RUNTIME_Y_SCALE = (RUNTIME_MAX_Y - RUNTIME_GRIP_Y) / (AUTHORED_MAX_Y - MAIN_GRIP_Y)
 
 REGIONS = {
@@ -58,17 +65,28 @@ def cubes() -> list[Cube]:
     # Простая ремонтопригодная конструкция из референса: длинное цельное древко,
     # прямоугольный кованый боёк, ступенчатые шейки и светлые рабочие торцы.
     return [
-        Cube("ash_haft", (7.0, 0.0, 7.0), (9.0, 34.0, 9.0), "wood", "handle"),
-        Cube("socket", (6.35, 30.0, 6.25), (9.65, 35.0, 9.75), "iron_dark", "head"),
-        Cube("head_core", (-0.5, 32.0, 4.65), (16.5, 39.0, 11.35), "iron", "head"),
-        Cube("left_neck", (-3.0, 32.5, 5.15), (-0.5, 38.5, 10.85), "iron_dark", "head"),
-        Cube("right_neck", (16.5, 32.5, 5.15), (19.0, 38.5, 10.85), "iron_dark", "head"),
-        Cube("left_cap", (-4.45, 31.75, 4.35), (-3.0, 39.25, 11.65), "iron_dark", "head"),
-        Cube("right_cap", (19.0, 31.75, 4.35), (20.45, 39.25, 11.65), "iron_dark", "head"),
-        Cube("left_striking_face", (-4.65, 32.45, 5.05), (-4.43, 38.55, 10.95), "face", "head"),
-        Cube("right_striking_face", (20.43, 32.45, 5.05), (20.65, 38.55, 10.95), "face", "head"),
-        Cube("wood_wedge", (5.85, 38.85, 6.55), (10.15, 39.85, 9.45), "wedge", "head"),
-        Cube("cross_wedge", (7.35, 39.68, 5.9), (8.65, 40.15, 10.1), "iron_dark", "head"),
+        Cube("ash_haft", (7.0, HANDLE_BOTTOM_Y, 7.0),
+             (9.0, 34.0 + HEAD_SHIFT_Y, 9.0), "wood", "handle"),
+        Cube("socket", (6.35, 30.0 + HEAD_SHIFT_Y, 6.25),
+             (9.65, 35.0 + HEAD_SHIFT_Y, 9.75), "iron_dark", "head"),
+        Cube("head_core", (-0.5, 32.0 + HEAD_SHIFT_Y, 4.65),
+             (16.5, 39.0 + HEAD_SHIFT_Y, 11.35), "iron", "head"),
+        Cube("left_neck", (-3.0, 32.5 + HEAD_SHIFT_Y, 5.15),
+             (-0.5, 38.5 + HEAD_SHIFT_Y, 10.85), "iron_dark", "head"),
+        Cube("right_neck", (16.5, 32.5 + HEAD_SHIFT_Y, 5.15),
+             (19.0, 38.5 + HEAD_SHIFT_Y, 10.85), "iron_dark", "head"),
+        Cube("left_cap", (-4.45, 31.75 + HEAD_SHIFT_Y, 4.35),
+             (-3.0, 39.25 + HEAD_SHIFT_Y, 11.65), "iron_dark", "head"),
+        Cube("right_cap", (19.0, 31.75 + HEAD_SHIFT_Y, 4.35),
+             (20.45, 39.25 + HEAD_SHIFT_Y, 11.65), "iron_dark", "head"),
+        Cube("left_striking_face", (-4.65, 32.45 + HEAD_SHIFT_Y, 5.05),
+             (-4.43, 38.55 + HEAD_SHIFT_Y, 10.95), "face", "head"),
+        Cube("right_striking_face", (20.43, 32.45 + HEAD_SHIFT_Y, 5.05),
+             (20.65, 38.55 + HEAD_SHIFT_Y, 10.95), "face", "head"),
+        Cube("wood_wedge", (5.85, 38.85 + HEAD_SHIFT_Y, 6.55),
+             (10.15, 39.85 + HEAD_SHIFT_Y, 9.45), "wedge", "head"),
+        Cube("cross_wedge", (7.35, 39.68 + HEAD_SHIFT_Y, 5.9),
+             (8.65, 40.15 + HEAD_SHIFT_Y, 10.1), "iron_dark", "head"),
     ]
 
 
@@ -194,7 +212,8 @@ def build_gltf(parts: list[Cube], texture_name: str) -> None:
         {"name": "Handle_Bone", "children": []}, {"name": "Head_Bone", "children": []},
         {"name": "Grip_Main"},
         {"name": "Grip_Offhand", "translation": [0, (OFFHAND_GRIP_Y - MAIN_GRIP_Y) / 16.0, 0]},
-        {"name": "Impact_Point", "translation": [-12.65 / 16.0, (26.5 - MAIN_GRIP_Y) / 16.0, 0]},
+        {"name": "Impact_Point", "translation":
+            [-12.65 / 16.0, (26.5 + HEAD_SHIFT_Y - MAIN_GRIP_Y) / 16.0, 0]},
     ]
 
     def add_accessor(array: np.ndarray, component: int, kind: str, target: int | None = None, bounds: bool = False) -> int:

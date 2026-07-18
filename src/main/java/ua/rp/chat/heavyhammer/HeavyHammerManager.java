@@ -14,6 +14,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
@@ -21,6 +22,7 @@ import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+import org.bukkit.scheduler.BukkitTask;
 import ua.rp.chat.RPChat;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
@@ -43,7 +45,12 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
     private final NamespacedKey recipeKey;
     private final Map<UUID, PendingStrike> strikes = new HashMap<>();
     private final Map<UUID, Long> cooldowns = new HashMap<>();
+    private final Map<UUID, CarryState> carryStates = new HashMap<>();
+    private final Map<UUID, Long> readyAt = new HashMap<>();
+    private BukkitTask carryTask;
     private int nextSequence = 1;
+    private int carryRevision = 1;
+    private int carryPoll;
 
     public HeavyHammerManager(RPChat plugin, MicrovoxelManager microvoxels) {
         this.plugin = plugin;
@@ -58,11 +65,16 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, HeavyHammerProtocol.SYNC_CHANNEL);
         if (plugin.getCommand("heavyhammer") != null) plugin.getCommand("heavyhammer").setExecutor(this);
         registerRecipe();
+        carryTask = Bukkit.getScheduler().runTaskTimer(plugin, this::pollCarryStates, 1L, 2L);
     }
 
     public void shutdown() {
         strikes.clear();
         cooldowns.clear();
+        carryStates.clear();
+        readyAt.clear();
+        if (carryTask != null) carryTask.cancel();
+        carryTask = null;
         Bukkit.removeRecipe(recipeKey);
     }
 
@@ -114,6 +126,11 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
         UUID id = player.getUniqueId();
         long now = System.currentTimeMillis();
         if (strikes.containsKey(id) || cooldowns.getOrDefault(id, 0L) > now) {
+            sendCancel(player, clientSequence);
+            return;
+        }
+        if (now < readyAt.getOrDefault(id, Long.MAX_VALUE)) {
+            player.sendActionBar(Component.text("Сначала надёжно возьмите тяжёлый молот обеими руками."));
             sendCancel(player, clientSequence);
             return;
         }
@@ -219,6 +236,58 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
         }
     }
 
+    private void pollCarryStates() {
+        carryPoll++;
+        boolean refresh = carryPoll % 20 == 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            boolean present = false;
+            for (ItemStack stack : player.getInventory().getContents()) {
+                if (isHeavyHammer(stack)) {
+                    present = true;
+                    break;
+                }
+            }
+            boolean selected = isHeavyHammer(player.getInventory().getItemInMainHand());
+            CarryState previous = carryStates.get(player.getUniqueId());
+            CarryState current = new CarryState(present, selected);
+            if (!current.equals(previous)) {
+                carryStates.put(player.getUniqueId(), current);
+                if (selected && (previous == null || !previous.selected())) {
+                    readyAt.put(player.getUniqueId(), System.currentTimeMillis() + 1500L);
+                } else if (!selected) {
+                    readyAt.remove(player.getUniqueId());
+                }
+                broadcast(player, HeavyHammerProtocol.carry(player.getUniqueId(), nextCarryRevision(),
+                        present, selected));
+            } else if (refresh) {
+                broadcast(player, HeavyHammerProtocol.carry(player.getUniqueId(), nextCarryRevision(),
+                        present, selected));
+            }
+        }
+    }
+
+    private int nextCarryRevision() {
+        int revision = carryRevision++;
+        if (carryRevision <= 0) carryRevision = 1;
+        return revision;
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        Player observer = event.getPlayer();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!observer.isOnline()) return;
+            for (Player source : observer.getWorld().getPlayers()) {
+                CarryState state = carryStates.get(source.getUniqueId());
+                if (state != null && observer.getLocation().distanceSquared(source.getLocation()) <= 96.0 * 96.0) {
+                    observer.sendPluginMessage(plugin, HeavyHammerProtocol.SYNC_CHANNEL,
+                            HeavyHammerProtocol.carry(source.getUniqueId(), nextCarryRevision(),
+                                    state.present(), state.selected()));
+                }
+            }
+        }, 10L);
+    }
+
     private void registerRecipe() {
         Bukkit.removeRecipe(recipeKey);
         ShapedRecipe recipe = new ShapedRecipe(recipeKey, createItem());
@@ -232,6 +301,8 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
     public void onQuit(PlayerQuitEvent event) {
         strikes.remove(event.getPlayer().getUniqueId());
         cooldowns.remove(event.getPlayer().getUniqueId());
+        carryStates.remove(event.getPlayer().getUniqueId());
+        readyAt.remove(event.getPlayer().getUniqueId());
     }
 
     @Override
@@ -260,5 +331,8 @@ public final class HeavyHammerManager implements Listener, PluginMessageListener
     }
 
     private record TargetPoint(double x, double y, double z) {
+    }
+
+    private record CarryState(boolean present, boolean selected) {
     }
 }

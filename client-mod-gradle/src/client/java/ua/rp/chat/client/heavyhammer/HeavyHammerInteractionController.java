@@ -25,14 +25,23 @@ public final class HeavyHammerInteractionController {
     }
 
     public static boolean handleAttack(Minecraft minecraft) {
-        if (minecraft.player == null || !HeavyHammerClientState.isHolding(minecraft.player.getMainHandItem())
-                || currentHit == null) return false;
+        if (minecraft.player == null || !HeavyHammerClientState.isHolding(minecraft.player.getMainHandItem())) {
+            return false;
+        }
         if (!minecraft.player.getOffhandItem().isEmpty()) {
             minecraft.gui.setOverlayMessage(Component.literal(
                     "Для тяжёлого молота нужно освободить вторую руку."), false);
             return true;
         }
+        if (!HeavyHammerClientState.ready(minecraft.player)) {
+            minecraft.gui.setOverlayMessage(Component.literal(
+                    "Сначала возьмите вес молота обеими руками."), false);
+            return true;
+        }
         if (HeavyHammerClientState.striking(minecraft.player)) return true;
+        // Тяжёлый рабочий инструмент не должен мгновенно запускать ванильный взмах
+        // или ломать обычный блок, пока серверная цель микровокселей не определена.
+        if (currentHit == null) return true;
         if (!physicallyReachable(minecraft.player.position(), currentHit)) {
             minecraft.gui.setOverlayMessage(Component.literal(
                     "Подойдите ближе: тяжёлый молот не достаёт до точки удара."), false);

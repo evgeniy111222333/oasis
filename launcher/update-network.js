@@ -814,26 +814,54 @@ function writeManifestCache(cachePath, manifest, source) {
 
 async function fetchDistributionManifest({ urls, cachePath, timeoutMs = 8000, log = () => {} }) {
     const cached = readManifestCache(cachePath);
-    const attempts = uniqueUrls(urls).map(async baseUrl => {
+    const successful = [];
+    const attempts = uniqueUrls(urls).map(async (baseUrl, priority) => {
         const separator = baseUrl.includes('?') ? '&' : '?';
         const requestUrl = `${baseUrl}${separator}ts=${Date.now()}`;
         const manifest = await requestJson(requestUrl, timeoutMs);
         if (!isValidDistributionManifest(manifest)) throw new Error(`Invalid distribution manifest from ${baseUrl}`);
-        return { manifest, source: baseUrl, cached: false };
-    });
+        return { manifest, source: baseUrl, cached: false, priority };
+    }).map(attempt => attempt.then(result => {
+        successful.push(result);
+        return result;
+    }));
 
-    let online;
+    let firstOnline;
     try {
-        online = await Promise.any(attempts);
+        firstOnline = await Promise.any(attempts);
     } catch (error) {
         if (!cached) throw new Error(`All distribution manifests failed: ${error.errors?.map(item => item.message).join('; ') || error.message}`);
         log(`[MANIFEST] All online sources failed; using last-known-good cache from ${cached.source || 'unknown source'}`);
         return { manifest: cached.manifest, source: cached.source || 'local cache', cached: true };
     }
 
-    if (cached && manifestTimestamp(cached.manifest) > manifestTimestamp(online.manifest)) {
+    // Быстрое зеркало может отставать от production. Даём более приоритетным
+    // источникам короткое окно и выбираем самый новый ответ, а не первый ответ.
+    const selectionGraceMs = Math.min(timeoutMs, 120 + firstOnline.priority * 440);
+    if (attempts.length > 1 && selectionGraceMs > 0) {
+        await Promise.race([
+            Promise.allSettled(attempts),
+            new Promise(resolve => setTimeout(resolve, selectionGraceMs))
+        ]);
+    }
+
+    const online = successful.reduce((selected, candidate) => {
+        const selectedTimestamp = manifestTimestamp(selected.manifest);
+        const candidateTimestamp = manifestTimestamp(candidate.manifest);
+        if (candidateTimestamp > selectedTimestamp) return candidate;
+        if (candidateTimestamp === selectedTimestamp && candidate.priority < selected.priority) return candidate;
+        return selected;
+    }, firstOnline);
+    if (successful.length > 1) {
+        log(`[MANIFEST] Selected newest manifest from ${online.source} among ${successful.length} online sources`);
+    }
+
+    // Повторное чтение закрывает гонку двух одновременных IPC-проверок:
+    // более старый ответ не сможет затереть только что сохранённый новый кеш.
+    const latestCached = readManifestCache(cachePath) || cached;
+    if (latestCached && manifestTimestamp(latestCached.manifest) > manifestTimestamp(online.manifest)) {
         log(`[MANIFEST] Rejected older online manifest from ${online.source}; using newer cache`);
-        return { manifest: cached.manifest, source: cached.source || 'local cache', cached: true };
+        return { manifest: latestCached.manifest, source: latestCached.source || 'local cache', cached: true };
     }
     try {
         writeManifestCache(cachePath, online.manifest, online.source);

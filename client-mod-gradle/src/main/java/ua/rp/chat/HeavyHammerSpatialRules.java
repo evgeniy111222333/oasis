@@ -2,14 +2,15 @@ package ua.rp.chat;
 
 /** Пространственные ограничения молота относительно тела персонажа. */
 public final class HeavyHammerSpatialRules {
-    public static final float HEAD_BOUND_CENTER_DISTANCE = 33.55f * HeavyHammerProceduralMotion.ITEM_SCALE;
+    public static final float HEAD_BOUND_CENTER_DISTANCE = 20.0915f;
     public static final float HEAD_HALF_WIDTH = 12.65f * HeavyHammerProceduralMotion.ITEM_SCALE;
     public static final float HEAD_HALF_HEIGHT = 4.20f * HeavyHammerProceduralMotion.ITEM_SCALE;
     public static final float HEAD_HALF_DEPTH = 3.65f * HeavyHammerProceduralMotion.ITEM_SCALE;
-    public static final float HANDLE_BOTTOM_DISTANCE = -2.4f * HeavyHammerProceduralMotion.ITEM_SCALE;
-    public static final float HANDLE_TOP_DISTANCE = 31.6f * HeavyHammerProceduralMotion.ITEM_SCALE;
+    public static final float HANDLE_BOTTOM_DISTANCE = -4.25f;
+    public static final float HANDLE_TOP_DISTANCE = 18.98f;
     public static final float HANDLE_RADIUS = 0.57f;
     public static final float HAND_CLEARANCE_RADIUS = 0.55f;
+    public static final float HAND_HALF_ALONG_HANDLE = 2.0f;
     public static final float PLAYER_GROUND_Y = 24.0f;
 
     public static final Aabb PLAYER_HEAD = new Aabb(
@@ -61,6 +62,11 @@ public final class HeavyHammerSpatialRules {
 
     public static HeavyHammerProceduralMotion.Vec3 handleEnd(HeavyHammerProceduralMotion.Frame frame) {
         return frame.mainGrip().add(frame.shaft().scale(HANDLE_TOP_DISTANCE));
+    }
+
+    /** Видимый хвост рукояти ниже центра нижней ладони. */
+    public static float visibleHandleTail() {
+        return -HANDLE_BOTTOM_DISTANCE - HAND_HALF_ALONG_HANDLE;
     }
 
     /** Положительное значение означает зазор над землёй, отрицательное — проникновение. */

@@ -1,9 +1,9 @@
 package ua.rp.chat.heavyhammer;
 
 public final class HeavyHammerRules {
-    public static final int DURATION_TICKS = 34;
-    public static final int IMPACT_TICK = 21;
-    public static final int COOLDOWN_TICKS = 38;
+    public static final int DURATION_TICKS = 42;
+    public static final int IMPACT_TICK = 26;
+    public static final int COOLDOWN_TICKS = 46;
     public static final double STAMINA_COST = 9.0;
     public static final double FATIGUE_GAIN = 1.35;
     public static final double MAX_TARGET_DISTANCE = 2.20;

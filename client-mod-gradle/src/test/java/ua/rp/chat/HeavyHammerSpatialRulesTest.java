@@ -7,11 +7,42 @@ public final class HeavyHammerSpatialRulesTest {
                 "В рабочей стойке боёк не должен пересекать голову");
         require(!HeavyHammerSpatialRules.intersectsPlayerTorso(idle),
                 "В рабочей стойке боёк не должен пересекать корпус");
+        require(HeavyHammerSpatialRules.visibleHandleTail() >= 2.0f
+                        && HeavyHammerSpatialRules.visibleHandleTail() <= 2.6f,
+                "Под нижней ладонью должен быть виден короткий хвост рукояти: "
+                        + HeavyHammerSpatialRules.visibleHandleTail());
+        require(HeavyHammerSpatialRules.headGroundClearance(idle) >= 4.0f,
+                "Спокойное ношение не должно выглядеть как уже начавшийся удар по земле");
 
         float frontSpan = HeavyHammerSpatialRules.projectedLongAxisLength(idle,
                 new HeavyHammerProceduralMotion.Vec3(0.0f, 0.0f, 1.0f));
-        require(frontSpan >= 8.0f && frontSpan <= 13.5f,
+        require(frontSpan >= 8.0f && frontSpan <= 14.0f,
                 "Спереди боёк должен читаться объёмным инструментом, а не длинной трубой: " + frontSpan);
+
+        int equipSamples = (int) (HeavyHammerAnimation.EQUIP_DURATION_TICKS * 20.0f);
+        for (int sample = 0; sample <= equipSamples; sample++) {
+            float progress = sample / (float) equipSamples;
+            HeavyHammerProceduralMotion.Frame frame = HeavyHammerProceduralMotion.equip(
+                    progress, progress * HeavyHammerAnimation.EQUIP_DURATION_TICKS, 0.0f);
+            if (HeavyHammerSpatialRules.intersectsPlayerHead(frame)
+                    || HeavyHammerSpatialRules.intersectsPlayerTorso(frame)) {
+                System.out.println("equip collision sample=" + sample
+                        + " head=" + HeavyHammerSpatialRules.intersectsPlayerHead(frame)
+                        + " torso=" + HeavyHammerSpatialRules.intersectsPlayerTorso(frame)
+                        + " center=" + frame.headCenter());
+            }
+            require(!HeavyHammerSpatialRules.intersectsPlayerHead(frame)
+                            && !HeavyHammerSpatialRules.intersectsPlayerTorso(frame),
+                    "Головка не должна проходить через персонажа при взятии: sample=" + sample
+                            + ", head=" + HeavyHammerSpatialRules.intersectsPlayerHead(frame)
+                            + ", torso=" + HeavyHammerSpatialRules.intersectsPlayerTorso(frame)
+                            + ", center=" + frame.headCenter());
+            require(!HeavyHammerSpatialRules.handleIntersectsPlayerHead(frame)
+                            && !HeavyHammerSpatialRules.handleIntersectsPlayerTorso(frame),
+                    "Рукоять не должна проходить через персонажа при взятии: sample=" + sample);
+            require(HeavyHammerSpatialRules.headGroundClearance(frame) >= 3.5f,
+                    "Взятие не должно волочить головку по земле: sample=" + sample);
+        }
 
         int headIntersections = 0;
         int torsoIntersections = 0;
@@ -28,9 +59,10 @@ public final class HeavyHammerSpatialRulesTest {
         HeavyHammerProceduralMotion.Target groundTarget = new HeavyHammerProceduralMotion.Target(
                 0.0f, 24.0f, -12.0f, HeavyHammerProceduralMotion.Surface.UP,
                 0.0f, 1.0f, 0.0f);
-        for (int sample = 0; sample <= 680; sample++) {
+        int totalSamples = (int) (HeavyHammerAnimation.DURATION_TICKS * 20.0f);
+        for (int sample = 0; sample <= totalSamples; sample++) {
             HeavyHammerProceduralMotion.Frame frame = HeavyHammerProceduralMotion.strike(
-                    sample / 680.0f, groundTarget);
+                    sample / (float) totalSamples, groundTarget);
             if (HeavyHammerSpatialRules.intersectsPlayerHead(frame)) {
                 if (firstHeadIntersection < 0) firstHeadIntersection = sample;
                 lastHeadIntersection = sample;
@@ -73,9 +105,9 @@ public final class HeavyHammerSpatialRulesTest {
         HeavyHammerProceduralMotion.Target wallTarget = new HeavyHammerProceduralMotion.Target(
                 0.0f, 10.0f, -12.0f, HeavyHammerProceduralMotion.Surface.SIDE,
                 0.0f, 0.0f, -1.0f);
-        for (int sample = 0; sample <= 680; sample++) {
+        for (int sample = 0; sample <= totalSamples; sample++) {
             HeavyHammerProceduralMotion.Frame wallFrame = HeavyHammerProceduralMotion.strike(
-                    sample / 680.0f, wallTarget);
+                    sample / (float) totalSamples, wallTarget);
             require(!HeavyHammerSpatialRules.intersectsPlayerHead(wallFrame)
                             && !HeavyHammerSpatialRules.intersectsPlayerTorso(wallFrame)
                             && !HeavyHammerSpatialRules.handleIntersectsPlayerHead(wallFrame)

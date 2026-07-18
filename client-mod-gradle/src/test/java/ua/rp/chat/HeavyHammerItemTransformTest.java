@@ -5,11 +5,13 @@ import org.joml.Vector3f;
 
 public final class HeavyHammerItemTransformTest {
     public static void main(String[] args) {
-        for (int index = 0; index <= 680; index++) {
+        int totalSamples = (int) (HeavyHammerAnimation.DURATION_TICKS * 20.0f);
+        for (int index = 0; index <= totalSamples; index++) {
             HeavyHammerAnimation.Sample sample = HeavyHammerAnimation.strike(index / 20.0f);
             HeavyHammerItemTransform.Result result = HeavyHammerItemTransform.solve(sample,
                     sample.rightX(), sample.rightY(), sample.rightZ(),
-                    -sample.rightLower(), 0.0f, 0.0f);
+                    -sample.rightLower(),
+                    ArticulatedLimbLayout.forearmYForTwoHandedGrip(sample.rightWristTwist()), 0.0f);
 
             Quaternionf rendered = new Quaternionf(result.current())
                     .mul(result.correction()).mul(result.layerRotation());
