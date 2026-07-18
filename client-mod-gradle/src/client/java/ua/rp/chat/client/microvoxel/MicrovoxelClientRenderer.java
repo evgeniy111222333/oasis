@@ -99,7 +99,12 @@ public final class MicrovoxelClientRenderer {
                 if (dx * dx + dy * dy + dz * dz > maxDistanceSquared) continue;
 
                 MicrovoxelGreedyMesher.Face face = chunkFace.face();
-                String materialName = chunkFace.cached().volume.palette().get(face.material());
+                int materialIndex = face.material();
+                var palette = chunkFace.cached().volume.palette();
+                String materialName = (materialIndex >= 0 && materialIndex < palette.size())
+                        ? palette.get(materialIndex)
+                        : null;
+                if (materialName == null) continue;
                 FaceMaterial material = faceMaterial(minecraft, materialName, face.direction(), position);
                 if (material.layers.isEmpty()) continue;
                 ResolvedLayer diagnosticLayer = material.layers.getFirst();

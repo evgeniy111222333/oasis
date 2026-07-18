@@ -123,7 +123,15 @@ public final class MicrovoxelClientState {
             MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
             BlockPos immutable = position.immutable();
             if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
-            VOLUMES.put(immutable, new CachedVolume(volume));
+            
+            CachedVolume cachedVolume = new CachedVolume(volume);
+            CachedVolume oldCached = VOLUMES.get(immutable);
+            if (oldCached != null) {
+                cachedVolume.mesh = oldCached.mesh;
+            }
+            VOLUMES.put(immutable, cachedVolume);
+            
+            rebuild(immutable);
             queueRebuild(immutable);
             scheduleBoundaryRebuild(immutable);
             EclipseClientMod.LOGGER.info("[MICROVOXEL] SYNC_UPSERT pos=" + immutable.toShortString()
