@@ -4,10 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -30,14 +30,19 @@ public class LevelRendererMixin {
     }
 
     @Inject(method = "renderHitOutline", at = @At("HEAD"), cancellable = true)
-    private void eclipse$cancelMicrovoxelOutline(PoseStack poseStack, VertexConsumer vertexConsumer, Entity entity,
-                                                 double d, double e, double f, BlockPos blockPos, BlockState blockState,
+    private void eclipse$cancelMicrovoxelOutline(PoseStack poseStack, VertexConsumer vertexConsumer,
+                                                 double camX, double camY, double camZ,
+                                                 Object outlineState, int light, float partialTick,
                                                  CallbackInfo ci) {
-        if (MicrovoxelInteractionController.editing() && 
-            (MicrovoxelClientState.get(blockPos) != null || 
-             (MicrovoxelInteractionController.currentStandardTarget() != null && 
-              MicrovoxelInteractionController.currentStandardTarget().position().equals(blockPos)))) {
-            ci.cancel();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.hitResult instanceof BlockHitResult blockHit) {
+            BlockPos blockPos = blockHit.getBlockPos();
+            if (MicrovoxelInteractionController.editing() && 
+                (MicrovoxelClientState.get(blockPos) != null || 
+                 (MicrovoxelInteractionController.currentStandardTarget() != null && 
+                  MicrovoxelInteractionController.currentStandardTarget().position().equals(blockPos)))) {
+                ci.cancel();
+            }
         }
     }
 }
