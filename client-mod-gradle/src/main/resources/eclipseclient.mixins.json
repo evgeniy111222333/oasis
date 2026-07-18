@@ -5,6 +5,7 @@
   "client": [
     "AbstractClientPlayerMixin",
     "CameraMixin",
+    "ChatComponentMixin",
     "EntityRenderDispatcherMixin",
     "EntityEyePositionMixin",
     "MinecraftMixin",

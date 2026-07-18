@@ -36,6 +36,8 @@ import ua.rp.chat.client.debug.HammerRenderQaController;
 import ua.rp.chat.client.pickup.PickupClientState;
 import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
+import ua.rp.chat.client.rpfeed.RpChatFeedClientState;
+import ua.rp.chat.client.rpfeed.RpChatFeedPayload;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -92,6 +94,7 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(HeavyHammerSyncPayload.TYPE, HeavyHammerSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -109,6 +112,8 @@ public class EclipseClientMod implements ClientModInitializer {
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(HeavyHammerSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> HeavyHammerClientState.handle(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> RpChatFeedClientState.accept(payload)));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);

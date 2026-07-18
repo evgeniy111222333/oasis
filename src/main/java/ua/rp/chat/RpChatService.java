@@ -3,6 +3,7 @@ package ua.rp.chat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.entity.Display;
@@ -80,11 +81,15 @@ public class RpChatService {
 
     public void sendSystemLocal(Player sender, RpChatChannel channel, Component message) {
         deliver(sender, channel, "", message, false);
+        sendFeed(sender, sender, channel, false, "", PlainTextComponentSerializer.plainText().serialize(message));
     }
 
     private void deliverSpeech(Player sender, RpChatChannel channel, String rawMessage, boolean notifyIfAlone) {
         int heard = 0;
         sender.sendMessage(formatSpeech(rpName(sender), channel, rawMessage));
+        if (rawMessage != null && !rawMessage.isBlank()) {
+            sendFeed(sender, sender, channel, false, rpName(sender), rawMessage);
+        }
 
         for (Player receiver : plugin.getServer().getOnlinePlayers()) {
             if (receiver.equals(sender)) {
@@ -101,6 +106,8 @@ public class RpChatService {
             receiver.sendMessage(delivery == Delivery.CLEAR
                     ? formatSpeech(receiverName, channel, rawMessage)
                     : distantMessage(receiverName, channel, rawMessage));
+            sendFeed(receiver, sender, channel, delivery == Delivery.DISTANT, receiverName,
+                    delivery == Delivery.CLEAR ? rawMessage : distantFeedText(channel, rawMessage));
             heard++;
         }
 
@@ -112,6 +119,7 @@ public class RpChatService {
         String raw = speech + " * " + action;
         int heard = 0;
         sender.sendMessage(formatTodo(rpName(sender), speech, action));
+        sendFeed(sender, sender, RpChatChannel.SPEAK, false, rpName(sender), "«" + speech + "» — " + action);
 
         for (Player receiver : plugin.getServer().getOnlinePlayers()) {
             if (receiver.equals(sender)) {
@@ -128,6 +136,8 @@ public class RpChatService {
             receiver.sendMessage(delivery == Delivery.CLEAR
                     ? formatTodo(receiverName, speech, action)
                     : distantMessage(receiverName, RpChatChannel.SPEAK, speech));
+            sendFeed(receiver, sender, RpChatChannel.SPEAK, delivery == Delivery.DISTANT, receiverName,
+                    delivery == Delivery.CLEAR ? "«" + speech + "» — " + action : distantFeedText(RpChatChannel.SPEAK, speech));
             heard++;
         }
 
@@ -138,6 +148,7 @@ public class RpChatService {
     private void deliver(Player sender, RpChatChannel channel, String rawMessage, Component exact, boolean notifyIfAlone) {
         int heard = 0;
         sender.sendMessage(exact);
+        sendFeed(sender, sender, channel, false, rpName(sender), rawMessage);
 
         for (Player receiver : plugin.getServer().getOnlinePlayers()) {
             if (receiver.equals(sender)) {
@@ -151,6 +162,9 @@ public class RpChatService {
                 continue;
             }
             receiver.sendMessage(delivery == Delivery.CLEAR ? exact : distantMessage(rpName(sender), channel, rawMessage));
+            String name = displayNameFor(receiver, sender);
+            sendFeed(receiver, sender, channel, delivery == Delivery.DISTANT, name,
+                    delivery == Delivery.CLEAR ? rawMessage : distantFeedText(channel, rawMessage));
             heard++;
         }
 
@@ -160,6 +174,22 @@ public class RpChatService {
 
     private void notifyIfAlone(Player sender, int heard, boolean notifyIfAlone) {
         // Silence is an IC outcome; no delivery report is shown to the speaker.
+    }
+
+    private void sendFeed(Player receiver, Player speaker, RpChatChannel channel, boolean distant, String name, String text) {
+        if (receiver == null || !receiver.isOnline()) return;
+        receiver.sendPluginMessage(plugin, RpChatFeedProtocol.CHANNEL,
+                RpChatFeedProtocol.message(speaker == null ? null : speaker.getUniqueId(), channel, distant, name, text));
+    }
+
+    private String distantFeedText(RpChatChannel channel, String rawMessage) {
+        return switch (channel) {
+            case WHISPER -> "что-то тихо шепчет рядом.";
+            case ACTION -> "что-то делает неподалеку.";
+            case DESCRIPTION -> "Неподалеку заметно: " + distantText(rawMessage);
+            case SHOUT -> "«" + distantText(rawMessage) + "»";
+            default -> "говорит где-то рядом, но слова слышны нечетко.";
+        };
     }
 
     private void showSpeechBubble(Player sender, RpChatChannel channel, String rawMessage) {

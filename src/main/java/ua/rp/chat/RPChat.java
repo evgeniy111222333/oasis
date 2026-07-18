@@ -69,6 +69,7 @@ public class RPChat extends JavaPlugin {
 
         // Register Outgoing Plugin Channel for Fabric Client Mod
         getServer().getMessenger().registerOutgoingPluginChannel(this, "rpchat:auth_init");
+        getServer().getMessenger().registerOutgoingPluginChannel(this, RpChatFeedProtocol.CHANNEL);
         getServer().getMessenger().registerIncomingPluginChannel(this, CombatManager.INTENT_CHANNEL, combatManager);
 
         // Register auth events (MUST be before chat events for priority)
