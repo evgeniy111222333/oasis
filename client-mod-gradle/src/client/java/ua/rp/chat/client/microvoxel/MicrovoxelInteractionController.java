@@ -27,6 +27,7 @@ public final class MicrovoxelInteractionController {
     private static boolean editing;
     private static MicrovoxelRaycaster.Hit currentHit;
     private static StandardTarget currentStandardTarget;
+    private static int breakCooldown;
 
     private MicrovoxelInteractionController() {
     }
@@ -45,7 +46,11 @@ public final class MicrovoxelInteractionController {
             currentHit = null;
             currentStandardTarget = null;
             editing = false;
+            breakCooldown = 0;
             return;
+        }
+        if (breakCooldown > 0) {
+            breakCooldown--;
         }
         while (modeKey != null && modeKey.consumeClick()) {
             if (!editing && !ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE)) {
@@ -63,6 +68,13 @@ public final class MicrovoxelInteractionController {
         currentHit = editing ? raycast(minecraft) : null;
         currentStandardTarget = editing && currentHit == null ? standardTarget(minecraft) : null;
         while (editing && convertKey != null && convertKey.consumeClick()) convertTarget(minecraft);
+    }
+
+    public static void handleContinuousAttack(Minecraft minecraft) {
+        if (breakCooldown > 0) return;
+        if (handleAttack(minecraft)) {
+            breakCooldown = 5;
+        }
     }
 
     public static boolean handleAttack(Minecraft minecraft) {

@@ -28,6 +28,18 @@ public abstract class MinecraftMixin {
         if (MicrovoxelInteractionController.handleAttack(minecraft)) cir.setReturnValue(true);
     }
 
+    @Inject(method = "continueAttack", at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelContinueAttack(boolean leftClickActive, CallbackInfo ci) {
+        Minecraft minecraft = (Minecraft) (Object) this;
+        if (leftClickActive && MicrovoxelInteractionController.editing()) {
+            if (MicrovoxelInteractionController.currentHit() != null 
+                    || MicrovoxelInteractionController.currentStandardTarget() != null) {
+                MicrovoxelInteractionController.handleContinuousAttack(minecraft);
+                ci.cancel();
+            }
+        }
+    }
+
     @Inject(method = "startUseItem", at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelUse(CallbackInfo ci) {
         Minecraft minecraft = (Minecraft) (Object) this;
