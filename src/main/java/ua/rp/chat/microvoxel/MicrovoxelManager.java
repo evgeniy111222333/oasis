@@ -65,7 +65,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private final Map<UUID, PlayerSyncPosition> syncPositions = new HashMap<>();
     private final Map<UUID, Map<MicrovoxelKey, Integer>> syncedRevisions = new HashMap<>();
     private final Map<UUID, RateWindow> actionRates = new HashMap<>();
-    private final Map<UUID, Long> miningStartTimes = new HashMap<>();
+    private final Map<UUID, org.bukkit.scheduler.BukkitTask> miningTasks = new HashMap<>();
     private boolean saveScheduled;
     private boolean storageAvailable = true;
 
@@ -537,10 +537,12 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        syncPositions.remove(event.getPlayer().getUniqueId());
-        syncedRevisions.remove(event.getPlayer().getUniqueId());
-        actionRates.remove(event.getPlayer().getUniqueId());
-        miningStartTimes.remove(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        syncPositions.remove(uuid);
+        syncedRevisions.remove(uuid);
+        actionRates.remove(uuid);
+        org.bukkit.scheduler.BukkitTask task = miningTasks.remove(uuid);
+        if (task != null) task.cancel();
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -555,8 +557,52 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         MicrovoxelKey key = key(block);
         MicrovoxelVolume volume = store.get(key);
         if (volume == null) return;
-        
-        miningStartTimes.put(event.getPlayer().getUniqueId(), System.currentTimeMillis());
+
+        event.setInstaBreak(false);
+
+        // Migrate old STRUCTURE_VOID markers → BARRIER
+        if (block.getType() == Material.STRUCTURE_VOID) {
+            block.setType(Material.BARRIER, false);
+        }
+
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+
+        // Cancel any previous mining task for this player
+        org.bukkit.scheduler.BukkitTask prev = miningTasks.remove(playerId);
+        if (prev != null) prev.cancel();
+
+        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL) return;
+
+        // Calculate required break time based on parent material
+        Material baseMaterial = Material.STONE;
+        String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;
+        if (matStr != null) {
+            try { baseMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
+            catch (Exception ignored) {}
+        }
+        long requiredMs = (long) getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
+        long requiredTicks = Math.max(1, requiredMs / 50);
+
+        org.bukkit.scheduler.BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            miningTasks.remove(playerId);
+            Player p = Bukkit.getPlayer(playerId);
+            if (p == null || !p.isOnline()) return;
+            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) return;
+            MicrovoxelVolume vol = store.get(key);
+            if (vol == null) return;
+
+            // Verify player is still near the block
+            if (!p.getWorld().getUID().equals(key.worldId())) return;
+            double dx = p.getLocation().getX() - (key.x() + 0.5);
+            double dy = p.getLocation().getY() - (key.y() + 0.5);
+            double dz = p.getLocation().getZ() - (key.z() + 0.5);
+            if (dx * dx + dy * dy + dz * dz > 36) return; // ~6 block reach
+
+            performMicrovoxelBreak(p, key, vol);
+        }, requiredTicks);
+
+        miningTasks.put(playerId, task);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -567,56 +613,51 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         if (volume == null) return;
 
         Player player = event.getPlayer();
-        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
-            Long startTime = miningStartTimes.get(player.getUniqueId());
-            if (startTime == null) {
-                event.setCancelled(true);
-                return;
-            }
-            
-            Material baseMaterial = Material.STONE;
-            String matStr = firstMaterial(volume);
-            if (matStr != null) {
-                try {
-                    baseMaterial = Bukkit.createBlockData(matStr).getMaterial();
-                } catch (Exception ignored) {}
-            }
-            
-            double requiredTime = getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
-            double elapsed = System.currentTimeMillis() - startTime;
-            if (elapsed < requiredTime - 150) { // 150ms network latency tolerance
-                event.setCancelled(true);
-                return;
-            }
-        }
-        
-        miningStartTimes.remove(player.getUniqueId());
 
-        // Cancel default block drops
+        // Cancel any pending mining task
+        org.bukkit.scheduler.BukkitTask task = miningTasks.remove(player.getUniqueId());
+        if (task != null) task.cancel();
+
+        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
+            // BARRIER is unbreakable in survival, so this shouldn't normally fire.
+            // Safety net for legacy STRUCTURE_VOID markers.
+            event.setCancelled(true);
+            return;
+        }
+
+        // Creative mode: instant break, no drops
         event.setDropItems(false);
+        store.remove(key);
+        broadcastRemove(key);
+        markDirty();
+    }
+
+    private void performMicrovoxelBreak(Player player, MicrovoxelKey key, MicrovoxelVolume volume) {
+        Block block = markerBlock(key);
 
         // Remove from database and notify clients
         store.remove(key);
         broadcastRemove(key);
         markDirty();
 
-        // Determine drop material from palette
-        Material dropMaterial = Material.STRUCTURE_VOID;
-        String matStr = firstMaterial(volume);
+        // Set block to air
+        block.setType(Material.AIR, false);
+
+        // Determine drop material from palette (index 1 = parent material)
+        Material dropMaterial = Material.STONE;
+        String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;
         if (matStr != null) {
-            try {
-                dropMaterial = Bukkit.createBlockData(matStr).getMaterial();
-            } catch (Exception ignored) {}
+            try { dropMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
+            catch (Exception ignored) {}
         }
 
         ItemStack dropItem = new ItemStack(dropMaterial);
         org.bukkit.inventory.meta.ItemMeta meta = dropItem.getItemMeta();
         if (meta != null) {
-            
             List<Component> lore = new ArrayList<>();
             boolean isWood = dropMaterial.name().contains("LOG") || dropMaterial.name().contains("PLANKS") || dropMaterial.name().contains("WOOD");
             boolean isStone = dropMaterial.name().contains("STONE") || dropMaterial.name().contains("DEEPSLATE") || dropMaterial.name().contains("TUFF") || dropMaterial.name().contains("BRICK");
-            
+
             if (isWood) {
                 lore.add(Component.text("«Тонкая столярная работа»")
                         .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, true)
@@ -630,7 +671,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
                         .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, true)
                         .color(net.kyori.adventure.text.format.NamedTextColor.GRAY));
             }
-            
+
             int count = MicrovoxelVolume.CELL_COUNT - volume.occupiedCount();
             int starsCount = 1;
             if (count <= 100) starsCount = 1;
@@ -638,19 +679,23 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             else if (count <= 1200) starsCount = 3;
             else if (count <= 2500) starsCount = 4;
             else starsCount = 5;
-            
+
             lore.add(Component.text("Сложность работы: ")
                     .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
                     .color(net.kyori.adventure.text.format.NamedTextColor.GRAY)
                     .append(Component.text("★".repeat(starsCount)).color(net.kyori.adventure.text.format.NamedTextColor.GOLD))
                     .append(Component.text("★".repeat(5 - starsCount)).color(net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY)));
-            
+
             meta.lore(lore);
 
             org.bukkit.persistence.PersistentDataContainer pdc = meta.getPersistentDataContainer();
             org.bukkit.NamespacedKey nbtKey = new org.bukkit.NamespacedKey(plugin, "microvoxel_volume");
+            org.bukkit.NamespacedKey parentKey = new org.bukkit.NamespacedKey(plugin, "parent_material");
             try {
                 pdc.set(nbtKey, org.bukkit.persistence.PersistentDataType.BYTE_ARRAY, serializeVolume(volume));
+                if (matStr != null) {
+                    pdc.set(parentKey, org.bukkit.persistence.PersistentDataType.STRING, matStr);
+                }
             } catch (IOException e) {
                 plugin.getLogger().severe("Failed to serialize volume on break: " + e.getMessage());
             }
@@ -1012,7 +1057,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             }
         }
         if (lightLevel <= 0) {
-            if (marker.getType() != Material.STRUCTURE_VOID) marker.setType(Material.STRUCTURE_VOID, false);
+            if (marker.getType() != Material.BARRIER) marker.setType(Material.BARRIER, false);
             return;
         }
         org.bukkit.block.data.type.Light light = (org.bukkit.block.data.type.Light) Material.LIGHT.createBlockData();
@@ -1088,7 +1133,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             return;
         }
         MicrovoxelVolume volume = store.remove(bestKey);
-        String material = volume == null ? null : firstMaterial(volume);
+        String material = (volume == null || volume.palette().size() <= 1) ? null : volume.palette().get(1);
         if (material == null) return;
         try {
             markerBlock(bestKey).setBlockData(Bukkit.createBlockData(material), false);

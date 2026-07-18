@@ -89,6 +89,6 @@ public abstract class BlockStateMicrovoxelMixin {
 
     private boolean eclipse$isMicrovoxelMarker() {
         BlockState state = (BlockState) (Object) this;
-        return state.is(Blocks.STRUCTURE_VOID) || state.is(Blocks.LIGHT);
+        return state.is(Blocks.STRUCTURE_VOID) || state.is(Blocks.LIGHT) || state.is(Blocks.BARRIER);
     }
 }

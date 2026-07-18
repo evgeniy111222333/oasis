@@ -297,7 +297,8 @@ public final class MicrovoxelClientState {
                 neighbourSolid = southSolid;
             }
             if (neighbourVol != null) {
-                return neighbourVol.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16));
+                // Do not cull shared faces between adjacent microvolumes to prevent sub-pixel culling gaps (sky leaking)
+                return 0;
             }
             return neighbourSolid ? 1 : 0;
         });
