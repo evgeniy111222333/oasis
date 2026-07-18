@@ -83,7 +83,7 @@ public final class PickupClientState {
         graphics.text(font, itemName, textX, y + 8, color(0xFFF7E9, alpha), false);
         graphics.text(font, "ВЗЯТЬ ПРЕДМЕТ", textX, y + 21, color(0xC5AF8E, accentAlpha), false);
 
-        drawRightClickMouse(graphics, x + layout.mouseX(), y + 9, alpha, accentAlpha);
+        drawRightClickMouse(graphics, x + layout.mouseX(), y + 8, alpha, accentAlpha);
     }
 
     private static ItemEntity findTarget(Minecraft client) {
@@ -134,21 +134,35 @@ public final class PickupClientState {
         return text.substring(0, end).stripTrailing() + suffix;
     }
 
-    /** Pixel mouse glyph: the highlighted upper-right button communicates RMB without text. */
+    /**
+     * Compact angular mouse glyph (D): it has no enclosing keycap, so it stays optically centred
+     * in its action column. Only the upper-right button receives the living gold accent.
+     */
     private static void drawRightClickMouse(GuiGraphicsExtractor graphics, int x, int y, int alpha, int accentAlpha) {
         int bodyWidth = PickupPromptLayout.MOUSE_ICON_WIDTH;
-        int bodyHeight = 18;
-        graphics.fill(x + 2, y, x + bodyWidth - 2, y + 1, color(0xD5C7B1, alpha));
-        graphics.fill(x + 1, y + 1, x + bodyWidth - 1, y + bodyHeight - 2, color(0x201B16, alpha));
-        graphics.fill(x + 2, y + bodyHeight - 2, x + bodyWidth - 2, y + bodyHeight - 1, color(0xD5C7B1, alpha));
-        graphics.fill(x, y + 3, x + 1, y + bodyHeight - 4, color(0xD5C7B1, alpha));
-        graphics.fill(x + bodyWidth - 1, y + 3, x + bodyWidth, y + bodyHeight - 4, color(0xD5C7B1, alpha));
+        int bodyHeight = 20;
+        int border = color(0xF0DFC1, alpha);
+        int interior = color(0x16120F, alpha);
+        int seam = color(0x70583A, alpha);
 
+        // Five horizontal strips make the small silhouette read as a real angular mouse,
+        // rather than as a square button or a floating UI frame.
+        graphics.fill(x + 4, y, x + bodyWidth - 4, y + 1, border);
+        graphics.fill(x + 2, y + 1, x + bodyWidth - 2, y + 2, border);
+        graphics.fill(x + 1, y + 2, x + bodyWidth - 1, y + bodyHeight - 2, border);
+        graphics.fill(x + 2, y + bodyHeight - 2, x + bodyWidth - 2, y + bodyHeight - 1, border);
+        graphics.fill(x + 4, y + bodyHeight - 1, x + bodyWidth - 4, y + bodyHeight, border);
+
+        graphics.fill(x + 3, y + 3, x + bodyWidth - 3, y + bodyHeight - 3, interior);
         int split = x + bodyWidth / 2;
-        graphics.verticalLine(split, y + 2, y + 8, color(0x8F7550, alpha));
-        graphics.fill(x + 2, y + 2, split, y + 8, color(0x32291F, alpha));
-        graphics.fill(split + 1, y + 2, x + bodyWidth - 2, y + 8, color(0xD6B77E, accentAlpha));
-        graphics.fill(split - 1, y + 10, split + 2, y + 13, color(0xE7C98F, accentAlpha));
+        graphics.fill(split, y + 3, split + 1, y + 9, seam);
+        graphics.fill(x + 3, y + 3, split, y + 9, color(0x30261B, alpha));
+        graphics.fill(split + 1, y + 3, x + bodyWidth - 3, y + 9, color(0xD8B773, accentAlpha));
+        graphics.fill(x + 3, y + 10, x + bodyWidth - 3, y + 11, seam);
+
+        // Wheel: intentionally lower and centred, leaving the gold right button unambiguous.
+        graphics.fill(split - 1, y + 13, split + 2, y + 17, color(0xE7C98F, accentAlpha));
+        graphics.fill(split, y + 14, split + 1, y + 16, color(0x5A442B, alpha));
     }
 
     private static int color(int rgb, int alpha) {
