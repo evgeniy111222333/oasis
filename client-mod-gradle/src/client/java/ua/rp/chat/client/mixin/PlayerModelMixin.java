@@ -597,7 +597,7 @@ public class PlayerModelMixin {
             HammerRenderQaController.GaitRig qaGait = HammerRenderQaController.gaitRig();
             HeavyHammerGait.Sample gait = qaGait == null
                     ? HeavyHammerGait.sample(state.walkAnimationPos, state.walkAnimationSpeed,
-                    state.speedValue, state.isCrouching)
+                    state.walkAnimationSpeed * 0.5f, state.isCrouching)
                     : HeavyHammerGait.sample(qaGait.walkPosition(), qaGait.walkSpeed(),
                     qaGait.linearSpeed(), false);
             float stanceRoll = ArticulatedLimbLayout.stanceRoll(gait.stanceOffset());
@@ -847,7 +847,7 @@ public class PlayerModelMixin {
         float walk = eclipse$clamp(moving, 0.0f, 1.0f);
         float idleArmBend = 0.32f * calm;
         float lookBend = 0.24f * lookDownLean;
-        float runTuck = walk * (state.speedValue > 0.12f ? 0.08f : 0.0f);
+        float runTuck = walk * (state.walkAnimationSpeed * 0.5f > 0.12f ? 0.08f : 0.0f);
 
         eclipse$setLowerArm(model.rightArm, model.rightSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -step) * 0.22f));
         eclipse$setLowerArm(model.leftArm, model.leftSleeve, idleArmBend + lookBend + runTuck + walk * (0.13f + Math.max(0.0f, -oppositeStep) * 0.22f));
