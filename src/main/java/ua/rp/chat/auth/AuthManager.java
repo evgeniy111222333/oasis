@@ -46,11 +46,16 @@ public class AuthManager {
     
     // Web Auth Tokens (Token -> Player UUID)
     private final Map<String, UUID> tokenToUuid = new ConcurrentHashMap<>();
+    // Short-lived tokens for an authenticated character changing only their appearance.
+    // These are deliberately separate from login tokens: opening the skin studio must
+    // never move an already authenticated player back into the auth flow.
+    private final Map<String, AppearanceEditSession> appearanceEditSessions = new ConcurrentHashMap<>();
     // Active Nametag Text Displays (Player UUID -> TextDisplay)
     private final Map<UUID, org.bukkit.entity.TextDisplay> activeNametags = new ConcurrentHashMap<>();
 
     // Auth timeout in seconds
     private static final int AUTH_TIMEOUT_SECONDS = 120;
+    private static final long APPEARANCE_EDIT_TTL_MS = Duration.ofMinutes(10).toMillis();
 
     public AuthManager(ua.rp.chat.RPChat plugin, AuthDatabase database, AppearanceManager appearanceManager) {
         this.plugin = plugin;
@@ -191,16 +196,19 @@ public class AuthManager {
     public boolean webLogin(UUID uuid, String loginName, String password, boolean rememberDevice) {
         Player player = plugin.getServer().getPlayer(uuid);
         if (player == null || !pendingAuth.contains(uuid)) {
+            plugin.getLogger().warning("[AUTH-AUDIT] login rejected: player/session is no longer pending; login=" + loginName);
             return false;
         }
 
         AuthDatabase.PlayerAccount account = database.getAccountByLoginName(loginName);
         if (account == null) {
+            plugin.getLogger().info("[AUTH-AUDIT] login rejected: account not found; player=" + player.getName() + ", login=" + loginName);
             return false;
         }
 
         String storedHash = account.passwordHash();
         if (storedHash == null) {
+            plugin.getLogger().warning("[AUTH-AUDIT] login rejected: account has no password hash; player=" + player.getName() + ", login=" + loginName);
             return false;
         }
 
@@ -209,6 +217,7 @@ public class AuthManager {
                 plugin.getLogger().warning("Could not rebind account " + account.loginName() + " to current uuid " + uuid);
                 return false;
             }
+            plugin.getLogger().info("[AUTH-AUDIT] credential verification succeeded; player=" + player.getName() + ", login=" + loginName);
             database.updateLogin(uuid, rememberDevice ? getPlayerIp(player) : null);
             
             String rpName = account.rpName();
@@ -223,6 +232,7 @@ public class AuthManager {
             }.runTask(plugin);
             return true;
         }
+        plugin.getLogger().info("[AUTH-AUDIT] credential verification failed; player=" + player.getName() + ", login=" + loginName);
         return false;
     }
 
@@ -373,6 +383,90 @@ public class AuthManager {
     public String getAuthUrl(String token, String username) {
         String encodedName = java.net.URLEncoder.encode(username == null ? "" : username, java.nio.charset.StandardCharsets.UTF_8);
         return advertisedWebUrl() + "/auth?token=" + token + "&username=" + encodedName;
+    }
+
+    /** Opens a one-time character appearance studio for an already authenticated player. */
+    public boolean requestAppearanceChange(Player player) {
+        if (player == null || !player.isOnline() || pendingAuth.contains(player.getUniqueId())) {
+            return false;
+        }
+        UUID uuid = player.getUniqueId();
+        if (!database.isRegistered(uuid)) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        appearanceEditSessions.entrySet().removeIf(entry -> entry.getValue().expiredAtMs() <= now
+                || entry.getValue().uuid().equals(uuid));
+        String token = UUID.randomUUID().toString().replace("-", "");
+        appearanceEditSessions.put(token, new AppearanceEditSession(uuid, now + APPEARANCE_EDIT_TTL_MS));
+        String url = advertisedWebUrl() + "/appearance?token=" + token + "&username="
+                + java.net.URLEncoder.encode(player.getName(), java.nio.charset.StandardCharsets.UTF_8);
+        sendAuthPayload(player, url);
+        player.sendMessage(Component.text("Открыта мастерская внешности. Сеанс действует 10 минут.", SEAFOAM));
+        return true;
+    }
+
+    /** Returns the owner only while the short-lived appearance editor session is valid. */
+    public UUID getAppearanceEditOwner(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        AppearanceEditSession session = appearanceEditSessions.get(token);
+        if (session == null || session.expiredAtMs() <= System.currentTimeMillis()) {
+            appearanceEditSessions.remove(token);
+            return null;
+        }
+        Player player = plugin.getServer().getPlayer(session.uuid());
+        if (player == null || !player.isOnline() || pendingAuth.contains(session.uuid()) || !database.isRegistered(session.uuid())) {
+            appearanceEditSessions.remove(token);
+            return null;
+        }
+        return session.uuid();
+    }
+
+    /** Saves the skin through the existing real persistence path and closes the session on success. */
+    public AppearanceManager.SaveResult saveAppearanceEdit(String token, String model, String dataUrl) {
+        UUID uuid = getAppearanceEditOwner(token);
+        if (uuid == null) {
+            return AppearanceManager.SaveResult.error("Сеанс изменения внешности истёк. Выполните /skin ещё раз.");
+        }
+        AppearanceManager.SaveResult result = appearanceManager.saveAppearance(uuid, model, dataUrl);
+        if (result.success()) {
+            appearanceEditSessions.remove(token);
+            plugin.getServer().getScheduler().runTask(plugin, () -> notifyAppearanceChanged(uuid));
+        }
+        return result;
+    }
+
+    private void notifyAppearanceChanged(UUID uuid) {
+        Player owner = plugin.getServer().getPlayer(uuid);
+        if (owner != null && owner.isOnline()) {
+            sendAppearanceRefreshPayload(owner, uuid);
+            owner.sendMessage(Component.text("Внешность персонажа сохранена и применена.", SOFT_GREEN));
+        }
+        for (Player viewer : plugin.getServer().getOnlinePlayers()) {
+            if (!viewer.getUniqueId().equals(uuid)) {
+                sendAppearanceRefreshPayload(viewer, uuid);
+            }
+        }
+    }
+
+    private void sendAppearanceRefreshPayload(Player player, UUID changedUuid) {
+        try {
+            byte[] uuidBytes = changedUuid.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream byteOut = new java.io.ByteArrayOutputStream();
+            int len = uuidBytes.length;
+            while ((len & ~0x7F) != 0) {
+                byteOut.write((len & 0x7F) | 0x80);
+                len >>>= 7;
+            }
+            byteOut.write(len);
+            byteOut.write(uuidBytes);
+            player.sendPluginMessage(plugin, "rpchat:appearance_refresh", byteOut.toByteArray());
+        } catch (java.io.IOException e) {
+            plugin.getLogger().warning("Failed to notify client about appearance refresh: " + e.getMessage());
+        }
     }
 
     private String advertisedWebUrl() {
@@ -585,6 +679,8 @@ public class AuthManager {
     public Map<String, UUID> getTokenToUuid() {
         return tokenToUuid;
     }
+
+    private record AppearanceEditSession(UUID uuid, long expiredAtMs) {}
 
     public AuthDatabase getDatabase() {
         return database;

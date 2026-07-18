@@ -8,7 +8,9 @@ public enum RpChatChannel {
     SHOUT("shout", "кричит", 48.0, 68.0, TextColor.color(0xD6A06A), TextColor.color(0xFFF1D6)),
     ACTION("action", "действие", 25.0, 35.0, TextColor.color(0xB9C59B), TextColor.color(0xDDE8C6)),
     DESCRIPTION("description", "описание", 30.0, 42.0, TextColor.color(0x91B7C2), TextColor.color(0xD8EEF2)),
-    OOC("ooc", "OOC", 20.0, 28.0, TextColor.color(0x8E8A84), TextColor.color(0xC8C0B8));
+    OOC("ooc", "OOC", 20.0, 28.0, TextColor.color(0x8E8A84), TextColor.color(0xC8C0B8)),
+    TRY("try", "пытается", 25.0, 35.0, TextColor.color(0xC7B37D), TextColor.color(0xEEE1BC)),
+    TODO("todo", "говорит и действует", 24.0, 34.0, TextColor.color(0xBBAE94), TextColor.color(0xF2EFE7));
 
     private final String id;
     private final String verb;

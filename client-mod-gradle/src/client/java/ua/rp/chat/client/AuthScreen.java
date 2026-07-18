@@ -26,6 +26,8 @@ import java.net.URLEncoder;
 public class AuthScreen extends Screen {
 
     private final String authUrl;
+    /** True only for /skin's appearance editor; it must never be auto-dismissed. */
+    private final boolean appearanceEditor;
     private final String traceId = McefDiagnostics.nextTraceId("auth");
     private final long createdNanos = System.nanoTime();
     private MCEFBrowser browser;
@@ -45,7 +47,16 @@ public class AuthScreen extends Screen {
     protected AuthScreen(String authUrl) {
         super(Component.literal("Авторизация Eclipse"));
         this.authUrl = authUrl;
+        this.appearanceEditor = isAppearanceEditorUrl(authUrl);
         log("constructed: url=" + McefDiagnostics.safeUrl(authUrl));
+    }
+
+    private static boolean isAppearanceEditorUrl(String url) {
+        try {
+            return "/appearance".equals(new URI(url).getPath());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     boolean usesAuthUrl(String candidate) {
@@ -70,7 +81,9 @@ public class AuthScreen extends Screen {
                 // keeps CEF on the stable texture path and prevents missing composited layers.
                 String targetUrl = getLocalAuthUrl(authUrl);
                 log("Opening local auth URL: " + targetUrl);
-                browser = MCEF.createBrowser(targetUrl, false);
+                // The React appearance workshop is a transparent CEF surface so
+                // the game world remains visible outside its dossier panel.
+                browser = MCEF.createBrowser(targetUrl, appearanceEditor);
                 log("browser created: " + McefDiagnostics.browserState(browser));
                 McefDiagnostics.registerHandlers(browser, traceId);
             }
@@ -94,8 +107,12 @@ public class AuthScreen extends Screen {
         String token = "";
         String username = "";
         String apiHost = "https://api.eclipse-roleplay.online";
+        String localPage = "index.html";
         try {
             URI uri = new URI(remoteUrl);
+            if ("/appearance".equals(uri.getPath())) {
+                localPage = "appearance.html";
+            }
             String query = uri.getQuery();
             if (query != null) {
                 String[] pairs = query.split("&");
@@ -137,8 +154,19 @@ public class AuthScreen extends Screen {
                 File target = new File(webDir, file);
                 copyResourceToFile("/assets/eclipseclient/web/" + file, target);
             }
+            if ("appearance.html".equals(localPage)) {
+                String[] appearanceFiles = {
+                        "appearance/appearance.html",
+                        "appearance/appearance.css",
+                        "appearance/appearance.js"
+                };
+                for (String file : appearanceFiles) {
+                    copyResourceToFile("/assets/eclipseclient/web/" + file, new File(webDir, file));
+                }
+                localPage = "appearance/appearance.html";
+            }
             
-            File localIndexFile = new File(webDir, "index.html");
+            File localIndexFile = new File(webDir, localPage);
             return "file:///" + localIndexFile.getAbsolutePath().replace("\\", "/") 
                 + "?token=" + URLEncoder.encode(token, "UTF-8")
                 + "&username=" + URLEncoder.encode(username, "UTF-8")
@@ -187,9 +215,12 @@ public class AuthScreen extends Screen {
                     + McefDiagnostics.browserState(browser));
         }
 
-        if (ticksOpen > 80 && minecraft != null && minecraft.gameMode != null
+        // A completed login moves the player out of spectator mode. Close only
+        // the login screen then; /skin uses the same screen class but must remain
+        // open until the player explicitly leaves the appearance workshop.
+        if (!appearanceEditor && ticksOpen > 80 && minecraft != null && minecraft.gameMode != null
                 && minecraft.gameMode.getPlayerMode() != GameType.SPECTATOR) {
-            log("auto-closing after spectator guard failed: gameMode=" + minecraft.gameMode.getPlayerMode());
+            log("closing confirmed login after spectator guard: gameMode=" + minecraft.gameMode.getPlayerMode());
             minecraft.setScreen(null);
         }
     }
@@ -208,7 +239,9 @@ public class AuthScreen extends Screen {
                                 + ", " + McefDiagnostics.browserState(browser));
                     }
                     graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f, width, height, width, height);
-                    drawExitButton(graphics, mouseX, mouseY);
+                    if (!appearanceEditor) {
+                        drawExitButton(graphics, mouseX, mouseY);
+                    }
                     return;
                 }
             }
@@ -218,7 +251,9 @@ public class AuthScreen extends Screen {
         graphics.centeredText(font, "ECLIPSE ROLEPLAY", width / 2, height / 2 - 38, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 - 12, 0xFFB0A8A0);
         graphics.centeredText(font, "Ожидание окна авторизации...", width / 2, height / 2 + 12, 0xFFA5C3C4);
-        drawExitButton(graphics, mouseX, mouseY);
+        if (!appearanceEditor) {
+            drawExitButton(graphics, mouseX, mouseY);
+        }
     }
 
     @Override
@@ -237,7 +272,7 @@ public class AuthScreen extends Screen {
                 + ", width=" + width + ", height=" + height 
                 + ", isExitHovered=" + isExitButtonHovered(event.x(), event.y()));
 
-        if (isExitButtonHovered(event.x(), event.y())) {
+        if (!appearanceEditor && isExitButtonHovered(event.x(), event.y())) {
             leaveToMainMenu();
             return true;
         }
@@ -271,6 +306,10 @@ public class AuthScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (appearanceEditor && event.key() == 256) {
+            minecraft.setScreen(null);
+            return true;
+        }
         if (browser != null) {
             browser.sendKeyPress(event.key(), event.scancode(), event.modifiers());
             browser.setFocus(true);

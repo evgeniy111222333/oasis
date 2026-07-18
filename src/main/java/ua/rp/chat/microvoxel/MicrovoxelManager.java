@@ -51,6 +51,12 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private static final long ACTION_WINDOW_MS = 1_000L;
     private static final int MAX_ACTIONS_PER_WINDOW = 40;
     private static final int MAX_COLLISION_CUBOIDS = 1024;
+    private static final double CLIENT_LOOK_MAX_DIVERGENCE_DEGREES = 4.0;
+    private static final double CLIENT_LOOK_MIN_DOT = Math.cos(Math.toRadians(CLIENT_LOOK_MAX_DIVERGENCE_DEGREES));
+    private static final double CLIENT_EYE_MAX_DELTA = 0.75;
+    private static final int[][] BOUNDARY_DIRECTIONS = {
+            {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
+    };
 
     private final RPChat plugin;
     private final MicrovoxelStore store;
@@ -108,23 +114,83 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             int z = input.readInt();
             int cell = input.readUnsignedShort();
             int expectedRevision = input.readInt();
+            Vector clientLook = new Vector(input.readFloat(), input.readFloat(), input.readFloat());
+            Vector clientEye = new Vector(input.readFloat(), input.readFloat(), input.readFloat());
             if (input.available() != 0 || cell >= MicrovoxelVolume.CELL_COUNT) return;
             MicrovoxelKey key = new MicrovoxelKey(player.getWorld().getUID(), x, y, z);
-            if (!withinReach(player, key)) {
-                feedback(player, "Микровоксель находится слишком далеко.");
-                return;
-            }
-            switch (action) {
-                case MicrovoxelProtocol.ACTION_CONVERT -> convert(player, key);
-                case MicrovoxelProtocol.ACTION_REMOVE -> removeCell(player, key, cell, expectedRevision);
-                case MicrovoxelProtocol.ACTION_ADD -> addCell(player, key, cell, expectedRevision);
-                default -> {
-                }
-            }
+            trace(player, "ACTION_RX action=" + action + " pos=" + x + "," + y + "," + z
+                    + " cell=" + cell + " revision=" + expectedRevision);
+            if (!validClientLook(clientLook) || !validClientEye(clientEye)) return;
+            // The view-rotation packet and custom click packet can reach Paper in neighbouring ticks.
+            // Defer one tick so the authoritative eye ray has the player's newest orientation.
+            Bukkit.getScheduler().runTask(plugin, () -> applyAction(player,
+                    new QueuedAction(action, key, cell, expectedRevision, clientLook.normalize(), clientEye)));
         } catch (IOException | RuntimeException error) {
             plugin.getLogger().warning("Rejected malformed microvoxel action from " + player.getName()
                     + ": " + error.getMessage());
         }
+    }
+
+    private void applyAction(Player player, QueuedAction action) {
+        if (!player.isOnline() || !storageAvailable || !player.hasPermission("rpchat.microvoxels.edit")) return;
+        if (!withinReach(player, action.key())) {
+            trace(player, "ACTION_REJECT out-of-reach");
+            feedback(player, "Микровоксель находится слишком далеко.");
+            return;
+        }
+        switch (action.type()) {
+            case MicrovoxelProtocol.ACTION_CONVERT -> convert(player, action.key());
+            case MicrovoxelProtocol.ACTION_REMOVE -> removeCell(player, action.key(), action.cell(), action.expectedRevision(),
+                    action.clientLook(), action.clientEye());
+            case MicrovoxelProtocol.ACTION_ADD -> addCell(player, action.key(), action.cell(), action.expectedRevision(),
+                    action.clientLook(), action.clientEye());
+            case MicrovoxelProtocol.ACTION_CARVE_STANDARD -> carveStandardBlock(player, action.key(), action.cell(),
+                    action.clientLook(), action.clientEye());
+            default -> trace(player, "ACTION_REJECT unknown-action=" + action.type());
+        }
+    }
+
+    /**
+     * First-cut path for edit mode. To the player this is a normal block being carved directly;
+     * internally the server creates the volume and removes the exact first cell as one atomic
+     * operation. No command or visible intermediate conversion is required.
+     */
+    private void carveStandardBlock(Player player, MicrovoxelKey key, int cell, Vector clientLook, Vector clientEye) {
+        MicrovoxelVolume existing = store.get(key);
+        if (existing != null) {
+            // A concurrent first cut already converted this block; continue through the normal,
+            // revision-safe removal path instead of overwriting that player's edit.
+            removeCell(player, key, cell, existing.revision(), clientLook, clientEye);
+            return;
+        }
+        Location clientLocation = boundedClientEye(player, clientEye);
+        if (clientLocation == null) return;
+        RayTraceResult trace = player.getWorld().rayTraceBlocks(
+                clientLocation, clientLook, MAX_REACH, FluidCollisionMode.NEVER, true);
+        Block target = trace == null ? null : trace.getHitBlock();
+        if (target == null || target.getX() != key.x() || target.getY() != key.y() || target.getZ() != key.z()
+                || !isEligibleFullBlock(target)) {
+            trace(player, "ACTION_REJECT carve-standard-target-mismatch");
+            feedback(player, "РќСѓР¶РЅРѕ РЅР°РІРµСЃС‚РёСЃСЊ РЅР° РѕР±С‹С‡РЅС‹Р№ РїРѕР»РЅС‹Р№ Р±Р»РѕРє РµС‰С‘ СЂР°Р·.");
+            return;
+        }
+        int authoritativeCell = cellAtStandardHit(key, trace);
+        if (authoritativeCell != cell) {
+            trace(player, "ACTION_REJECT carve-standard-cell expected=" + cell + " actual=" + authoritativeCell);
+            feedback(player, "Р¦РµР»СЊ РёР·РјРµРЅРёР»Р°СЃСЊ. РќР°РІРµРґРёС‚РµСЃСЊ РЅР° СЏС‡РµР№РєСѓ РµС‰С‘ СЂР°Р·.");
+            return;
+        }
+        if (store.countInChunk(key.worldId(), key.chunkX(), key.chunkZ()) >= MAX_PER_CHUNK) {
+            feedback(player, "Р’ СЌС‚РѕРј С‡Р°РЅРєРµ РґРѕСЃС‚РёРіРЅСѓС‚ Р±РµР·РѕРїР°СЃРЅС‹Р№ Р»РёРјРёС‚ РјРёРєСЂРѕРІРѕРєСЃРµР»СЊРЅС‹С… Р±Р»РѕРєРѕРІ.");
+            return;
+        }
+        MicrovoxelVolume volume = MicrovoxelVolume.full(target.getBlockData().getAsString());
+        volume.remove(cell);
+        store.put(key, volume);
+        updateMarker(key, volume);
+        broadcastUpsert(key, volume);
+        markDirty();
+        trace(player, "ACTION_APPLIED carve-standard cell=" + cell + " revision=" + volume.revision());
     }
 
     private void convert(Player player, MicrovoxelKey key) {
@@ -154,11 +220,23 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         feedback(player, "Блок преобразован в сетку 16×16×16. ЛКМ убирает, ПКМ добавляет микровоксель.");
     }
 
-    private void removeCell(Player player, MicrovoxelKey key, int cell, int expectedRevision) {
+    private void removeCell(Player player, MicrovoxelKey key, int cell, int expectedRevision, Vector clientLook,
+                            Vector clientEye) {
         MicrovoxelVolume volume = store.get(key);
-        ServerMicrovoxelRaycaster.Hit hit = raycastMicrovoxel(player);
-        if (!validRevision(player, key, volume, expectedRevision) || !volume.occupied(cell)
-                || hit == null || !hit.key().equals(key) || hit.cell() != cell) return;
+        ServerMicrovoxelRaycaster.Hit hit = validatedHit(player, key, cell, clientLook, clientEye, true);
+        if (!validRevision(player, key, volume, expectedRevision)) return;
+        if (!volume.occupied(cell)) {
+            trace(player, "ACTION_REJECT remove-cell-not-occupied");
+            sendUpsert(player, key, volume);
+            feedback(player, "Эта ячейка уже изменена. Сетка синхронизирована.");
+            return;
+        }
+        if (hit == null || !hit.key().equals(key) || hit.cell() != cell) {
+            trace(player, "ACTION_REJECT remove-raycast-mismatch");
+            sendUpsert(player, key, volume);
+            feedback(player, "Цель изменилась. Наведитесь на ячейку ещё раз.");
+            return;
+        }
         MicrovoxelVolume before = volume.copy();
         volume.remove(cell);
         if (volume.collisionCuboids().size() > MAX_COLLISION_CUBOIDS) {
@@ -176,14 +254,34 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             broadcastUpsert(key, volume);
         }
         markDirty();
+        trace(player, "ACTION_APPLIED remove cell=" + cell + " revision=" + volume.revision());
     }
 
-    private void addCell(Player player, MicrovoxelKey key, int cell, int expectedRevision) {
+    private void addCell(Player player, MicrovoxelKey key, int cell, int expectedRevision, Vector clientLook,
+                         Vector clientEye) {
         MicrovoxelVolume volume = store.get(key);
-        ServerMicrovoxelRaycaster.Hit hit = raycastMicrovoxel(player);
-        if (!validRevision(player, key, volume, expectedRevision) || volume.occupied(cell)
-                || !volume.hasOccupiedNeighbour(cell) || hit == null || !hit.key().equals(key)
-                || hit.adjacentCell() != cell) return;
+        // `cell` is deliberately empty for an add operation.  The authoritative ray must hit
+        // the occupied source cell and expose `cell` as the adjacent placement position; asking
+        // it to hit `cell` itself makes every valid right-click fail as "target changed".
+        ServerMicrovoxelRaycaster.Hit hit = validatedHit(player, key, cell, clientLook, clientEye, false);
+        if (!validRevision(player, key, volume, expectedRevision)) return;
+        if (volume.occupied(cell)) {
+            trace(player, "ACTION_REJECT add-cell-occupied");
+            sendUpsert(player, key, volume);
+            feedback(player, "Эта ячейка уже занята. Сетка синхронизирована.");
+            return;
+        }
+        if (!volume.hasOccupiedNeighbour(cell)) {
+            trace(player, "ACTION_REJECT add-no-neighbour");
+            feedback(player, "Новый микровоксель должен прилегать к существующему.");
+            return;
+        }
+        if (hit == null || !hit.key().equals(key) || hit.adjacentCell() != cell) {
+            trace(player, "ACTION_REJECT add-raycast-mismatch");
+            sendUpsert(player, key, volume);
+            feedback(player, "Цель изменилась. Наведитесь на грань ячейки ещё раз.");
+            return;
+        }
         BlockData material = selectedFullBlock(player, markerBlock(key).getLocation());
         if (material == null) {
             feedback(player, "Возьмите в основную или вторую руку полноразмерный блок.");
@@ -212,14 +310,17 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         updateMarker(key, volume);
         broadcastUpsert(key, volume);
         markDirty();
+        trace(player, "ACTION_APPLIED add cell=" + cell + " revision=" + volume.revision());
     }
 
     private boolean validRevision(Player player, MicrovoxelKey key, MicrovoxelVolume volume, int expected) {
         if (volume == null) {
+            trace(player, "ACTION_REJECT volume-missing");
             sendRemove(player, key);
             return false;
         }
         if (volume.revision() != expected) {
+            trace(player, "ACTION_REJECT stale-revision expected=" + expected + " actual=" + volume.revision());
             sendUpsert(player, key, volume);
             return false;
         }
@@ -269,6 +370,10 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private ServerMicrovoxelRaycaster.Hit raycastMicrovoxel(Player player) {
         Location eye = player.getEyeLocation();
         Vector direction = eye.getDirection().normalize();
+        return raycastMicrovoxel(player, eye, direction);
+    }
+
+    private ServerMicrovoxelRaycaster.Hit raycastMicrovoxel(Player player, Location eye, Vector direction) {
         ServerMicrovoxelRaycaster.Hit hit = ServerMicrovoxelRaycaster.cast(
                 eye.getX(), eye.getY(), eye.getZ(), direction.getX(), direction.getY(), direction.getZ(), MAX_REACH,
                 store.nearby(player.getWorld().getUID(), player.getLocation().getBlockX() >> 4,
@@ -277,6 +382,81 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         RayTraceResult obstruction = player.getWorld().rayTraceBlocks(
                 eye, direction, Math.max(0.0, hit.distance() - 0.001), FluidCollisionMode.NEVER, true);
         return obstruction == null ? hit : null;
+    }
+
+    private ServerMicrovoxelRaycaster.Hit validatedHit(Player player, MicrovoxelKey key, int cell, Vector clientLook,
+                                                       Vector clientEye, boolean requireRequestedCell) {
+        ServerMicrovoxelRaycaster.Hit serverHit = raycastMicrovoxel(player);
+        if (matches(serverHit, key, cell, requireRequestedCell)) return serverHit;
+
+        Location eye = player.getEyeLocation();
+        Vector serverLook = eye.getDirection().normalize();
+        if (serverLook.dot(clientLook) < CLIENT_LOOK_MIN_DOT) {
+            trace(player, "ACTION_REJECT client-look-diverged dot=" + String.format(java.util.Locale.ROOT, "%.5f", serverLook.dot(clientLook)));
+            return null;
+        }
+        Location recoveredEye = boundedClientEye(player, clientEye);
+        if (recoveredEye == null) return null;
+        Vector eyeDelta = clientEye.clone().subtract(eye.toVector());
+        // The camera and the movement packet are sampled on the client in the same render frame.
+        // Paper can still be one movement packet behind, which shifts a hit by several 1/16 cells
+        // even when both sides agree on the look direction. The bounded client eye is therefore
+        // used only as a recovery origin; reach, world obstruction and exact first-hit checks stay
+        // authoritative below.
+        ServerMicrovoxelRaycaster.Hit recovered = raycastMicrovoxel(player, recoveredEye, clientLook);
+        if (matches(recovered, key, cell, requireRequestedCell)) {
+            trace(player, "ACTION_RECOVERED client-eye-ray delta=" + String.format(java.util.Locale.ROOT,
+                    "%.3f", eyeDelta.length()));
+            return recovered;
+        }
+        trace(player, "ACTION_RAY_MISMATCH server=" + hitLabel(serverHit) + " client=" + hitLabel(recovered)
+                + " expected=" + key.x() + "," + key.y() + "," + key.z() + ":" + cell);
+        return null;
+    }
+
+    private static boolean matches(ServerMicrovoxelRaycaster.Hit hit, MicrovoxelKey key, int cell,
+                                   boolean requireRequestedCell) {
+        if (hit == null || !hit.key().equals(key)) return false;
+        return requireRequestedCell ? hit.cell() == cell : hit.adjacentCell() == cell;
+    }
+
+    private static String hitLabel(ServerMicrovoxelRaycaster.Hit hit) {
+        return hit == null ? "none" : hit.key().x() + "," + hit.key().y() + "," + hit.key().z() + ":" + hit.cell();
+    }
+
+    private static boolean validClientLook(Vector look) {
+        return Double.isFinite(look.getX()) && Double.isFinite(look.getY()) && Double.isFinite(look.getZ())
+                && look.lengthSquared() > 0.98 && look.lengthSquared() < 1.02;
+    }
+
+    private static boolean validClientEye(Vector eye) {
+        return Double.isFinite(eye.getX()) && Double.isFinite(eye.getY()) && Double.isFinite(eye.getZ());
+    }
+
+    private Location boundedClientEye(Player player, Vector clientEye) {
+        Location serverEye = player.getEyeLocation();
+        Vector delta = clientEye.clone().subtract(serverEye.toVector());
+        if (delta.lengthSquared() > CLIENT_EYE_MAX_DELTA * CLIENT_EYE_MAX_DELTA) {
+            trace(player, "ACTION_REJECT client-eye-diverged distance=" + String.format(java.util.Locale.ROOT,
+                    "%.3f", delta.length()));
+            return null;
+        }
+        return new Location(player.getWorld(), clientEye.getX(), clientEye.getY(), clientEye.getZ(),
+                serverEye.getYaw(), serverEye.getPitch());
+    }
+
+    private static int cellAtStandardHit(MicrovoxelKey key, RayTraceResult hit) {
+        org.bukkit.block.BlockFace face = hit.getHitBlockFace();
+        Vector point = hit.getHitPosition().clone();
+        if (face != null) point.subtract(face.getDirection().multiply(1.0E-4));
+        int x = clampCell((int) Math.floor((point.getX() - key.x()) * MicrovoxelVolume.RESOLUTION));
+        int y = clampCell((int) Math.floor((point.getY() - key.y()) * MicrovoxelVolume.RESOLUTION));
+        int z = clampCell((int) Math.floor((point.getZ() - key.z()) * MicrovoxelVolume.RESOLUTION));
+        return MicrovoxelVolume.index(x, y, z);
+    }
+
+    private static int clampCell(int cell) {
+        return Math.max(0, Math.min(MicrovoxelVolume.RESOLUTION - 1, cell));
     }
 
     /** Подготавливает неизменяемую цель. Удар всё равно будет повторно проверен в кадре контакта. */
@@ -369,6 +549,41 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     public void protectMarker(BlockBreakEvent event) {
         MicrovoxelKey key = key(event.getBlock());
         if (store.get(key) != null) event.setCancelled(true);
+    }
+
+    /**
+     * An ordinary block shares a plane with an adjacent microvoxel volume.  The client correctly
+     * omits that coplanar micro face while the ordinary block exists.  Once the ordinary block is
+     * removed or placed again, send the neighbouring volume once more after Bukkit has committed
+     * the world mutation, so the client rebuilds exactly the newly exposed/hidden sixteenth-face.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void refreshAdjacentMicrovoxelMeshes(BlockBreakEvent event) {
+        scheduleBoundaryRefresh(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void refreshAdjacentMicrovoxelMeshes(BlockPlaceEvent event) {
+        scheduleBoundaryRefresh(event.getBlockPlaced());
+    }
+
+    private void scheduleBoundaryRefresh(Block changedBlock) {
+        World world = changedBlock.getWorld();
+        int x = changedBlock.getX();
+        int y = changedBlock.getY();
+        int z = changedBlock.getZ();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            for (int[] direction : BOUNDARY_DIRECTIONS) {
+                MicrovoxelKey adjacent = new MicrovoxelKey(world.getUID(),
+                        x + direction[0], y + direction[1], z + direction[2]);
+                MicrovoxelVolume volume = store.get(adjacent);
+                if (volume != null) {
+                    broadcastUpsert(adjacent, volume);
+                    plugin.getLogger().fine("[MICROVOXEL] boundary mesh refresh "
+                            + adjacent.x() + "," + adjacent.y() + "," + adjacent.z());
+                }
+            }
+        });
     }
 
     @EventHandler
@@ -583,6 +798,14 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private void feedback(Player player, String message) {
         player.sendActionBar(Component.text(message));
         player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, MicrovoxelProtocol.message(message));
+    }
+
+    private void trace(Player player, String message) {
+        plugin.getLogger().info("[MICROVOXEL] player=" + player.getName() + " " + message);
+    }
+
+    private record QueuedAction(int type, MicrovoxelKey key, int cell, int expectedRevision, Vector clientLook,
+                                Vector clientEye) {
     }
 
     private void markDirty() {

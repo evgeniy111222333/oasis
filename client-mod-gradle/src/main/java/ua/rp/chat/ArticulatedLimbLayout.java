@@ -8,12 +8,15 @@ package ua.rp.chat;
  * caps or a duplicated joint block.</p>
  */
 public final class ArticulatedLimbLayout {
-    public static final float ARM_SHOULDER_OVERLAP = 0.75f;
+    // Vanilla limbs meet the torso exactly at the shoulder/hip plane.  The old
+    // overlap hid gaps at rest but made skin and outer layers physically occupy
+    // the same pixels during turns, which is visible as texture bleeding.
+    public static final float ARM_SHOULDER_OVERLAP = 0.0f;
     public static final float ARM_TOP_Y = -2.0f - ARM_SHOULDER_OVERLAP;
     public static final float ARM_ELBOW_Y = 4.0f;
     public static final float ARM_HAND_Y = 10.0f;
 
-    public static final float LEG_HIP_OVERLAP = 0.75f;
+    public static final float LEG_HIP_OVERLAP = 0.0f;
     public static final float LEG_TOP_Y = -LEG_HIP_OVERLAP;
     public static final float LEG_KNEE_Y = 6.0f;
     public static final float LEG_FOOT_Y = 12.0f;
@@ -24,6 +27,8 @@ public final class ArticulatedLimbLayout {
     public static final int JOINT_SKINNING_RINGS = 5;
     public static final float ARM_LOWER_LOCAL_TOP_Y = JOINT_HALF_BAND;
     public static final float LOWER_LOCAL_TOP_Y = 0.0f;
+    public static final float LEG_UPPER_BOUNDARY_Y = LEG_KNEE_Y - JOINT_HALF_BAND;
+    public static final float LEG_LOWER_BOUNDARY_Y = LEG_KNEE_Y + JOINT_HALF_BAND;
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
     public static final float PANTS_LAYER_GROW_X = 0.14f;

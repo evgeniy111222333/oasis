@@ -32,21 +32,46 @@ public final class MicrovoxelClientState {
     private static final int REMOVE = 3;
     private static final int MESSAGE = 4;
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
+    private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
     private static final Map<BlockPos, CachedVolume> VOLUMES = new HashMap<>();
     private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
+    /**
+     * A block-state packet and the matching microvoxel sync packet can arrive in either order.
+     * Rebuilding once immediately is normally enough; rebuilding the same local boundary two
+     * client ticks later makes the result deterministic without polling every volume every tick.
+     */
+    private static final Map<BlockPos, Integer> DELAYED_BOUNDARY_REBUILDS = new HashMap<>();
+    /**
+     * Rendering never walks the global volume map.  A batch is a stable, flattened snapshot of
+     * one chunk's greedy faces and is rebuilt only when a volume in that chunk changes.  This is
+     * deliberately CPU-side for now: it gives us deterministic dirty-region work and keeps the
+     * renderer ready for a later VBO backend without making edit latency depend on GPU uploads.
+     */
+    private static final Map<Long, ChunkBatch> CHUNK_BATCHES = new HashMap<>();
+    private static final Set<Long> CHUNK_BATCH_QUEUE = new LinkedHashSet<>();
+    /**
+     * One-shot runtime evidence for the microvoxel pipeline.  This is intentionally keyed by
+     * volume revision: a diagnostic session stays compact while still proving which shape and
+     * material were used for every edited state the player actually sees.
+     */
+    private static final Set<String> PROBE_EMITTED = new HashSet<>();
     private static ClientLevel activeLevel;
+    private static int clientTick;
 
     private MicrovoxelClientState() {
     }
 
     public static void clientTick(Minecraft minecraft) {
+        clientTick++;
         if (minecraft.level != activeLevel) {
             activeLevel = minecraft.level;
             clearVolumes();
             MicrovoxelClientRenderer.clearMaterialCache();
         }
+        processDelayedBoundaryRebuilds();
         rebuildQueuedMeshes();
+        rebuildQueuedChunkBatches();
     }
 
     public static void handle(MicrovoxelSyncPayload payload) {
@@ -59,6 +84,7 @@ public final class MicrovoxelClientState {
             if (type == REMOVE) {
                 BlockPos position = readPosition(input);
                 if (VOLUMES.remove(position) != null) removeFromChunk(position);
+                queueChunkBatch(position);
                 queueRebuild(position);
                 return;
             }
@@ -99,6 +125,9 @@ public final class MicrovoxelClientState {
             if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
             VOLUMES.put(immutable, new CachedVolume(volume));
             queueRebuild(immutable);
+            scheduleBoundaryRebuild(immutable);
+            EclipseClientMod.LOGGER.info("[MICROVOXEL] SYNC_UPSERT pos=" + immutable.toShortString()
+                    + " revision=" + revision + " palette=" + paletteSize);
         } catch (IOException | RuntimeException error) {
             EclipseClientMod.LOGGER.warn("[MICROVOXEL] Rejected sync payload: " + error.getMessage());
         }
@@ -111,6 +140,30 @@ public final class MicrovoxelClientState {
     public static VoxelShape collisionShape(BlockPos position) {
         CachedVolume cached = VOLUMES.get(position);
         return cached == null ? null : cached.shape;
+    }
+
+    public static void probeShape(String hook, BlockPos position, VoxelShape shape) {
+        CachedVolume cached = VOLUMES.get(position);
+        if (cached == null) return;
+        String key = "shape:" + hook + ':' + position.asLong() + ':' + cached.volume.revision();
+        if (!PROBE_EMITTED.add(key)) return;
+        List<MicrovoxelVolume.Cuboid> cuboids = cached.volume.collisionCuboids();
+        EclipseClientMod.LOGGER.info("[MICROVOXEL-PROBE] SHAPE hook={} pos={} revision={} cuboids={} aabbs={} bounds={}",
+                hook, position.toShortString(), cached.volume.revision(), cuboids.size(), shape.toAabbs().size(),
+                shape.isEmpty() ? "empty" : shape.bounds());
+    }
+
+    public static void probeRender(BlockPos position, MicrovoxelGreedyMesher.Face face,
+                                   String material, int layerCount, String renderType, boolean translucent,
+                                   float minU, float maxU, float minV, float maxV) {
+        CachedVolume cached = VOLUMES.get(position);
+        if (cached == null) return;
+        String key = "render:" + position.asLong() + ':' + cached.volume.revision();
+        if (!PROBE_EMITTED.add(key)) return;
+        EclipseClientMod.LOGGER.info(
+                "[MICROVOXEL-PROBE] RENDER pos={} revision={} material={} face={} layers={} type={} translucent={} uv=[{},{}]x[{},{}]",
+                position.toShortString(), cached.volume.revision(), material, face.direction(), layerCount,
+                renderType, translucent, minU, maxU, minV, maxV);
     }
 
     public static Collection<Map.Entry<BlockPos, CachedVolume>> volumesNear(
@@ -126,6 +179,22 @@ public final class MicrovoxelClientState {
                     CachedVolume volume = VOLUMES.get(position);
                     if (volume != null) result.add(Map.entry(position, volume));
                 }
+            }
+        }
+        return result;
+    }
+
+    /** Returns immutable chunk-level render batches overlapping the requested horizontal radius. */
+    public static Collection<ChunkBatch> batchesNear(double blockX, double blockZ, double radius) {
+        int minChunkX = floorChunk(blockX - radius);
+        int maxChunkX = floorChunk(blockX + radius);
+        int minChunkZ = floorChunk(blockZ - radius);
+        int maxChunkZ = floorChunk(blockZ + radius);
+        List<ChunkBatch> result = new ArrayList<>();
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                ChunkBatch batch = CHUNK_BATCHES.get(chunkKey(chunkX, chunkZ));
+                if (batch != null && !batch.faces.isEmpty()) result.add(batch);
             }
         }
         return result;
@@ -150,7 +219,14 @@ public final class MicrovoxelClientState {
     private static void rebuild(BlockPos position) {
         CachedVolume cached = VOLUMES.get(position);
         if (cached == null) return;
-        cached.mesh = MicrovoxelGreedyMesher.build(cached.volume, (x, y, z) -> materialAt(position, x, y, z));
+        cached.mesh = MicrovoxelGreedyMesher.build(cached.volume,
+                (x, y, z) -> meshingMaterialAt(position, x, y, z));
+        queueChunkBatch(position);
+    }
+
+    /** Used by the renderer's vertex AO sampler. Coordinates are local to {@code base}. */
+    public static boolean solidAt(BlockPos base, int x, int y, int z) {
+        return materialAt(base, x, y, z) != 0;
     }
 
     private static int materialAt(BlockPos base, int x, int y, int z) {
@@ -162,6 +238,23 @@ public final class MicrovoxelClientState {
         return cached.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16));
     }
 
+    /**
+     * A generated face must not sit directly on the identical face of a neighbouring ordinary
+     * full block.  That coplanar pair causes depth-buffer fighting (the familiar black flicker
+     * at the outer microvoxel border).  Neighbouring microvolumes retain their exact 1/16 data;
+     * only an unconverted solid block suppresses the shared outside face.
+     */
+    private static int meshingMaterialAt(BlockPos base, int x, int y, int z) {
+        int material = materialAt(base, x, y, z);
+        if (material != 0 || MicrovoxelVolume.inside(x, y, z)) return material;
+        int offsetX = Math.floorDiv(x, 16);
+        int offsetY = Math.floorDiv(y, 16);
+        int offsetZ = Math.floorDiv(z, 16);
+        BlockPos neighbour = base.offset(offsetX, offsetY, offsetZ);
+        if (VOLUMES.containsKey(neighbour) || activeLevel == null) return 0;
+        return activeLevel.getBlockState(neighbour).isSolidRender() ? 1 : 0;
+    }
+
     private static void queueRebuild(BlockPos position) {
         MESH_QUEUE.add(position.immutable());
         MESH_QUEUE.add(position.offset(1, 0, 0));
@@ -170,6 +263,24 @@ public final class MicrovoxelClientState {
         MESH_QUEUE.add(position.offset(0, -1, 0));
         MESH_QUEUE.add(position.offset(0, 0, 1));
         MESH_QUEUE.add(position.offset(0, 0, -1));
+    }
+
+    private static void scheduleBoundaryRebuild(BlockPos position) {
+        DELAYED_BOUNDARY_REBUILDS.put(position.immutable(), clientTick + 2);
+    }
+
+    private static void processDelayedBoundaryRebuilds() {
+        Iterator<Map.Entry<BlockPos, Integer>> iterator = DELAYED_BOUNDARY_REBUILDS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BlockPos, Integer> entry = iterator.next();
+            if (entry.getValue() > clientTick) continue;
+            queueRebuild(entry.getKey());
+            iterator.remove();
+        }
+    }
+
+    private static void queueChunkBatch(BlockPos position) {
+        CHUNK_BATCH_QUEUE.add(chunkKey(position.getX() >> 4, position.getZ() >> 4));
     }
 
     private static void rebuildQueuedMeshes() {
@@ -184,15 +295,46 @@ public final class MicrovoxelClientState {
         }
     }
 
+    private static void rebuildQueuedChunkBatches() {
+        long deadline = System.nanoTime() + CHUNK_BATCH_BUDGET_NANOS;
+        Iterator<Long> iterator = CHUNK_BATCH_QUEUE.iterator();
+        int rebuilt = 0;
+        while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
+            long key = iterator.next();
+            iterator.remove();
+            Set<BlockPos> positions = CHUNKS.get(key);
+            if (positions == null || positions.isEmpty()) {
+                CHUNK_BATCHES.remove(key);
+                rebuilt++;
+                continue;
+            }
+            List<ChunkFace> faces = new ArrayList<>();
+            for (BlockPos position : positions) {
+                CachedVolume cached = VOLUMES.get(position);
+                if (cached == null) continue;
+                for (MicrovoxelGreedyMesher.Face face : cached.mesh) {
+                    faces.add(new ChunkFace(position, cached, face));
+                }
+            }
+            CHUNK_BATCHES.put(key, new ChunkBatch(faces));
+            rebuilt++;
+        }
+    }
+
     private static void clearVolumes() {
         VOLUMES.clear();
         CHUNKS.clear();
         MESH_QUEUE.clear();
+        DELAYED_BOUNDARY_REBUILDS.clear();
+        CHUNK_BATCHES.clear();
+        CHUNK_BATCH_QUEUE.clear();
+        PROBE_EMITTED.clear();
     }
 
     private static void addToChunk(BlockPos position) {
         CHUNKS.computeIfAbsent(chunkKey(position.getX() >> 4, position.getZ() >> 4), ignored -> new HashSet<>())
                 .add(position);
+        queueChunkBatch(position);
     }
 
     private static void removeFromChunk(BlockPos position) {
@@ -201,6 +343,7 @@ public final class MicrovoxelClientState {
         if (indexed == null) return;
         indexed.remove(position);
         if (indexed.isEmpty()) CHUNKS.remove(key);
+        CHUNK_BATCH_QUEUE.add(key);
     }
 
     private static int floorChunk(double blockCoordinate) {
@@ -243,5 +386,20 @@ public final class MicrovoxelClientState {
             this.volume = volume;
             this.shape = buildShape(volume);
         }
+    }
+
+    public static final class ChunkBatch {
+        private final List<ChunkFace> faces;
+
+        private ChunkBatch(List<ChunkFace> faces) {
+            this.faces = List.copyOf(faces);
+        }
+
+        public List<ChunkFace> faces() {
+            return faces;
+        }
+    }
+
+    public record ChunkFace(BlockPos position, CachedVolume cached, MicrovoxelGreedyMesher.Face face) {
     }
 }

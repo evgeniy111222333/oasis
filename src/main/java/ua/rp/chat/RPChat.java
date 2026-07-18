@@ -69,6 +69,7 @@ public class RPChat extends JavaPlugin {
 
         // Register Outgoing Plugin Channel for Fabric Client Mod
         getServer().getMessenger().registerOutgoingPluginChannel(this, "rpchat:auth_init");
+        getServer().getMessenger().registerOutgoingPluginChannel(this, "rpchat:appearance_refresh");
         getServer().getMessenger().registerOutgoingPluginChannel(this, RpChatFeedProtocol.CHANNEL);
         getServer().getMessenger().registerIncomingPluginChannel(this, CombatManager.INTENT_CHANNEL, combatManager);
 
@@ -80,6 +81,7 @@ public class RPChat extends JavaPlugin {
         getCommand("login").setExecutor(authCommands);
         getCommand("register").setExecutor(authCommands);
         getCommand("l").setExecutor(authCommands);
+        getCommand("skin").setExecutor(new AppearanceCommands(authManager));
 
         // Extract web resources for customizability
         extractWebAssets();
@@ -128,11 +130,19 @@ public class RPChat extends JavaPlugin {
                 "body.js",
                 "assets/body-ui.css",
                 "assets/body-ui.js"
+                ,"appearance.html",
+                "appearance.css",
+                "appearance.js"
         };
         for (String filename : files) {
             java.io.File outFile = new java.io.File(webFolder, filename);
-            if (!outFile.exists()) {
-                saveResource("web/" + filename, false);
+            boolean managedAppearanceAsset = filename.startsWith("appearance.");
+            // Appearance workshop assets are part of the client/server protocol,
+            // not administrator-customizable content.  Keep their server fallback
+            // in sync on every upgrade; otherwise an old data-folder copy shadows
+            // the new JAR indefinitely.
+            if (managedAppearanceAsset || !outFile.exists()) {
+                saveResource("web/" + filename, managedAppearanceAsset);
             }
         }
     }

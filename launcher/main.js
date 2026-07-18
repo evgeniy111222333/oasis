@@ -90,6 +90,53 @@ function joinUrl(baseUrl, relativePath) {
     return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 }
 
+function googleDriveArtifactUrl(distribution, distributionPath, descriptor = {}) {
+    const mirror = distribution && distribution.mirrors && distribution.mirrors.googleDrive;
+    const files = mirror && Array.isArray(mirror.files) ? mirror.files : [];
+    const normalizedPath = String(distributionPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const expectedSize = Number(descriptor.size || 0);
+    const expectedSha256 = String(descriptor.sha256 || '').trim().toLowerCase();
+    const file = files.find(entry => entry && entry.path === normalizedPath
+        && (!expectedSize || Number(entry.size) === expectedSize)
+        && (!expectedSha256 || String(entry.sha256 || '').trim().toLowerCase() === expectedSha256));
+    if (!file || typeof file.webContentLink !== 'string') return null;
+    try {
+        const parsed = new URL(file.webContentLink);
+        const validId = /^[A-Za-z0-9_-]{10,}$/.test(String(parsed.searchParams.get('id') || ''));
+        return parsed.protocol === 'https:' && parsed.hostname === 'drive.google.com'
+            && parsed.pathname === '/uc' && validId ? parsed.toString() : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+// Distribution artifacts keep stable filenames between releases, while the
+// CDN deliberately treats JARs as immutable. Keep the descriptor digest on
+// every mirror candidate (not just the primary URL from the manifest), so a
+// fallback can never be served an older cached artifact under the same name.
+function versionedArtifactUrl(url, descriptor = {}) {
+    const sha256 = String(descriptor.sha256 || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(sha256)) return url;
+    try {
+        const parsed = new URL(url);
+        parsed.searchParams.set('sha256', sha256);
+        return parsed.toString();
+    } catch (_) {
+        return url;
+    }
+}
+
+function distributionArtifactCandidates(descriptor, distributionPath, distribution) {
+    const googleDriveUrl = googleDriveArtifactUrl(distribution, distributionPath, descriptor);
+    return updateNetwork.uniqueUrls([
+        descriptor.url,
+        versionedArtifactUrl(joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath), descriptor),
+        versionedArtifactUrl(joinUrl(DISTRIBUTION_BASE_URL, distributionPath), descriptor),
+        versionedArtifactUrl(joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath), descriptor),
+        googleDriveUrl
+    ]);
+}
+
 function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000, descriptor = {}) {
     return updateNetwork.downloadFileAdaptive({
         urls,
@@ -464,7 +511,8 @@ async function fetchClientDistributionFromSources() {
         const distribution = await fetchDistributionManifest();
         return {
             mods: distribution.client.mods,
-            profile: distribution.client.profile || null
+            profile: distribution.client.profile || null,
+            distribution
         };
     } catch (error) {
         logLauncher(`Authoritative distribution manifest unavailable: ${error.message}`);
@@ -522,15 +570,10 @@ function catalogAsManifest(catalog) {
     }));
 }
 
-async function downloadClientAsset(relativePath, dest, onProgress, descriptor = {}) {
+async function downloadClientAsset(relativePath, dest, onProgress, descriptor = {}, distribution = null) {
     const cleanPath = relativePath.replace(/\\/g, '/');
     const distributionPath = `client/${cleanPath}`;
-    const candidates = updateNetwork.uniqueUrls([
-        descriptor.url,
-        joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath),
-        joinUrl(DISTRIBUTION_BASE_URL, distributionPath),
-        joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath)
-    ]);
+    const candidates = distributionArtifactCandidates(descriptor, distributionPath, distribution);
     
     let lastError;
     try {
@@ -559,14 +602,9 @@ async function downloadClientAsset(relativePath, dest, onProgress, descriptor = 
     throw lastError || new Error(`No source available for ${relativePath}`);
 }
 
-async function repairManagedMod(mod, dest, onProgress) {
+async function repairManagedMod(mod, dest, onProgress, distribution = null) {
     const distributionPath = `client/${String(mod.path || '').replace(/\\/g, '/')}`;
-    const candidates = updateNetwork.uniqueUrls([
-        mod.url,
-        joinUrl(R2_DISTRIBUTION_BASE_URL, distributionPath),
-        joinUrl(DISTRIBUTION_BASE_URL, distributionPath),
-        joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath)
-    ]);
+    const candidates = distributionArtifactCandidates(mod, distributionPath, distribution);
 
     let lastError;
     try {
@@ -823,12 +861,11 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
             updateProgress('Скачивание установщика лаунчера...', 10);
             const installerDest = path.join(app.getPath('temp'), `Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`);
             
-            const installerCandidates = [
-                distribution.launcher.url,
-                joinUrl(R2_DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`),
-                joinUrl(DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`),
-                joinUrl(GITHUB_DISTRIBUTION_BASE_URL, `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`)
-            ];
+            const installerCandidates = distributionArtifactCandidates(
+                distribution.launcher,
+                `launcher/stable/Eclipse-RolePlay-Launcher-Setup-${remoteLauncherVersion}.exe`,
+                distribution
+            );
             await downloadFileWithFallback(installerCandidates, installerDest, (received, total) => {
                 const percent = Math.round((received / total) * 100);
                 const mbReceived = (received / (1024 * 1024)).toFixed(1);
@@ -872,7 +909,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         const versionJsonPath = getClientProfilePath(activeGamePath);
         if (!isClientProfileValid(versionJsonPath)) {
             updateProgress('Загрузка профиля запуска...', Math.round((currentStep / totalSteps) * 100));
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, distribution.client.profile || {});
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, distribution.client.profile || {}, distribution);
         }
         currentStep++;
 
@@ -891,7 +928,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
                         progress: subProgress,
                         message: `Загрузка мода: ${mod.name} (${filePercent}%) [${kbReceived} KB / ${kbTotal} KB]...`
                     });
-                });
+                }, distribution);
             }
             currentStep++;
         }
@@ -1019,7 +1056,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
 
         const clientDistribution = await fetchClientDistributionFromSources();
         if (!isClientProfileValid(versionJsonPath)) {
-            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, clientDistribution.profile || {});
+            await downloadClientAsset(CLIENT_PROFILE_PATH, versionJsonPath, undefined, clientDistribution.profile || {}, clientDistribution.distribution);
         }
 
         // Quick mod check
@@ -1027,7 +1064,7 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
         for (const mod of requiredMods) {
             const modLocalPath = path.join(activeGamePath, mod.path);
             if (!isManagedFileValid(modLocalPath, mod)) {
-                await repairManagedMod(mod, modLocalPath);
+                await repairManagedMod(mod, modLocalPath, undefined, clientDistribution.distribution);
             }
         }
         removeObsoleteManagedMods(activeGamePath, requiredMods);

@@ -117,7 +117,7 @@ def ensure_release_folder(service, root_id: str, release_id: str, public: bool) 
     return folder
 
 
-def upload_file(service, folder_id: str, path: Path, release_id: str) -> dict:
+def upload_file(service, folder_id: str, path: Path, release_id: str, distribution: Path) -> dict:
     previous = find_named(service, folder_id, path.name)
     media = MediaFileUpload(
         str(path),
@@ -141,6 +141,7 @@ def upload_file(service, folder_id: str, path: Path, release_id: str) -> dict:
     if result.get("md5Checksum", "").lower() != md5(path):
         raise RuntimeError(f"Google Drive MD5 verification failed for {path.name}")
     result["sha256"] = sha256(path)
+    result["path"] = path.relative_to(distribution).as_posix()
     return result
 
 
@@ -176,7 +177,10 @@ def release_paths(distribution: Path, release_id: str, manifest_only: bool) -> l
         raise FileNotFoundError("Launcher installer was not found in the distribution")
     bundle = create_client_bundle(distribution, release_id)
     checksums = write_checksums(distribution, release_id, [installer, bundle, manifest])
-    return [installer, bundle, manifest, checksums]
+    # The ZIP remains a manual recovery option. Individual assets make Drive a
+    # normal resumable mirror for the launcher instead of a browser-only link.
+    client_assets = sorted(path for path in (distribution / "client").rglob("*") if path.is_file())
+    return [installer, *client_assets, bundle, manifest, checksums]
 
 
 def publish(repo: Path, distribution: Path, config: dict, manifest_only: bool) -> None:
@@ -184,14 +188,18 @@ def publish(repo: Path, distribution: Path, config: dict, manifest_only: bool) -
     release_id = str(manifest["release"]["id"])
     service = build("drive", "v3", credentials=authorize(config), cache_discovery=False)
     folder = ensure_release_folder(service, config["folderId"], release_id, config["makePublic"])
-    uploaded = [upload_file(service, folder["id"], path, release_id)
+    uploaded = [upload_file(service, folder["id"], path, release_id, distribution)
                 for path in release_paths(distribution, release_id, manifest_only)]
     metadata_path = repo / "deployment" / "google_drive_release.json"
     existing = {}
     if metadata_path.exists():
         existing = json.loads(metadata_path.read_text(encoding="utf-8"))
-    files = {entry["name"]: entry for entry in existing.get("files", []) if existing.get("releaseId") == release_id}
-    files.update({entry["name"]: entry for entry in uploaded})
+    files = {
+        entry.get("path", entry.get("name")): entry
+        for entry in existing.get("files", [])
+        if existing.get("releaseId") == release_id
+    }
+    files.update({entry["path"]: entry for entry in uploaded})
     metadata = {
         "releaseId": release_id,
         "folderId": folder["id"],

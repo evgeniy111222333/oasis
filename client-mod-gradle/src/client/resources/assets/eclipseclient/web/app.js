@@ -7,11 +7,35 @@ let sessionRecoveryInFlight = null;
 let apiUrl = "https://api.eclipse-roleplay.online";
 const savedCredentialsKey = "eclipseAuth.savedCredentials.v1";
 
+// Safe diagnostics consumed by McefDiagnostics in latest.log. Do not log
+// tokens, passwords, email addresses, or JSON request bodies here.
+function authDiagnostic(stage, detail = "") {
+    console.info(`[ECLIPSE-AUTH] ${stage}${detail ? ` ${detail}` : ""}`);
+}
+
+function safeApiEndpoint(path) {
+    try {
+        return new URL(path, apiUrl).origin + path.split("?")[0];
+    } catch (_) {
+        return "<invalid-api-url>";
+    }
+}
+
+window.addEventListener("error", (event) => {
+    authDiagnostic("window-error", `${event.message || "unknown"} at ${event.filename || "<inline>"}:${event.lineno || 0}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    authDiagnostic("unhandled-rejection", reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason || "unknown"));
+});
+
 document.addEventListener("DOMContentLoaded", () => {
     const params = new URLSearchParams(window.location.search);
     authToken = params.get("token") || "";
     mcUsername = params.get("username") || "";
     apiUrl = params.get("apiUrl") || apiUrl;
+    authDiagnostic("bootstrap", `origin=${location.origin || "file"} api=${safeApiEndpoint("/")}`);
 
     document.querySelectorAll("[data-tab]").forEach((button) => {
         button.addEventListener("click", () => switchTab(button.dataset.tab));
@@ -41,7 +65,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function fetchStatus() {
     try {
-        const response = await fetch(`${apiUrl}/api/status?token=${encodeURIComponent(authToken)}`);
+        const endpoint = `${apiUrl}/api/status?token=${encodeURIComponent(authToken)}`;
+        authDiagnostic("status-request", `url=${safeApiEndpoint("/api/status")}`);
+        const response = await fetch(endpoint);
+        authDiagnostic("status-response", `http=${response.status}`);
         const data = await response.json();
 
         if (!data.success) {
@@ -69,6 +96,7 @@ async function fetchStatus() {
             switchTab("register");
         }
     } catch (error) {
+        authDiagnostic("status-error", `${error?.name || "Error"}: ${error?.message || String(error)}`);
         if (await recoverAuthSession("Проверяем активную сессию...")) {
             return;
         }
@@ -90,9 +118,12 @@ async function recoverAuthSession(message) {
         showError(document.getElementById("loginError"), message);
         for (let attempt = 0; attempt < 16; attempt++) {
             try {
-                const response = await fetch(`${apiUrl}/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
+                const endpoint = `${apiUrl}/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`;
+                authDiagnostic("recovery-request", `attempt=${attempt + 1} url=${safeApiEndpoint("/api/client-session")}`);
+                const response = await fetch(endpoint, {
                     cache: "no-store"
                 });
+                authDiagnostic("recovery-response", `attempt=${attempt + 1} http=${response.status}`);
                 if (response.status === 200) {
                     const data = await response.json();
                     if (data.success && data.authUrl) {
@@ -108,6 +139,7 @@ async function recoverAuthSession(message) {
                     }
                 }
             } catch (error) {
+                authDiagnostic("recovery-error", `attempt=${attempt + 1} ${error?.name || "Error"}: ${error?.message || String(error)}`);
                 // The server or token may still be starting; retry inside the bounded window.
             }
             await new Promise((resolve) => window.setTimeout(resolve, attempt < 5 ? 350 : 650));
@@ -413,11 +445,13 @@ async function submitAuth(buttonId, url, payload, errorBox, onSuccess) {
     clearAlerts();
 
     try {
+        authDiagnostic("submit-request", `operation=${url} api=${safeApiEndpoint(url)}`);
         const response = await fetch(`${apiUrl}${url}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
+        authDiagnostic("submit-response", `operation=${url} http=${response.status}`);
         const result = await response.json();
 
         if (!result.success) {
@@ -427,6 +461,7 @@ async function submitAuth(buttonId, url, payload, errorBox, onSuccess) {
 
         onSuccess(result);
     } catch (error) {
+        authDiagnostic("submit-error", `operation=${url} ${error?.name || "Error"}: ${error?.message || String(error)}`);
         showError(errorBox, "Ошибка сети. Попробуйте еще раз.");
     } finally {
         setLoading(buttonId, false);

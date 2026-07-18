@@ -61,7 +61,7 @@ public class RpChatService {
                 .append(Component.text(" пытается " + action + "... ", RpChatChannel.ACTION.messageColor()))
                 .append(Component.text(success ? "[удачно]" : "[неудачно]", success ? TextColor.color(0x99C3A2) : TextColor.color(0xE3A899)))
                 .build();
-        deliver(sender, RpChatChannel.ACTION, action, message, true);
+        deliver(sender, RpChatChannel.TRY, action, message, true, success ? 1 : 2);
     }
 
     public void sendTodo(Player sender, String speech, String action) {
@@ -119,7 +119,7 @@ public class RpChatService {
         String raw = speech + " * " + action;
         int heard = 0;
         sender.sendMessage(formatTodo(rpName(sender), speech, action));
-        sendFeed(sender, sender, RpChatChannel.SPEAK, false, rpName(sender), "«" + speech + "» — " + action);
+        sendFeed(sender, sender, RpChatChannel.TODO, false, rpName(sender), speech + "\u001f" + action);
 
         for (Player receiver : plugin.getServer().getOnlinePlayers()) {
             if (receiver.equals(sender)) {
@@ -136,8 +136,9 @@ public class RpChatService {
             receiver.sendMessage(delivery == Delivery.CLEAR
                     ? formatTodo(receiverName, speech, action)
                     : distantMessage(receiverName, RpChatChannel.SPEAK, speech));
-            sendFeed(receiver, sender, RpChatChannel.SPEAK, delivery == Delivery.DISTANT, receiverName,
-                    delivery == Delivery.CLEAR ? "«" + speech + "» — " + action : distantFeedText(RpChatChannel.SPEAK, speech));
+            sendFeed(receiver, sender, delivery == Delivery.CLEAR ? RpChatChannel.TODO : RpChatChannel.SPEAK,
+                    delivery == Delivery.DISTANT, receiverName,
+                    delivery == Delivery.CLEAR ? speech + "\u001f" + action : distantFeedText(RpChatChannel.SPEAK, speech));
             heard++;
         }
 
@@ -146,9 +147,13 @@ public class RpChatService {
     }
 
     private void deliver(Player sender, RpChatChannel channel, String rawMessage, Component exact, boolean notifyIfAlone) {
+        deliver(sender, channel, rawMessage, exact, notifyIfAlone, 0);
+    }
+
+    private void deliver(Player sender, RpChatChannel channel, String rawMessage, Component exact, boolean notifyIfAlone, int outcome) {
         int heard = 0;
         sender.sendMessage(exact);
-        sendFeed(sender, sender, channel, false, rpName(sender), rawMessage);
+        sendFeed(sender, sender, channel, false, rpName(sender), rawMessage, outcome);
 
         for (Player receiver : plugin.getServer().getOnlinePlayers()) {
             if (receiver.equals(sender)) {
@@ -164,7 +169,7 @@ public class RpChatService {
             receiver.sendMessage(delivery == Delivery.CLEAR ? exact : distantMessage(rpName(sender), channel, rawMessage));
             String name = displayNameFor(receiver, sender);
             sendFeed(receiver, sender, channel, delivery == Delivery.DISTANT, name,
-                    delivery == Delivery.CLEAR ? rawMessage : distantFeedText(channel, rawMessage));
+                    delivery == Delivery.CLEAR ? rawMessage : distantFeedText(channel, rawMessage), outcome);
             heard++;
         }
 
@@ -177,15 +182,19 @@ public class RpChatService {
     }
 
     private void sendFeed(Player receiver, Player speaker, RpChatChannel channel, boolean distant, String name, String text) {
+        sendFeed(receiver, speaker, channel, distant, name, text, 0);
+    }
+
+    private void sendFeed(Player receiver, Player speaker, RpChatChannel channel, boolean distant, String name, String text, int outcome) {
         if (receiver == null || !receiver.isOnline()) return;
         receiver.sendPluginMessage(plugin, RpChatFeedProtocol.CHANNEL,
-                RpChatFeedProtocol.message(speaker == null ? null : speaker.getUniqueId(), channel, distant, name, text));
+                RpChatFeedProtocol.message(speaker == null ? null : speaker.getUniqueId(), channel, distant, name, text, outcome));
     }
 
     private String distantFeedText(RpChatChannel channel, String rawMessage) {
         return switch (channel) {
             case WHISPER -> "что-то тихо шепчет рядом.";
-            case ACTION -> "что-то делает неподалеку.";
+            case ACTION, TRY -> "что-то делает неподалеку.";
             case DESCRIPTION -> "Неподалеку заметно: " + distantText(rawMessage);
             case SHOUT -> "«" + distantText(rawMessage) + "»";
             default -> "говорит где-то рядом, но слова слышны нечетко.";
@@ -407,7 +416,7 @@ public class RpChatService {
                     .append(Component.text(" кричит издалека: ", channel.accentColor()))
                     .append(Component.text("«" + distantText(rawMessage) + "»", MUTED))
                     .build();
-            case ACTION -> Component.text(name + " что-то делает неподалеку.", MUTED);
+            case ACTION, TRY -> Component.text(name + " что-то делает неподалеку.", MUTED);
             case DESCRIPTION -> Component.text("Неподалеку заметно: " + distantText(rawMessage), MUTED);
             case OOC -> Component.text("[OOC] слышен обрывок разговора вне роли.", MUTED);
             default -> Component.text()

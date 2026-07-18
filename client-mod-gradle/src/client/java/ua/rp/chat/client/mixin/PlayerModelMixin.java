@@ -34,6 +34,7 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 import ua.rp.chat.client.render.BreathingPoseState;
 import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
+import ua.rp.chat.client.render.KneeBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 import ua.rp.chat.BreathingShoulderLayout;
 import ua.rp.chat.HeavyHammerAnimation;
@@ -52,6 +53,8 @@ public class PlayerModelMixin {
         eclipse$remapLowerSegment(model.leftLeg, "eclipse_shin", "eclipse_shin_pants", false);
         eclipse$removeArmJointCaps(model.rightArm);
         eclipse$removeArmJointCaps(model.leftArm);
+        eclipse$removeLegJointCaps(model.rightLeg);
+        eclipse$removeLegJointCaps(model.leftLeg);
         eclipse$removeWearableEndCaps(model.rightArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.leftArm, "eclipse_upper_arm", "eclipse_upper_sleeve", "eclipse_forearm", "eclipse_forearm_sleeve");
         eclipse$removeWearableEndCaps(model.rightLeg, "eclipse_thigh", "eclipse_thigh_pants", "eclipse_shin", "eclipse_shin_pants");
@@ -65,6 +68,14 @@ public class PlayerModelMixin {
                 eclipse$getChildOrNull(model.leftArm, "eclipse_elbow_bridge"),
                 eclipse$getChildOrNull(model.leftArm, "eclipse_forearm"),
                 model.leftSleeve, -1.0f, armWidth, 32, 48, 48, 48);
+        KneeBridgeRenderer.register(
+                eclipse$getChildOrNull(model.rightLeg, "eclipse_knee_bridge"),
+                eclipse$getChildOrNull(model.rightLeg, "eclipse_shin"),
+                model.rightPants, 0, 16, 0, 32);
+        KneeBridgeRenderer.register(
+                eclipse$getChildOrNull(model.leftLeg, "eclipse_knee_bridge"),
+                eclipse$getChildOrNull(model.leftLeg, "eclipse_shin"),
+                model.leftPants, 16, 48, 0, 48);
         ModelPart torsoMarker = eclipse$getChildOrNull(model.body, "eclipse_breathing_torso");
         BreathingTorsoRenderer.register(torsoMarker, model.jacket);
         if (torsoMarker == null) {
@@ -552,6 +563,7 @@ public class PlayerModelMixin {
                         .addBox(-2.0f, ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y, -2.0f,
                                 ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legLowerHeight(), 4, pants),
                 PartPose.ZERO);
+        leg.addOrReplaceChild("eclipse_knee_bridge", CubeListBuilder.create(), PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);
     }
@@ -689,6 +701,12 @@ public class PlayerModelMixin {
     private void eclipse$removeArmJointCaps(ModelPart arm) {
         eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(arm, "eclipse_upper_arm"), false, true);
         eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(arm, "eclipse_forearm"), true, false);
+    }
+
+    @Unique
+    private void eclipse$removeLegJointCaps(ModelPart leg) {
+        eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(leg, "eclipse_thigh"), false, true);
+        eclipse$removeSelectedEndCaps(eclipse$getChildOrNull(leg, "eclipse_shin"), true, false);
     }
 
     @Unique

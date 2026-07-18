@@ -37,6 +37,27 @@ public class AuthWebServer {
     private ExecutorService webExecutor;
     private final Gson gson = new Gson();
 
+    /**
+     * Authentication diagnostics intentionally omit passwords, full tokens,
+     * e-mail addresses and request bodies. Caddy supplies the original player
+     * IP through X-Forwarded-For because this server is only reachable locally.
+     */
+    private void auditAuth(HttpExchange exchange, String event, String loginName, UUID uuid, String outcome) {
+        String forwarded = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+        String remote = forwarded == null || forwarded.isBlank()
+                ? String.valueOf(exchange.getRemoteAddress())
+                : forwarded.split(",", 2)[0].trim();
+        String agent = exchange.getRequestHeaders().getFirst("User-Agent");
+        if (agent == null || agent.isBlank()) agent = "unknown";
+        if (agent.length() > 96) agent = agent.substring(0, 96);
+        plugin.getLogger().info("[AUTH-AUDIT] event=" + event
+                + " remote=" + remote
+                + " login=" + (loginName == null || loginName.isBlank() ? "-" : loginName)
+                + " uuid=" + (uuid == null ? "-" : uuid)
+                + " outcome=" + outcome
+                + " agent=" + agent);
+    }
+
     private static final class ApiJsonResult {
         private final int statusCode;
         private final JsonObject json;
@@ -59,10 +80,13 @@ public class AuthWebServer {
             
             // Route web UI page
             server.createContext("/auth", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
+            server.createContext("/appearance", new StaticFileHandler("appearance.html", "text/html; charset=utf-8"));
             server.createContext("/", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
             server.createContext("/index.html", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
             server.createContext("/style.css", new StaticFileHandler("style.css", "text/css; charset=utf-8"));
             server.createContext("/app.js", new StaticFileHandler("app.js", "application/javascript; charset=utf-8"));
+            server.createContext("/appearance.css", new StaticFileHandler("appearance.css", "text/css; charset=utf-8"));
+            server.createContext("/appearance.js", new StaticFileHandler("appearance.js", "application/javascript; charset=utf-8"));
             server.createContext("/body", new StaticFileHandler("body.html", "text/html; charset=utf-8"));
             server.createContext("/body.css", new StaticFileHandler("body.css", "text/css; charset=utf-8"));
             server.createContext("/body.js", new StaticFileHandler("body.js", "application/javascript; charset=utf-8"));
@@ -77,6 +101,8 @@ public class AuthWebServer {
             server.createContext("/api/client-session", new ApiClientSessionHandler());
             server.createContext("/api/appearance/profile", new ApiAppearanceProfileHandler());
             server.createContext("/api/appearance/texture", new ApiAppearanceTextureHandler());
+            server.createContext("/api/appearance/edit-session", new ApiAppearanceEditSessionHandler());
+            server.createContext("/api/appearance/update", new ApiAppearanceUpdateHandler());
             server.createContext("/api/server-status", new ApiServerStatusHandler());
             server.createContext("/api/vitals", new ApiVitalsHandler());
             server.createContext("/api/vitals/treat", new ApiVitalsTreatHandler());
@@ -198,18 +224,21 @@ public class AuthWebServer {
             String token = queryParams.get("token");
 
             if (token == null || token.isEmpty()) {
+                auditAuth(exchange, "status", null, null, "missing_token");
                 sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0442\u043e\u043a\u0435\u043d \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438."));
                 return;
             }
 
             UUID uuid = authManager.getTokenToUuid().get(token);
             if (uuid == null) {
+                auditAuth(exchange, "status", null, null, "invalid_token");
                 sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u0438\u043b\u0438 \u043f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043d\u044b\u0439 \u0442\u043e\u043a\u0435\u043d."));
                 return;
             }
 
             Player sessionPlayer = plugin.getServer().getPlayer(uuid);
             if (sessionPlayer == null || !sessionPlayer.isOnline() || !authManager.isPendingAuth(uuid)) {
+                auditAuth(exchange, "status", null, uuid, "session_not_pending");
                 authManager.getTokenToUuid().remove(token, uuid);
                 sendJsonResponse(exchange, 410, createErrorJson("Сессия авторизации завершена или игрок вышел с сервера."));
                 return;
@@ -217,6 +246,7 @@ public class AuthWebServer {
 
             boolean registered = authManager.getDatabase().isRegistered(uuid);
             String username = sessionPlayer.getName();
+            auditAuth(exchange, "status", username, uuid, registered ? "registered" : "unregistered");
             String loginName = registered ? authManager.getLoginName(uuid) : null;
 
             JsonObject responseJson = new JsonObject();
@@ -297,20 +327,24 @@ public class AuthWebServer {
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
+                    auditAuth(exchange, "login", loginName, null, "invalid_token");
                     sendJsonResponse(exchange, 400, createErrorJson("\u0412\u0440\u0435\u043c\u044f \u0441\u0435\u0441\u0441\u0438\u0438 \u0438\u0441\u0442\u0435\u043a\u043b\u043e. \u041f\u0435\u0440\u0435\u0437\u0430\u0439\u0434\u0438\u0442\u0435 \u0432 \u0438\u0433\u0440\u0443."));
                     return;
                 }
 
                 if (authManager.webLogin(uuid, loginName, password, rememberDevice)) {
+                    auditAuth(exchange, "login", loginName, uuid, "success");
                     String rpName = authManager.getRpName(uuid);
                     JsonObject responseJson = new JsonObject();
                     responseJson.addProperty("success", true);
                     responseJson.addProperty("rpName", rpName);
                     sendJsonResponse(exchange, 200, responseJson);
                 } else {
+                    auditAuth(exchange, "login", loginName, uuid, "rejected");
                     sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043b\u043e\u0433\u0438\u043d \u0438\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0435 \u0440\u0430\u0437."));
                 }
             } catch (Exception e) {
+                auditAuth(exchange, "login", null, null, "malformed_" + e.getClass().getSimpleName());
                 sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438 \u0437\u0430\u043f\u0440\u043e\u0441\u0430: " + e.getMessage()));
             }
         }
@@ -455,6 +489,65 @@ public class AuthWebServer {
                 sendJsonResponse(exchange, 200, responseJson);
             } catch (IllegalArgumentException e) {
                 sendJsonResponse(exchange, 400, createErrorJson("Invalid uuid."));
+            }
+        }
+    }
+
+    /** GET /api/appearance/edit-session?token=... */
+    private class ApiAppearanceEditSessionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+            String token = parseQueryParams(exchange.getRequestURI().getQuery()).get("token");
+            UUID uuid = authManager.getAppearanceEditOwner(token);
+            if (uuid == null) {
+                sendJsonResponse(exchange, 410, createErrorJson("Сеанс изменения внешности истёк. Выполните /skin ещё раз."));
+                return;
+            }
+            AuthDatabase.AppearanceProfile profile = authManager.getDatabase().getAppearanceProfile(uuid);
+            JsonObject json = new JsonObject();
+            json.addProperty("success", true);
+            json.addProperty("uuid", uuid.toString());
+            json.addProperty("rpName", authManager.getRpName(uuid));
+            if (profile != null && authManager.getAppearanceManager().hasAppearance(uuid)) {
+                json.addProperty("model", profile.model());
+                json.addProperty("textureUrl", authManager.getAppearanceManager().textureUrl(uuid, profile));
+            }
+            sendJsonResponse(exchange, 200, json);
+        }
+    }
+
+    /** POST /api/appearance/update */
+    private class ApiAppearanceUpdateHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+            try {
+                JsonObject json = JsonParser.parseString(readRequestBody(exchange)).getAsJsonObject();
+                String token = json.has("token") ? json.get("token").getAsString() : "";
+                String model = json.has("appearanceModel") && !json.get("appearanceModel").isJsonNull()
+                        ? json.get("appearanceModel").getAsString() : "classic";
+                String data = json.has("appearanceData") && !json.get("appearanceData").isJsonNull()
+                        ? json.get("appearanceData").getAsString() : "";
+                AppearanceManager.SaveResult result = authManager.saveAppearanceEdit(token, model, data);
+                if (!result.success()) {
+                    sendJsonResponse(exchange, 400, createErrorJson(result.message()));
+                    return;
+                }
+                JsonObject response = new JsonObject();
+                response.addProperty("success", true);
+                response.addProperty("hash", result.hash());
+                response.addProperty("model", result.model());
+                sendJsonResponse(exchange, 200, response);
+            } catch (Exception e) {
+                sendJsonResponse(exchange, 400, createErrorJson("Не удалось сохранить внешний вид: " + e.getMessage()));
             }
         }
     }

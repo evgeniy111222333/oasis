@@ -19,18 +19,51 @@ public abstract class BlockStateMicrovoxelMixin {
             at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelCollision(BlockGetter level, BlockPos position, CollisionContext context,
                                              CallbackInfoReturnable<VoxelShape> cir) {
-        if (!eclipse$isMicrovoxelMarker()) return;
-        VoxelShape shape = MicrovoxelClientState.collisionShape(position);
-        if (shape != null) cir.setReturnValue(shape);
+        eclipse$replaceShape("collision-context", position, cir);
+    }
+
+    @Inject(method = "getCollisionShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelCollisionNoContext(BlockGetter level, BlockPos position,
+                                                      CallbackInfoReturnable<VoxelShape> cir) {
+        eclipse$replaceShape("collision", position, cir);
     }
 
     @Inject(method = "getShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/phys/shapes/CollisionContext;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
             at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelSelection(BlockGetter level, BlockPos position, CollisionContext context,
                                              CallbackInfoReturnable<VoxelShape> cir) {
+        eclipse$replaceShape("selection-context", position, cir);
+    }
+
+    @Inject(method = "getShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelSelectionNoContext(BlockGetter level, BlockPos position,
+                                                      CallbackInfoReturnable<VoxelShape> cir) {
+        eclipse$replaceShape("selection", position, cir);
+    }
+
+    @Inject(method = "getInteractionShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelInteraction(BlockGetter level, BlockPos position,
+                                               CallbackInfoReturnable<VoxelShape> cir) {
+        eclipse$replaceShape("interaction", position, cir);
+    }
+
+    @Inject(method = "getBlockSupportShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelSupport(BlockGetter level, BlockPos position,
+                                           CallbackInfoReturnable<VoxelShape> cir) {
+        eclipse$replaceShape("support", position, cir);
+    }
+
+    private void eclipse$replaceShape(String hook, BlockPos position, CallbackInfoReturnable<VoxelShape> cir) {
         if (!eclipse$isMicrovoxelMarker()) return;
         VoxelShape shape = MicrovoxelClientState.collisionShape(position);
-        if (shape != null) cir.setReturnValue(shape);
+        if (shape != null) {
+            MicrovoxelClientState.probeShape(hook, position, shape);
+            cir.setReturnValue(shape);
+        }
     }
 
     private boolean eclipse$isMicrovoxelMarker() {

@@ -15,6 +15,8 @@ public final class MicrovoxelProtocol {
     public static final int ACTION_CONVERT = 1;
     public static final int ACTION_REMOVE = 2;
     public static final int ACTION_ADD = 3;
+    /** Carves the first 1/16 cell from an eligible, still-vanilla full block. */
+    public static final int ACTION_CARVE_STANDARD = 4;
 
     private MicrovoxelProtocol() {
     }

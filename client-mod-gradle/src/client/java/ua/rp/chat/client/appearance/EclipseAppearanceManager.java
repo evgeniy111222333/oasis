@@ -48,6 +48,19 @@ public final class EclipseAppearanceManager {
     private EclipseAppearanceManager() {
     }
 
+    /** Forces the next render to request a new profile instead of waiting for the normal two-minute poll. */
+    public static void invalidate(UUID uuid) {
+        if (uuid == null) {
+            return;
+        }
+        Entry entry = CACHE.computeIfAbsent(uuid, ignored -> new Entry());
+        entry.lastAttemptMs = 0L;
+        entry.hash = "";
+        entry.missing = false;
+        entry.retryDelayMs = FIRST_LOAD_RETRY_MS;
+        EclipseClientMod.LOGGER.info("Appearance cache invalidated for {}", uuid);
+    }
+
     public static PlayerSkin getSkin(UUID uuid) {
         Minecraft client = Minecraft.getInstance();
         if (uuid == null || client == null || client.level == null) {

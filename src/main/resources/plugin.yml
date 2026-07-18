@@ -14,6 +14,9 @@ commands:
   l:
     description: Short alias for /login.
     usage: /l <password>
+  skin:
+    description: Opens the secure character appearance studio.
+    usage: /skin
   me:
     description: Describes character action.
     usage: /me <action>

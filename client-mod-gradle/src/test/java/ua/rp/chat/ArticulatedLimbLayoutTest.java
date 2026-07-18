@@ -4,11 +4,11 @@ public final class ArticulatedLimbLayoutTest {
     private static final float EPSILON = 0.00001f;
 
     public static void main(String[] args) {
-        assertClose("arm upper height with shoulder overlap", 6.5f, ArticulatedLimbLayout.armUpperHeight());
+        assertClose("arm upper height starts at the true shoulder plane", 5.75f, ArticulatedLimbLayout.armUpperHeight());
         assertClose("arm lower height", 5.75f, ArticulatedLimbLayout.armLowerHeight());
         assertClose("arm bridge span", 0.5f,
                 ArticulatedLimbLayout.armLowerBoundaryY() - ArticulatedLimbLayout.armUpperBoundaryY());
-        assertClose("rendered arm span includes shoulder overlap", 12.75f,
+        assertClose("rendered arm span matches the vanilla 12px limb", 12.0f,
                 ArticulatedLimbLayout.armUpperHeight() + ArticulatedLimbLayout.armLowerHeight()
                         + ArticulatedLimbLayout.JOINT_HALF_BAND * 2.0f);
         assertClose("arm segment overlap", 0.0f, ArticulatedLimbLayout.intervalOverlap(
@@ -17,12 +17,12 @@ public final class ArticulatedLimbLayoutTest {
                 ArticulatedLimbLayout.armLowerBoundaryY(),
                 ArticulatedLimbLayout.ARM_HAND_Y));
 
-        assertClose("leg upper height with hip overlap", 6.75f, ArticulatedLimbLayout.legUpperHeight());
+        assertClose("leg upper height starts at the true hip plane", 6.0f, ArticulatedLimbLayout.legUpperHeight());
         assertClose("leg lower height", 6.0f, ArticulatedLimbLayout.legLowerHeight());
         assertClose("leg joint continuity",
                 ArticulatedLimbLayout.LEG_KNEE_Y,
                 ArticulatedLimbLayout.LEG_KNEE_Y + ArticulatedLimbLayout.LOWER_LOCAL_TOP_Y);
-        assertClose("rendered leg span includes hip overlap", 12.75f,
+        assertClose("rendered leg span matches the vanilla 12px limb", 12.0f,
                 ArticulatedLimbLayout.legUpperHeight() + ArticulatedLimbLayout.legLowerHeight());
         assertClose("leg segment overlap", 0.0f, ArticulatedLimbLayout.intervalOverlap(
                 ArticulatedLimbLayout.LEG_TOP_Y,
@@ -50,10 +50,10 @@ public final class ArticulatedLimbLayoutTest {
         assertTrue("pants gap remains positive", ArticulatedLimbLayout.pantsOuterGap() > 0.0f);
         assertTrue("pants gap remains narrower than the base gap",
                 ArticulatedLimbLayout.pantsOuterGap() < ArticulatedLimbLayout.legBaseGap());
-        assertTrue("upper arm overlaps the shoulder joint",
-                ArticulatedLimbLayout.ARM_SHOULDER_OVERLAP >= 0.5f);
-        assertTrue("thigh overlaps the hip joint",
-                ArticulatedLimbLayout.LEG_HIP_OVERLAP >= 0.5f);
+        assertClose("arm starts at the exact shoulder plane", 0.0f,
+                ArticulatedLimbLayout.ARM_SHOULDER_OVERLAP);
+        assertClose("thigh starts at the exact hip plane", 0.0f,
+                ArticulatedLimbLayout.LEG_HIP_OVERLAP);
 
         float requestedStanceOffset = 0.70f;
         float stanceRoll = ArticulatedLimbLayout.stanceRoll(requestedStanceOffset);
@@ -108,6 +108,10 @@ public final class ArticulatedLimbLayoutTest {
                 ArticulatedLimbLayout.jointSkinWeight(1.0f));
         assertTrue("each layer has sixteen continuous seam quads",
                 (ArticulatedLimbLayout.JOINT_SKINNING_RINGS - 1) * 4 == 16);
+        assertClose("knee bridge has a protected half-pixel upper band", 5.75f,
+                ArticulatedLimbLayout.LEG_UPPER_BOUNDARY_Y);
+        assertClose("knee bridge has a protected half-pixel lower band", 6.25f,
+                ArticulatedLimbLayout.LEG_LOWER_BOUNDARY_Y);
         System.out.println("ArticulatedLimbLayoutTest: all geometry and UV invariants passed");
     }
 

@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import ua.rp.chat.client.render.BreathingTorsoRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
+import ua.rp.chat.client.render.KneeBridgeRenderer;
 
 @Mixin(ModelPart.class)
 public class ModelPartRenderMixin {
@@ -23,6 +24,8 @@ public class ModelPartRenderMixin {
         if (BreathingTorsoRenderer.renderIfRegistered(
                 (ModelPart) (Object) this, poseStack, consumer, light, overlay, color)
                 || ElbowBridgeRenderer.renderIfRegistered(
+                (ModelPart) (Object) this, poseStack, consumer, light, overlay, color)
+                || KneeBridgeRenderer.renderIfRegistered(
                 (ModelPart) (Object) this, poseStack, consumer, light, overlay, color)) {
             ci.cancel();
         }

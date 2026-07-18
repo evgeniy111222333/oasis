@@ -38,6 +38,7 @@ import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
 import ua.rp.chat.client.rpfeed.RpChatFeedClientState;
 import ua.rp.chat.client.rpfeed.RpChatFeedPayload;
+import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -95,6 +96,7 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(AppearanceRefreshPayload.TYPE, AppearanceRefreshPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -114,6 +116,14 @@ public class EclipseClientMod implements ClientModInitializer {
                 context.client().execute(() -> HeavyHammerClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> RpChatFeedClientState.accept(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(AppearanceRefreshPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> {
+                    try {
+                        EclipseAppearanceManager.invalidate(java.util.UUID.fromString(payload.playerUuid()));
+                    } catch (IllegalArgumentException invalidUuid) {
+                        LOGGER.warn("[APPEARANCE] Ignored malformed refresh payload: {}", payload.playerUuid());
+                    }
+                }));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
@@ -214,6 +224,7 @@ public class EclipseClientMod implements ClientModInitializer {
         LOGGER.info("[AUTH] setScreen returned: currentScreen="
                 + (client.screen == null ? "none" : client.screen.getClass().getSimpleName()));
     }
+
 
     private static String fetchAuthUrl(String sessionUrl) {
         HttpURLConnection connection = null;

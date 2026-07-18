@@ -15,14 +15,20 @@ public final class RpChatFeedProtocol {
     }
 
     public static byte[] message(UUID speakerId, RpChatChannel channel, boolean distant, String name, String text) {
+        return message(speakerId, channel, distant, name, text, 0);
+    }
+
+    /** outcome: 0 = none, 1 = success, 2 = failure. */
+    public static byte[] message(UUID speakerId, RpChatChannel channel, boolean distant, String name, String text, int outcome) {
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             try (DataOutputStream out = new DataOutputStream(bytes)) {
-                out.writeByte(1);
+                out.writeByte(2);
                 out.writeLong(speakerId == null ? 0L : speakerId.getMostSignificantBits());
                 out.writeLong(speakerId == null ? 0L : speakerId.getLeastSignificantBits());
                 out.writeByte(channel.ordinal());
                 out.writeBoolean(distant);
+                out.writeByte(Math.max(0, Math.min(2, outcome)));
                 writeText(out, name);
                 writeText(out, text);
             }
