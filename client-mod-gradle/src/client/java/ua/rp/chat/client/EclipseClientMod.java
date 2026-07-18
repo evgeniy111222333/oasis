@@ -33,6 +33,9 @@ import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
 import ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload;
 import ua.rp.chat.client.heavyhammer.HammerHolsterClientState;
 import ua.rp.chat.client.debug.HammerRenderQaController;
+import ua.rp.chat.client.pickup.PickupClientState;
+import ua.rp.chat.client.pickup.ItemPickupPayload;
+import ua.rp.chat.client.pickup.GroundedLootRenderer;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -63,6 +66,7 @@ public class EclipseClientMod implements ClientModInitializer {
                 + ", java=" + System.getProperty("java.version")
                 + ", os=" + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         EclipseHudOverlay.register();
+        PickupClientState.register();
         MicrovoxelClientRenderer.register();
         MicrovoxelInteractionController.register();
         HammerRenderQaController.register();
@@ -87,6 +91,7 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(HeavyHammerSyncPayload.TYPE, HeavyHammerSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -115,6 +120,8 @@ public class EclipseClientMod implements ClientModInitializer {
             HeavyHammerClientState.clientTick(client);
             HammerHolsterClientState.clientTick(client);
             HammerRenderQaController.clientTick(client);
+            PickupClientState.clientTick(client);
+            GroundedLootRenderer.clientTick(client);
             handleBodyStatusKey(client);
             pollAuthSession(client);
         });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -107,6 +107,24 @@ function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000, des
 
 function requestJson(url, timeoutMs = 8000) {
     return updateNetwork.requestJson(url, timeoutMs);
+}
+
+function googleDriveMirrorUrl(distribution) {
+    const candidate = distribution && distribution.mirrors && distribution.mirrors.googleDrive
+        ? distribution.mirrors.googleDrive.folderUrl : null;
+    if (typeof candidate !== 'string') return null;
+    try {
+        const parsed = new URL(candidate);
+        return parsed.protocol === 'https:' && parsed.hostname === 'drive.google.com'
+            && parsed.pathname.startsWith('/drive/folders/') ? parsed.toString() : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function releaseForUi(release, distribution) {
+    if (!release || typeof release !== 'object') return release;
+    return { ...release, googleDriveMirrorAvailable: Boolean(googleDriveMirrorUrl(distribution)) };
 }
 
 function getClientProfilePath(gamePath) {
@@ -735,6 +753,7 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
                     title: 'Обновление лаунчера',
                     summary: `Доступна новая версия лаунчера ${remoteLauncherVersion} (текущая: ${currentLauncherVersion}). Для продолжения игры необходимо обновить лаунчер.`,
                     buttonLabel: 'ОБНОВИТЬ ЛАУНЧЕР',
+                    googleDriveMirrorAvailable: Boolean(googleDriveMirrorUrl(distribution)),
                     notes: [
                         'Завершаются только процессы Eclipse RolePlay Launcher текущего пользователя',
                         'Minecraft, Java и другие приложения не затрагиваются',
@@ -757,7 +776,10 @@ ipcMain.on('check-updates', async (event, { gamePath }) => {
             && release.id.trim()
             && release.id !== config.lastAppliedReleaseId
         );
-        event.reply('update-status', { updateRequired, release: updateRequired ? release : null });
+        event.reply('update-status', {
+            updateRequired,
+            release: updateRequired ? releaseForUi(release, distribution) : null
+        });
     } catch (error) {
         logLauncher(`Release push check failed quietly: ${error.message}`);
         event.reply('update-status', { updateRequired: false });
@@ -835,7 +857,7 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
 
         let requiredMods;
         requiredMods = distribution.client.mods;
-        activeRelease = distribution.release || null;
+        activeRelease = releaseForUi(distribution.release || null, distribution);
 
         
         let totalSteps = 1 + requiredMods.length;
@@ -893,6 +915,19 @@ ipcMain.on('trigger-update', async (event, { gamePath }) => {
         if (!keepUpdateLockUntilExit && updateOperationMutex.release(updateToken)) {
             logLauncher(`Update operation ${updateToken.id} released.`);
         }
+    }
+});
+
+ipcMain.on('open-google-drive-mirror', async (event) => {
+    try {
+        const distribution = await fetchDistributionManifest();
+        const mirrorUrl = googleDriveMirrorUrl(distribution);
+        if (!mirrorUrl) throw new Error('Зеркало Google Drive отсутствует для этого релиза.');
+        await shell.openExternal(mirrorUrl);
+        event.reply('google-drive-mirror-status', { success: true });
+    } catch (error) {
+        logLauncher(`Google Drive mirror could not be opened: ${error.message}`);
+        event.reply('google-drive-mirror-status', { success: false, error: error.message });
     }
 });
 

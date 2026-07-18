@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.client.pickup.PickupClientState;
 
 public final class EclipseHudOverlay implements HudElement {
     private static final Identifier ID = Identifier.fromNamespaceAndPath(EclipseClientMod.MOD_ID, "helmet_visor");
@@ -61,5 +62,6 @@ public final class EclipseHudOverlay implements HudElement {
         }
 
         AcquaintanceClientState.render(graphics, width, height);
+        PickupClientState.renderHud(graphics, width, height);
     }
 }

@@ -124,6 +124,12 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
     profile["path"] = profile_relative
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     release = json.loads(release_source.read_text(encoding="utf-8")) if release_source.exists() else {"published": False}
+    drive_mirror_path = repo / "deployment" / "google_drive_release.json"
+    drive_mirror = None
+    if drive_mirror_path.exists():
+        candidate = json.loads(drive_mirror_path.read_text(encoding="utf-8"))
+        if candidate.get("releaseId") == release.get("id"):
+            drive_mirror = candidate
     manifest = {
         "schemaVersion": 1,
         "channel": "production",
@@ -138,6 +144,8 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
             "mods": mods,
         },
     }
+    if drive_mirror is not None:
+        manifest["mirrors"] = {"googleDrive": drive_mirror}
 
     (client_output / "mods.json").write_text(
         json.dumps(mods, ensure_ascii=False, indent=2) + "\n",

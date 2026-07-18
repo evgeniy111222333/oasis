@@ -39,6 +39,17 @@ def main() -> None:
         encoding="utf-8",
     )
     subprocess.run([sys.executable, str(deployment_dir / "build_distribution.py")], cwd=repo, check=True)
+    drive_config = deployment_dir / "google_drive.local.json"
+    if drive_config.exists():
+        try:
+            drive_script = deployment_dir / "upload_google_drive_distribution.py"
+            subprocess.run([sys.executable, str(drive_script)], cwd=repo, check=True)
+            # Rebuild so the public manifest contains the Drive browser-download links,
+            # then update only that manifest inside the immutable release folder.
+            subprocess.run([sys.executable, str(deployment_dir / "build_distribution.py")], cwd=repo, check=True)
+            subprocess.run([sys.executable, str(drive_script), "--manifest-only"], cwd=repo, check=True)
+        except subprocess.CalledProcessError as error:
+            print(f"WARNING: Google Drive mirror was not published: {error}", file=sys.stderr)
     subprocess.run([sys.executable, str(deployment_dir / "upload_r2_distribution.py")], cwd=repo, check=True)
     subprocess.run([sys.executable, str(deployment_dir / "upload_vps_distribution.py")], cwd=repo, check=True)
     subprocess.run([sys.executable, str(deployment_dir / "upload_github_distribution.py")], cwd=repo, check=True)

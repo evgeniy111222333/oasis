@@ -54,3 +54,8 @@ node_modules/
 launcher/dist/
 /distribution-build/
 /eclipse-*.tar.gz
+
+# Local Google Drive publisher credentials and refresh tokens
+/secrets/
+/deployment/google_drive.local.json
+/deployment/google_drive_release.json

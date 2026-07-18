@@ -12,9 +12,21 @@ import java.util.UUID;
 import ua.rp.chat.heavyhammer.HeavyHammerImpact;
 import ua.rp.chat.heavyhammer.HeavyHammerProtocol;
 import ua.rp.chat.heavyhammer.HeavyHammerRules;
+import ua.rp.chat.interaction.ItemPickupRules;
 
 public final class MicrovoxelServerCoreTest {
     public static void main(String[] args) throws Exception {
+        UUID itemOwner = UUID.randomUUID();
+        UUID otherPlayer = UUID.randomUUID();
+        require(ItemPickupRules.mayPickUp(true, 0, itemOwner, itemOwner, 8.99),
+                "Right-click pickup must allow the owner inside interaction range");
+        require(!ItemPickupRules.mayPickUp(true, 0, itemOwner, otherPlayer, 1.0),
+                "Right-click pickup must preserve an item's owner lock");
+        require(!ItemPickupRules.mayPickUp(true, 1, null, itemOwner, 1.0),
+                "Right-click pickup must preserve the vanilla pickup delay");
+        require(!ItemPickupRules.mayPickUp(true, 0, null, itemOwner, 9.01),
+                "Right-click pickup must reject items outside close interaction range");
+
         MicrovoxelVolume volume = MicrovoxelVolume.full("minecraft:red_wool");
         require(volume.occupiedCount() == 4096, "Converted block must contain all 4096 cells");
         require(volume.collisionCuboids().size() == 1, "Full volume must merge to one collider");

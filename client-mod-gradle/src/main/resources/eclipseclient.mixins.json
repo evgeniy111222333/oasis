@@ -23,6 +23,7 @@
     "CustomHeadLayerMixin",
     "ItemInHandRendererMixin",
     "ItemInHandLayerMixin",
+    "ItemEntityRendererMixin",
     "InventoryScreenMixin",
     "AvatarRenderStateMixin",
     "MultiPlayerGameModeMixin"

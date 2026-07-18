@@ -280,6 +280,7 @@ updateServerStatus(); // initial check
 // Update modal UI elements
 const updateModal = document.getElementById('updateModal');
 const btnStartUpdate = document.getElementById('btnStartUpdate');
+const btnGoogleDriveMirror = document.getElementById('btnGoogleDriveMirror');
 const updateTitle = document.getElementById('updateTitle');
 const updateSummary = document.getElementById('updateSummary');
 const updateNotes = document.getElementById('updateNotes');
@@ -313,6 +314,11 @@ function renderRelease(release) {
     const buttonIcon = document.createElement('i');
     buttonIcon.className = 'fa-solid fa-download';
     btnStartUpdate.replaceChildren(buttonIcon, document.createTextNode(` ${release?.buttonLabel || 'ЗАГРУЗИТЬ ОБНОВЛЕНИЕ'}`));
+    btnGoogleDriveMirror.hidden = true;
+}
+
+function showGoogleDriveMirrorIfAvailable() {
+    btnGoogleDriveMirror.hidden = !currentRelease?.googleDriveMirrorAvailable;
 }
 
 function showUpdateToast(message) {
@@ -342,6 +348,7 @@ ipcRenderer.on('update-status', (event, data) => {
             btnStartUpdate.style.cursor = '';
             modalProgressMessage.innerText = `Ошибка: ${data.error}`;
             modalProgressMessage.style.color = '#E3A899';
+            showGoogleDriveMirrorIfAvailable();
         }
     } else {
         updateModal.style.display = 'none';
@@ -378,4 +385,20 @@ btnStartUpdate.addEventListener('click', () => {
     btnStartUpdate.style.cursor = 'not-allowed';
     
     ipcRenderer.send('trigger-update', { gamePath: currentGamePath, releaseId: currentRelease?.id || null });
+});
+
+btnGoogleDriveMirror.addEventListener('click', () => {
+    btnGoogleDriveMirror.disabled = true;
+    ipcRenderer.send('open-google-drive-mirror');
+});
+
+ipcRenderer.on('google-drive-mirror-status', (event, data) => {
+    btnGoogleDriveMirror.disabled = false;
+    if (data.success) {
+        modalProgressMessage.innerText = 'Google Drive открыт в браузере. Скачайте нужный файл из папки релиза.';
+        modalProgressMessage.style.color = '#99C3A2';
+    } else {
+        modalProgressMessage.innerText = `Не удалось открыть Google Drive: ${data.error || 'неизвестная ошибка'}`;
+        modalProgressMessage.style.color = '#E3A899';
+    }
 });

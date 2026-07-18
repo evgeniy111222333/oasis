@@ -7,6 +7,7 @@ import ua.rp.chat.combat.CombatManager;
 import ua.rp.chat.vitals.StaminaManager;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
 import ua.rp.chat.heavyhammer.HeavyHammerManager;
+import ua.rp.chat.interaction.ItemPickupManager;
 
 import java.sql.SQLException;
 
@@ -60,6 +61,7 @@ public class RPChat extends JavaPlugin {
         microvoxelManager.start();
         heavyHammerManager = new HeavyHammerManager(this, microvoxelManager);
         heavyHammerManager.start();
+        new ItemPickupManager(this).start();
         
         // Initialize and register GUI Manager
         authGuiManager = new AuthGuiManager(this, authManager);

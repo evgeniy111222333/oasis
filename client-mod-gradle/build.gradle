@@ -190,6 +190,14 @@ tasks.register("verifyHeavyHammerHolsterBodyAttachment") {
 	}
 }
 
+tasks.register("verifyPickupPrompt", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client-side right-click pickup range and prompt fade invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.PickupPromptRulesTest"
+}
+
 tasks.register("verifyHeavyHammerHolsterLayout", JavaExec) {
 	dependsOn tasks.named("testClasses")
 	group = "verification"

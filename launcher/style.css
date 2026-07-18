@@ -949,6 +949,32 @@ body {
     50% { transform: scale(1.02); box-shadow: 0 0 15px rgba(227, 192, 153, 0.4); }
 }
 
+.update-mirror-btn {
+    border: 1px solid rgba(227, 192, 153, 0.32);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--sand-gold);
+    padding: 11px 18px;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.update-mirror-btn:hover {
+    background: rgba(227, 192, 153, 0.09);
+    border-color: rgba(227, 192, 153, 0.65);
+    transform: translateY(-1px);
+}
+
+.update-mirror-btn[hidden] {
+    display: none;
+}
+
 .launcher-toast {
     position: fixed;
     top: 54px;
