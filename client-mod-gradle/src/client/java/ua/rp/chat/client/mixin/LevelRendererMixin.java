@@ -6,6 +6,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.state.level.BlockOutlineRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Mixin;
@@ -32,7 +33,7 @@ public class LevelRendererMixin {
     @Inject(method = "renderHitOutline", at = @At("HEAD"), cancellable = true)
     private void eclipse$cancelMicrovoxelOutline(PoseStack poseStack, VertexConsumer vertexConsumer,
                                                  double camX, double camY, double camZ,
-                                                 Object outlineState, int light, float partialTick,
+                                                 BlockOutlineRenderState outlineState, int light, float partialTick,
                                                  CallbackInfo ci) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.hitResult instanceof BlockHitResult blockHit) {
