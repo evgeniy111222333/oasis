@@ -93,8 +93,13 @@ public final class MicrovoxelClientRenderer {
                 if (lastPos == null || !lastPos.equals(position)) {
                     lastPos = position;
                     BlockState marker = minecraft.level.getBlockState(position);
+                    // Accept STRUCTURE_VOID, LIGHT (normal markers) and AIR (client
+                    // predicted a break but the server hasn't confirmed removal yet).
+                    // Once the server sends REMOVE, the volume data is cleared and
+                    // the batch no longer contains this position.
                     lastPosValid = marker.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID)
-                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT);
+                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT)
+                            || marker.isAir();
                 }
                 if (!lastPosValid) {
                     continue;

@@ -607,6 +607,16 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
 
+        // Creative players must not insta-break the marker.  Microvoxel editing
+        // goes through the plugin channel; the marker is only a server-side anchor.
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+            event.setCancelled(true);
+            if (block.getType() != Material.STRUCTURE_VOID) {
+                block.setType(Material.STRUCTURE_VOID, false);
+            }
+            return;
+        }
+
         if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
             Long startTime = miningStartTimes.get(playerId);
             String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;

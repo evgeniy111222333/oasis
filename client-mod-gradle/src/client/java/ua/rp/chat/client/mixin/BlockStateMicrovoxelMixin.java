@@ -91,7 +91,13 @@ public abstract class BlockStateMicrovoxelMixin {
     }
 
     private void eclipse$replaceShape(String hook, BlockPos position, CallbackInfoReturnable<VoxelShape> cir) {
-        if (!eclipse$isMicrovoxelMarker()) return;
+        // Fast path: known marker blocks always check microvoxel state.
+        // Slow path: AIR blocks may be markers that the client predicted as broken;
+        // a HashMap lookup is acceptable here to keep collisions correct.
+        if (!eclipse$isMicrovoxelMarker()) {
+            BlockState state = (BlockState) (Object) this;
+            if (!state.isAir()) return;
+        }
         VoxelShape shape = MicrovoxelClientState.collisionShape(position);
         if (shape != null) {
             MicrovoxelClientState.probeShape(hook, position, shape);

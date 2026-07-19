@@ -25,6 +25,12 @@ public class MultiPlayerGameModeMixin {
 
     @Inject(method = "startDestroyBlock", at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelStartDestroyBlock(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
+        // Never let vanilla break the invisible marker block; microvoxel
+        // editing is handled entirely through the plugin channel.
+        if (MicrovoxelClientState.get(pos) != null) {
+            cir.setReturnValue(false);
+            return;
+        }
         if (MicrovoxelInteractionController.editing() && eclipse$isMicrovoxelOrCarvable(pos)) {
             cir.setReturnValue(false);
         }
@@ -32,6 +38,10 @@ public class MultiPlayerGameModeMixin {
 
     @Inject(method = "continueDestroyBlock", at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelContinueDestroyBlock(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
+        if (MicrovoxelClientState.get(pos) != null) {
+            cir.setReturnValue(false);
+            return;
+        }
         if (MicrovoxelInteractionController.editing() && eclipse$isMicrovoxelOrCarvable(pos)) {
             cir.setReturnValue(false);
         }
