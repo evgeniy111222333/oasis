@@ -31,11 +31,15 @@ public final class MicrovoxelClientState {
     private static final int UPSERT = 2;
     private static final int REMOVE = 3;
     private static final int MESSAGE = 4;
+    private static final int REGISTER_MATERIAL = 5;
+    private static final int BATCH_UPSERT = 6;
+    private static final int CLEAR_CHUNK = 7;
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
     private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
     private static final Map<BlockPos, CachedVolume> VOLUMES = new HashMap<>();
     private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
+    private static final Map<Integer, String> CLIENT_DICTIONARY = new HashMap<>();
     /**
      * A block-state packet and the matching microvoxel sync packet can arrive in either order.
      * Rebuilding once immediately is normally enough; rebuilding the same local boundary two
@@ -98,6 +102,81 @@ public final class MicrovoxelClientState {
                 String message = readUtf8(input);
                 Minecraft minecraft = Minecraft.getInstance();
                 minecraft.gui.setOverlayMessage(Component.literal(message), false);
+                return;
+            }
+            if (type == REGISTER_MATERIAL) {
+                int id = input.readUnsignedShort();
+                String material = readUtf8(input);
+                CLIENT_DICTIONARY.put(id, material);
+                return;
+            }
+            if (type == CLEAR_CHUNK) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                clearChunk(chunkX, chunkZ);
+                return;
+            }
+            if (type == BATCH_UPSERT) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                int size = input.readUnsignedShort();
+                for (int entryIdx = 0; entryIdx < size; entryIdx++) {
+                    int posXZ = input.readUnsignedByte();
+                    int posY = input.readShort();
+                    int x = (chunkX << 4) | ((posXZ >> 4) & 15);
+                    int z = (chunkZ << 4) | (posXZ & 15);
+                    BlockPos position = new BlockPos(x, posY, z);
+
+                    int revision = input.readInt();
+                    int paletteSize = input.readUnsignedByte();
+                    List<String> palette = new ArrayList<>(paletteSize);
+                    for (int index = 0; index < paletteSize; index++) {
+                        int dictId = input.readUnsignedShort();
+                        String material = CLIENT_DICTIONARY.get(dictId);
+                        if (material == null) throw new IOException("Unknown dictionary material ID: " + dictId);
+                        palette.add(material);
+                    }
+
+                    byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
+                    int encoding = input.readUnsignedByte();
+                    if (encoding == 0) {
+                        if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
+                    } else if (encoding == 1) {
+                        int runs = input.readUnsignedShort();
+                        int cursor = 0;
+                        for (int run = 0; run < runs; run++) {
+                            int length = input.readUnsignedShort();
+                            byte material = input.readByte();
+                            if (length < 1 || cursor + length > cells.length) throw new IOException("Invalid RLE run");
+                            java.util.Arrays.fill(cells, cursor, cursor + length, material);
+                            cursor += length;
+                        }
+                        if (cursor != cells.length) throw new IOException("Incomplete RLE volume");
+                    } else {
+                        throw new IOException("Unknown cell encoding");
+                    }
+
+                    MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
+                    BlockPos immutable = position.immutable();
+                    if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
+                    
+                    CachedVolume oldCached = VOLUMES.get(immutable);
+                    VoxelShape fallback = (oldCached != null) ? oldCached.getShape() : null;
+                    CachedVolume cachedVolume = new CachedVolume(immutable, volume, fallback);
+                    if (oldCached != null) {
+                        cachedVolume.mesh = oldCached.mesh;
+                    }
+                    VOLUMES.put(immutable, cachedVolume);
+                    
+                    rebuild(immutable);
+                    
+                    boolean touchBoundary = (oldCached == null || changesTouchBoundary(oldCached.volume, volume));
+                    if (touchBoundary) {
+                        queueNeighborsRebuild(immutable);
+                        scheduleBoundaryRebuild(immutable);
+                    }
+                    queueChunkBatch(immutable);
+                }
                 return;
             }
             if (type != UPSERT) return;
@@ -428,6 +507,19 @@ public final class MicrovoxelClientState {
         CHUNK_BATCHES.clear();
         CHUNK_BATCH_QUEUE.clear();
         PROBE_EMITTED.clear();
+        CLIENT_DICTIONARY.clear();
+    }
+
+    public static void clearChunk(int chunkX, int chunkZ) {
+        long key = chunkKey(chunkX, chunkZ);
+        Set<BlockPos> positions = CHUNKS.remove(key);
+        if (positions != null) {
+            for (BlockPos pos : positions) {
+                VOLUMES.remove(pos);
+                queueRebuild(pos);
+            }
+            CHUNK_BATCH_QUEUE.add(key);
+        }
     }
 
     private static void addToChunk(BlockPos position) {

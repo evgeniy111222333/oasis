@@ -134,6 +134,53 @@ public final class MicrovoxelServerCoreTest {
             require(input.readUnsignedByte() == 1, "Mostly uniform volume must use RLE encoding");
         }
 
+        // Test REGISTER_MATERIAL
+        byte[] regPacket = MicrovoxelProtocol.registerMaterial(42, "minecraft:deepslate");
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(regPacket))) {
+            require(input.readUnsignedByte() == MicrovoxelProtocol.REGISTER_MATERIAL, "Packet type must be REGISTER_MATERIAL");
+            require(input.readUnsignedShort() == 42, "ID must match");
+            int len = input.readUnsignedShort();
+            byte[] bytes = input.readNBytes(len);
+            require(new String(bytes, java.nio.charset.StandardCharsets.UTF_8).equals("minecraft:deepslate"), "String must match");
+        }
+
+        // Test CLEAR_CHUNK
+        byte[] clearPacket = MicrovoxelProtocol.clearChunk(10, -5);
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(clearPacket))) {
+            require(input.readUnsignedByte() == MicrovoxelProtocol.CLEAR_CHUNK, "Packet type must be CLEAR_CHUNK");
+            require(input.readInt() == 10, "chunkX must match");
+            require(input.readInt() == -5, "chunkZ must match");
+        }
+
+        // Test BATCH_UPSERT
+        MicrovoxelVolume batchVol = MicrovoxelVolume.full("minecraft:deepslate");
+        MicrovoxelKey batchKey = new MicrovoxelKey(world, 17, 65, -75); // chunkX = 1, chunkZ = -5
+        int chunkX = batchKey.chunkX();
+        int chunkZ = batchKey.chunkZ();
+        java.util.Map<String, Integer> testDict = java.util.Map.of("", 1, "minecraft:deepslate", 100);
+
+        byte[] batchPacket = MicrovoxelProtocol.batchUpsert(chunkX, chunkZ, java.util.List.of(java.util.Map.entry(batchKey, batchVol)), testDict);
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(batchPacket))) {
+            require(input.readUnsignedByte() == MicrovoxelProtocol.BATCH_UPSERT, "Packet type must be BATCH_UPSERT");
+            require(input.readInt() == chunkX, "chunkX must match");
+            require(input.readInt() == chunkZ, "chunkZ must match");
+            require(input.readUnsignedShort() == 1, "size must be 1");
+
+            int posXZ = input.readUnsignedByte();
+            int posY = input.readShort();
+            int decodedX = (chunkX << 4) | ((posXZ >> 4) & 15);
+            int decodedZ = (chunkZ << 4) | (posXZ & 15);
+
+            require(decodedX == batchKey.x(), "Packed X must decode exactly");
+            require(decodedZ == batchKey.z(), "Packed Z must decode exactly");
+            require(posY == batchKey.y(), "Packed Y must decode exactly");
+
+            require(input.readInt() == batchVol.revision(), "Revision must match");
+            require(input.readUnsignedByte() == batchVol.palette().size(), "Palette size must match");
+            require(input.readUnsignedShort() == 1, "First dictionary ID (empty string) must resolve to 1");
+            require(input.readUnsignedShort() == 100, "Second dictionary ID (deepslate) must resolve to 100");
+        }
+
         Files.deleteIfExists(file);
         Files.deleteIfExists(file.resolveSibling("microvoxels.dat.bak"));
         Files.deleteIfExists(directory);

@@ -199,10 +199,4 @@ public final class MicrovoxelStore {
     private Path backupFile() {
         return file.resolveSibling(file.getFileName() + ".bak");
     }
-
-    private record ChunkKey(UUID worldId, int x, int z) {
-        private static ChunkKey of(MicrovoxelKey key) {
-            return new ChunkKey(key.worldId(), key.chunkX(), key.chunkZ());
-        }
-    }
 }

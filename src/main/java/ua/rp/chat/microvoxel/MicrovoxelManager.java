@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class MicrovoxelManager implements Listener, PluginMessageListener, CommandExecutor, TabCompleter {
@@ -65,7 +66,8 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private final RPChat plugin;
     private final MicrovoxelStore store;
     private final Map<UUID, PlayerSyncPosition> syncPositions = new HashMap<>();
-    private final Map<UUID, Map<MicrovoxelKey, Integer>> syncedRevisions = new HashMap<>();
+    private final Map<UUID, Set<ChunkKey>> playerSubscriptions = new HashMap<>();
+    private final Map<UUID, Map<String, Integer>> playerDictionaries = new HashMap<>();
     private final Map<UUID, RateWindow> actionRates = new HashMap<>();
     private final Map<UUID, Long> miningStartTimes = new HashMap<>();
     private boolean saveScheduled;
@@ -545,7 +547,8 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         syncPositions.remove(uuid);
-        syncedRevisions.remove(uuid);
+        playerSubscriptions.remove(uuid);
+        playerDictionaries.remove(uuid);
         actionRates.remove(uuid);
         miningStartTimes.remove(uuid);
     }
@@ -948,38 +951,80 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         }
     }
 
+    private void ensureMaterialsRegistered(Player player, java.util.List<java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume>> entries) {
+        Map<String, Integer> dict = playerDictionaries.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>());
+        for (java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : entries) {
+            for (String material : entry.getValue().palette()) {
+                if (!dict.containsKey(material)) {
+                    int id = dict.size() + 1;
+                    dict.put(material, id);
+                    player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
+                            MicrovoxelProtocol.registerMaterial(id, material));
+                }
+            }
+        }
+    }
+
+    private void ensureMaterialsRegistered(Player player, MicrovoxelVolume volume) {
+        Map<String, Integer> dict = playerDictionaries.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>());
+        for (String material : volume.palette()) {
+            if (!dict.containsKey(material)) {
+                int id = dict.size() + 1;
+                dict.put(material, id);
+                player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
+                        MicrovoxelProtocol.registerMaterial(id, material));
+            }
+        }
+    }
+
     private void sendSnapshot(Player player) {
         if (!player.isOnline()) return;
+        UUID playerId = player.getUniqueId();
         PlayerSyncPosition current = new PlayerSyncPosition(
                 player.getWorld().getUID(), player.getLocation().getBlockX() >> 4, player.getLocation().getBlockZ() >> 4);
-        PlayerSyncPosition previousPosition = syncPositions.get(player.getUniqueId());
-        Map<MicrovoxelKey, Integer> previous = new HashMap<>(
-                syncedRevisions.getOrDefault(player.getUniqueId(), Map.of()));
+        PlayerSyncPosition previousPosition = syncPositions.get(playerId);
         boolean reset = previousPosition == null || !previousPosition.worldId.equals(current.worldId);
-        syncPositions.put(player.getUniqueId(), current);
+        
+        syncPositions.put(playerId, current);
+        Set<ChunkKey> subscribed = playerSubscriptions.computeIfAbsent(playerId, k -> new java.util.HashSet<>());
+        
         if (reset) {
             player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, MicrovoxelProtocol.clear());
-            previous.clear();
+            subscribed.clear();
+            playerDictionaries.computeIfAbsent(playerId, k -> new HashMap<>()).clear();
         }
 
-        Map<MicrovoxelKey, Integer> desired = new HashMap<>();
-        List<Map.Entry<MicrovoxelKey, MicrovoxelVolume>> nearby =
-                store.nearby(current.worldId, current.chunkX, current.chunkZ, SYNC_RADIUS_CHUNKS);
-        for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : nearby) {
-            desired.put(entry.getKey(), entry.getValue().revision());
-        }
-        for (MicrovoxelKey oldKey : previous.keySet()) {
-            if (!desired.containsKey(oldKey)) {
-                player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, MicrovoxelProtocol.remove(oldKey));
+        Set<ChunkKey> desired = new java.util.HashSet<>();
+        for (int dx = -SYNC_RADIUS_CHUNKS; dx <= SYNC_RADIUS_CHUNKS; dx++) {
+            for (int dz = -SYNC_RADIUS_CHUNKS; dz <= SYNC_RADIUS_CHUNKS; dz++) {
+                desired.add(new ChunkKey(current.worldId, current.chunkX + dx, current.chunkZ + dz));
             }
         }
-        for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : nearby) {
-            if (!java.util.Objects.equals(previous.get(entry.getKey()), entry.getValue().revision())) {
+
+        // Unsubscribe from out-of-range chunks
+        java.util.Iterator<ChunkKey> iterator = subscribed.iterator();
+        while (iterator.hasNext()) {
+            ChunkKey chunk = iterator.next();
+            if (!desired.contains(chunk)) {
                 player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
-                        MicrovoxelProtocol.upsert(entry.getKey(), entry.getValue()));
+                        MicrovoxelProtocol.clearChunk(chunk.x(), chunk.z()));
+                iterator.remove();
             }
         }
-        syncedRevisions.put(player.getUniqueId(), desired);
+
+        // Subscribe to newly in-range chunks
+        for (ChunkKey chunk : desired) {
+            if (!subscribed.contains(chunk)) {
+                java.util.List<java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume>> entries =
+                        store.inChunk(chunk.worldId(), chunk.x(), chunk.z());
+                if (!entries.isEmpty()) {
+                    ensureMaterialsRegistered(player, entries);
+                    player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
+                            MicrovoxelProtocol.batchUpsert(chunk.x(), chunk.z(), entries, playerDictionaries.get(playerId)));
+                }
+                subscribed.add(chunk);
+            }
+        }
     }
 
     private void broadcastUpsert(MicrovoxelKey key, MicrovoxelVolume volume) {
@@ -990,28 +1035,30 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         for (Player player : nearbyPlayers(key)) sendRemove(player, key);
     }
 
-    private List<Player> nearbyPlayers(MicrovoxelKey key) {
-        World world = Bukkit.getWorld(key.worldId());
-        if (world == null) return List.of();
-        List<Player> result = new ArrayList<>();
-        double max = SYNC_RADIUS_CHUNKS * 16.0 + 16.0;
-        for (Player player : world.getPlayers()) {
-            double dx = player.getLocation().getX() - (key.x() + 0.5);
-            double dz = player.getLocation().getZ() - (key.z() + 0.5);
-            if (dx * dx + dz * dz <= max * max) result.add(player);
+    private java.util.List<Player> nearbyPlayers(MicrovoxelKey key) {
+        ChunkKey chunkKey = ChunkKey.of(key);
+        java.util.List<Player> result = new java.util.ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            Set<ChunkKey> subs = playerSubscriptions.get(player.getUniqueId());
+            if (subs != null && subs.contains(chunkKey)) {
+                result.add(player);
+            }
         }
         return result;
     }
 
     private void sendUpsert(Player player, MicrovoxelKey key, MicrovoxelVolume volume) {
-        player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, MicrovoxelProtocol.upsert(key, volume));
-        syncedRevisions.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>()).put(key, volume.revision());
+        ensureMaterialsRegistered(player, volume);
+        byte[] packet = MicrovoxelProtocol.batchUpsert(
+                key.chunkX(), key.chunkZ(),
+                java.util.List.of(java.util.Map.entry(key, volume)),
+                playerDictionaries.get(player.getUniqueId())
+        );
+        player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, packet);
     }
 
     private void sendRemove(Player player, MicrovoxelKey key) {
         player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, MicrovoxelProtocol.remove(key));
-        Map<MicrovoxelKey, Integer> revisions = syncedRevisions.get(player.getUniqueId());
-        if (revisions != null) revisions.remove(key);
     }
 
     private void feedback(Player player, String message) {
