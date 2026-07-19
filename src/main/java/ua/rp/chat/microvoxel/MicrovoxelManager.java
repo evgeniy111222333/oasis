@@ -24,6 +24,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
@@ -112,6 +114,10 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         }
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(message))) {
             int action = input.readUnsignedByte();
+            if (action == MicrovoxelProtocol.ACTION_READY) {
+                Bukkit.getScheduler().runTask(plugin, () -> sendSnapshot(player));
+                return;
+            }
             int x = input.readInt();
             int y = input.readInt();
             int z = input.readInt();
@@ -570,6 +576,21 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
             long now = System.currentTimeMillis();
             miningStartTimes.put(playerId, now);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
+            Block block = event.getClickedBlock();
+            if (block == null) return;
+            MicrovoxelKey key = key(block);
+            if (store.get(key) != null) {
+                Player player = event.getPlayer();
+                if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
+                    miningStartTimes.put(player.getUniqueId(), System.currentTimeMillis());
+                }
+            }
         }
     }
 

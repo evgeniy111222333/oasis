@@ -29,23 +29,6 @@ public final class EclipseHudOverlay implements HudElement {
             graphics.fill(0, 0, width, height, 0xFF000000);
             return;
         }
-        if (manager.shouldRenderHelmetVisor()) {
-            int alpha = Math.round(manager.getHelmetVisorAlpha() * 255.0f);
-            int edge = alpha << 24;
-            int deep = Math.min(220, alpha + 54) << 24;
-            int sideWidth = Math.max(18, width / 13);
-            int topHeight = Math.max(12, height / 18);
-            int bottomHeight = Math.max(16, height / 15);
-
-            graphics.fill(0, 0, sideWidth, height, edge);
-            graphics.fill(width - sideWidth, 0, width, height, edge);
-            graphics.fill(0, 0, width, topHeight, deep);
-            graphics.fill(0, height - bottomHeight, width, height, deep);
-
-            int slitHeight = Math.max(2, height / 160);
-            int slitY = topHeight + Math.max(8, height / 34);
-            graphics.fill(sideWidth, slitY, width - sideWidth, slitY + slitHeight, (alpha / 2) << 24);
-        }
 
         float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
         float danger = manager.getStaminaDanger01();

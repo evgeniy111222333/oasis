@@ -349,20 +349,11 @@ public class SmartCameraManager {
     }
 
     public boolean shouldRenderHelmetVisor() {
-        Minecraft client = Minecraft.getInstance();
-        if (!isFirstPersonBodyEnabled() || client.player == null) {
-            return false;
-        }
-        ItemStack helmet = client.player.getItemBySlot(EquipmentSlot.HEAD);
-        return !helmet.isEmpty() && client.player.getArmorValue() >= 10;
+        return false;
     }
 
     public float getHelmetVisorAlpha() {
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null) {
-            return 0.0f;
-        }
-        return clampFloat(0.12f + client.player.getArmorValue() * 0.012f, 0.14f, 0.32f);
+        return 0.0f;
     }
 
     public float getStaminaVignetteAlpha() {

@@ -58,6 +58,7 @@ public final class MicrovoxelClientState {
     private static final Set<String> PROBE_EMITTED = new HashSet<>();
     private static ClientLevel activeLevel;
     private static int clientTick;
+    private static boolean readyPacketSent = false;
 
     private MicrovoxelClientState() {
     }
@@ -68,6 +69,11 @@ public final class MicrovoxelClientState {
             activeLevel = minecraft.level;
             clearVolumes();
             MicrovoxelClientRenderer.clearMaterialCache();
+            readyPacketSent = false;
+        }
+        if (activeLevel != null && !readyPacketSent && net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE)) {
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new MicrovoxelActionPayload(5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+            readyPacketSent = true;
         }
         processDelayedBoundaryRebuilds();
         rebuildQueuedMeshes();
