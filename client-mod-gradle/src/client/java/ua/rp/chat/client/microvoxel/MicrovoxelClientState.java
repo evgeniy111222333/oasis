@@ -174,16 +174,16 @@ public final class MicrovoxelClientState {
     }
 
     public static CachedVolume get(BlockPos position) {
-        return VOLUMES.get(position);
+        return VOLUMES.get(position.immutable());
     }
 
     public static VoxelShape collisionShape(BlockPos position) {
-        CachedVolume cached = VOLUMES.get(position);
+        CachedVolume cached = VOLUMES.get(position.immutable());
         return cached == null ? null : cached.getShape();
     }
 
     public static void probeShape(String hook, BlockPos position, VoxelShape shape) {
-        CachedVolume cached = VOLUMES.get(position);
+        CachedVolume cached = VOLUMES.get(position.immutable());
         if (cached == null) return;
         String key = "shape:" + hook + ':' + position.asLong() + ':' + cached.volume.revision();
         if (!PROBE_EMITTED.add(key)) return;
@@ -196,7 +196,7 @@ public final class MicrovoxelClientState {
     public static void probeRender(BlockPos position, MicrovoxelGreedyMesher.Face face,
                                    String material, int layerCount, String renderType, boolean translucent,
                                    float minU, float maxU, float minV, float maxV) {
-        CachedVolume cached = VOLUMES.get(position);
+        CachedVolume cached = VOLUMES.get(position.immutable());
         if (cached == null) return;
         String key = "render:" + position.asLong() + ':' + cached.volume.revision();
         if (!PROBE_EMITTED.add(key)) return;
@@ -492,7 +492,7 @@ public final class MicrovoxelClientState {
             });
 
     public static net.minecraft.world.level.block.state.BlockState getBaseBlockState(BlockPos pos) {
-        CachedVolume cached = VOLUMES.get(pos);
+        CachedVolume cached = VOLUMES.get(pos.immutable());
         if (cached == null) return null;
         return cached.getBaseBlockState();
     }

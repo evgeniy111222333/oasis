@@ -606,13 +606,30 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
 
         if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
             Long startTime = miningStartTimes.get(playerId);
-            Material baseMaterial = Material.STONE;
             String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;
-            if (matStr != null) {
-                try { baseMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
-                catch (Exception ignored) {}
+            double requiredTime = 200.0; // default fallback
+            try {
+                org.bukkit.block.data.BlockData blockData = Bukkit.createBlockData(matStr != null ? matStr : "minecraft:stone");
+                net.minecraft.world.level.block.state.BlockState nmsState = ((org.bukkit.craftbukkit.block.data.CraftBlockData) blockData).getState();
+                net.minecraft.world.entity.player.Player nmsPlayer = ((org.bukkit.craftbukkit.entity.CraftPlayer) player).getHandle();
+                net.minecraft.world.level.Level nmsLevel = ((org.bukkit.craftbukkit.CraftWorld) player.getWorld()).getHandle();
+                net.minecraft.core.BlockPos nmsPos = new net.minecraft.core.BlockPos(block.getX(), block.getY(), block.getZ());
+
+                float progressPerTick = nmsState.getDestroyProgress(nmsPlayer, nmsLevel, nmsPos);
+                if (progressPerTick > 0.0f) {
+                    int requiredTicks = (int) Math.ceil(1.0f / progressPerTick);
+                    requiredTime = requiredTicks * 50.0; // 50ms per tick
+                }
+            } catch (Exception e) {
+                // Fallback to static approximation if NMS fails
+                Material baseMaterial = Material.STONE;
+                if (matStr != null) {
+                    try { baseMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
+                    catch (Exception ignored) {}
+                }
+                requiredTime = getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
             }
-            double requiredTime = getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
+
             long now = System.currentTimeMillis();
             long elapsed = startTime == null ? -1 : (now - startTime);
 
