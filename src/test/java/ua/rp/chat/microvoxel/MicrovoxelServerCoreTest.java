@@ -124,11 +124,11 @@ public final class MicrovoxelServerCoreTest {
             require(input.readUnsignedByte() == MicrovoxelProtocol.UPSERT, "Packet type must be UPSERT");
             require(input.readInt() == key.x() && input.readInt() == key.y() && input.readInt() == key.z(),
                     "Packet coordinates must be exact");
-            require(input.readInt() == restored.revision(), "Packet revision must be exact");
-            int palette = input.readUnsignedByte();
+            require(MicrovoxelProtocol.readVarInt(input) == restored.revision(), "Packet revision must be exact");
+            int palette = MicrovoxelProtocol.readVarInt(input);
             require(palette == restored.palette().size(), "Packet palette size must match");
             for (int index = 0; index < palette; index++) {
-                int length = input.readUnsignedShort();
+                int length = MicrovoxelProtocol.readVarInt(input);
                 input.readNBytes(length);
             }
             require(input.readUnsignedByte() == 1, "Mostly uniform volume must use RLE encoding");
@@ -138,8 +138,8 @@ public final class MicrovoxelServerCoreTest {
         byte[] regPacket = MicrovoxelProtocol.registerMaterial(42, "minecraft:deepslate");
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(regPacket))) {
             require(input.readUnsignedByte() == MicrovoxelProtocol.REGISTER_MATERIAL, "Packet type must be REGISTER_MATERIAL");
-            require(input.readUnsignedShort() == 42, "ID must match");
-            int len = input.readUnsignedShort();
+            require(MicrovoxelProtocol.readVarInt(input) == 42, "ID must match");
+            int len = MicrovoxelProtocol.readVarInt(input);
             byte[] bytes = input.readNBytes(len);
             require(new String(bytes, java.nio.charset.StandardCharsets.UTF_8).equals("minecraft:deepslate"), "String must match");
         }
@@ -164,7 +164,7 @@ public final class MicrovoxelServerCoreTest {
             require(input.readUnsignedByte() == MicrovoxelProtocol.BATCH_UPSERT, "Packet type must be BATCH_UPSERT");
             require(input.readInt() == chunkX, "chunkX must match");
             require(input.readInt() == chunkZ, "chunkZ must match");
-            require(input.readUnsignedShort() == 1, "size must be 1");
+            require(MicrovoxelProtocol.readVarInt(input) == 1, "size must be 1");
 
             int posXZ = input.readUnsignedByte();
             int posY = input.readShort();
@@ -175,10 +175,35 @@ public final class MicrovoxelServerCoreTest {
             require(decodedZ == batchKey.z(), "Packed Z must decode exactly");
             require(posY == batchKey.y(), "Packed Y must decode exactly");
 
-            require(input.readInt() == batchVol.revision(), "Revision must match");
-            require(input.readUnsignedByte() == batchVol.palette().size(), "Palette size must match");
-            require(input.readUnsignedShort() == 1, "First dictionary ID (empty string) must resolve to 1");
-            require(input.readUnsignedShort() == 100, "Second dictionary ID (deepslate) must resolve to 100");
+            require(MicrovoxelProtocol.readVarInt(input) == batchVol.revision(), "Revision must match");
+            require(MicrovoxelProtocol.readVarInt(input) == batchVol.palette().size(), "Palette size must match");
+            require(MicrovoxelProtocol.readVarInt(input) == 1, "First dictionary ID (empty string) must resolve to 1");
+            require(MicrovoxelProtocol.readVarInt(input) == 100, "Second dictionary ID (deepslate) must resolve to 100");
+
+            require(input.readUnsignedByte() == 1, "RLE encoding expected");
+            require(MicrovoxelProtocol.readVarInt(input) == 1, "Runs count should be 1");
+            require(MicrovoxelProtocol.readVarInt(input) == 4096, "First run length must be 4096");
+            require(input.readByte() == 1, "First run material index must be 1");
+        }
+
+        // Test DELTA_UPSERT
+        byte[] deltaPacket = MicrovoxelProtocol.deltaUpsert(chunkX, chunkZ, batchKey, 15, 2048, 100);
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(deltaPacket))) {
+            require(input.readUnsignedByte() == MicrovoxelProtocol.DELTA_UPSERT, "Packet type must be DELTA_UPSERT");
+            require(input.readInt() == chunkX, "chunkX must match");
+            require(input.readInt() == chunkZ, "chunkZ must match");
+            int posXZ = input.readUnsignedByte();
+            int posY = input.readShort();
+            int decodedX = (chunkX << 4) | ((posXZ >> 4) & 15);
+            int decodedZ = (chunkZ << 4) | (posXZ & 15);
+
+            require(decodedX == batchKey.x(), "Packed X must decode exactly");
+            require(decodedZ == batchKey.z(), "Packed Z must decode exactly");
+            require(posY == batchKey.y(), "Packed Y must decode exactly");
+
+            require(MicrovoxelProtocol.readVarInt(input) == 15, "Revision must match");
+            require(MicrovoxelProtocol.readVarInt(input) == 2048, "Cell index must match");
+            require(MicrovoxelProtocol.readVarInt(input) == 100, "Registry ID must match");
         }
 
         Files.deleteIfExists(file);

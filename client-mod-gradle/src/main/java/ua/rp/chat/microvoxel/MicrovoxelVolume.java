@@ -10,7 +10,7 @@ public final class MicrovoxelVolume {
     public static final int RESOLUTION = 16;
     public static final int CELL_COUNT = 4096;
 
-    private final int revision;
+    private int revision;
     private final List<String> palette;
     private final byte[] cells;
     private volatile List<Cuboid> cuboids;
@@ -30,8 +30,39 @@ public final class MicrovoxelVolume {
             if (Byte.toUnsignedInt(cell) >= palette.size()) throw new IllegalArgumentException("Invalid palette index");
         }
         this.revision = Math.max(1, revision);
-        this.palette = List.copyOf(palette);
+        this.palette = new java.util.ArrayList<>(palette);
         this.cells = cells.clone();
+    }
+
+    public MicrovoxelVolume copy() {
+        return new MicrovoxelVolume(revision, palette, cells);
+    }
+
+    public void setRevision(int revision) {
+        this.revision = revision;
+    }
+
+    public void update(int cell, String blockData) {
+        if (cell < 0 || cell >= CELL_COUNT) throw new IndexOutOfBoundsException();
+        if (blockData == null || blockData.isBlank()) {
+            cells[cell] = 0;
+        } else {
+            int paletteIndex = palette.indexOf(blockData);
+            if (paletteIndex < 0) {
+                if (palette.size() >= 32) {
+                    throw new IllegalStateException("Microvoxel palette limit reached");
+                }
+                palette.add(blockData);
+                paletteIndex = palette.size() - 1;
+            }
+            cells[cell] = (byte) paletteIndex;
+        }
+        changed();
+    }
+
+    private void changed() {
+        revision++;
+        cuboids = null;
     }
 
     public static MicrovoxelVolume full(String material) {

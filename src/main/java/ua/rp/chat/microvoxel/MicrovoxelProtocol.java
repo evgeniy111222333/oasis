@@ -15,6 +15,7 @@ public final class MicrovoxelProtocol {
     public static final int REGISTER_MATERIAL = 5;
     public static final int BATCH_UPSERT = 6;
     public static final int CLEAR_CHUNK = 7;
+    public static final int DELTA_UPSERT = 8;
     public static final int ACTION_CONVERT = 1;
     public static final int ACTION_REMOVE = 2;
     public static final int ACTION_ADD = 3;
@@ -46,7 +47,7 @@ public final class MicrovoxelProtocol {
     public static byte[] registerMaterial(int id, String material) {
         return write(output -> {
             output.writeByte(REGISTER_MATERIAL);
-            output.writeShort(id);
+            writeVarInt(output, id);
             writeUtf8(output, material);
         });
     }
@@ -63,8 +64,8 @@ public final class MicrovoxelProtocol {
         return write(output -> {
             output.writeByte(UPSERT);
             writePosition(output, key);
-            output.writeInt(volume.revision());
-            output.writeByte(volume.palette().size());
+            writeVarInt(output, volume.revision());
+            writeVarInt(output, volume.palette().size());
             for (String material : volume.palette()) writeUtf8(output, material);
             writeCells(output, volume);
         });
@@ -75,7 +76,7 @@ public final class MicrovoxelProtocol {
             output.writeByte(BATCH_UPSERT);
             output.writeInt(chunkX);
             output.writeInt(chunkZ);
-            output.writeShort(entries.size());
+            writeVarInt(output, entries.size());
             for (java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : entries) {
                 MicrovoxelKey key = entry.getKey();
                 MicrovoxelVolume volume = entry.getValue();
@@ -85,19 +86,56 @@ public final class MicrovoxelProtocol {
                 output.writeByte(((relX & 15) << 4) | (relZ & 15));
                 output.writeShort(key.y());
 
-                output.writeInt(volume.revision());
-                output.writeByte(volume.palette().size());
+                writeVarInt(output, volume.revision());
+                writeVarInt(output, volume.palette().size());
                 for (String material : volume.palette()) {
                     Integer dictId = dictionary.get(material);
                     if (dictId == null) {
                         throw new IOException("Material not registered in session dictionary: " + material);
                     }
-                    output.writeShort(dictId);
+                    writeVarInt(output, dictId);
                 }
 
                 writeCells(output, volume);
             }
         });
+    }
+
+    public static byte[] deltaUpsert(int chunkX, int chunkZ, MicrovoxelKey key, int revision, int cellIndex, int registryId) {
+        return write(output -> {
+            output.writeByte(DELTA_UPSERT);
+            output.writeInt(chunkX);
+            output.writeInt(chunkZ);
+            int relX = key.x() - (chunkX << 4);
+            int relZ = key.z() - (chunkZ << 4);
+            output.writeByte(((relX & 15) << 4) | (relZ & 15));
+            output.writeShort(key.y());
+            writeVarInt(output, revision);
+            writeVarInt(output, cellIndex);
+            writeVarInt(output, registryId);
+        });
+    }
+
+    public static void writeVarInt(DataOutputStream out, int value) throws IOException {
+        while ((value & 0xFFFFFF80) != 0L) {
+            out.writeByte((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        out.writeByte(value & 0x7F);
+    }
+
+    public static int readVarInt(java.io.DataInputStream in) throws IOException {
+        int value = 0;
+        int position = 0;
+        byte currentByte;
+        while (true) {
+            currentByte = in.readByte();
+            value |= (currentByte & 0x7F) << position;
+            if ((currentByte & 0x80) == 0) break;
+            position += 7;
+            if (position >= 32) throw new IOException("VarInt is too big");
+        }
+        return value;
     }
 
     private static void writeCells(DataOutputStream output, MicrovoxelVolume volume) throws IOException {
@@ -113,12 +151,12 @@ public final class MicrovoxelProtocol {
         boolean useRuns = runs * 3 + 2 < cells.length;
         output.writeByte(useRuns ? 1 : 0);
         if (useRuns) {
-            output.writeShort(runs);
+            writeVarInt(output, runs);
             for (int index = 0; index < cells.length;) {
                 byte material = cells[index];
                 int end = index + 1;
                 while (end < cells.length && cells[end] == material && end - index < 65535) end++;
-                output.writeShort(end - index);
+                writeVarInt(output, end - index);
                 output.writeByte(material);
                 index = end;
             }
@@ -135,8 +173,7 @@ public final class MicrovoxelProtocol {
 
     private static void writeUtf8(DataOutputStream output, String value) throws IOException {
         byte[] bytes = String.valueOf(value).getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > 65535) throw new IOException("UTF-8 value is too long");
-        output.writeShort(bytes.length);
+        writeVarInt(output, bytes.length);
         output.write(bytes);
     }
 

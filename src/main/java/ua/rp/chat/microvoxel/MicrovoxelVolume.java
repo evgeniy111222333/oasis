@@ -100,6 +100,28 @@ public final class MicrovoxelVolume {
         return true;
     }
 
+    public void update(int cell, String blockData) {
+        requireCell(cell);
+        if (blockData == null || blockData.isBlank()) {
+            cells[cell] = 0;
+        } else {
+            int paletteIndex = palette.indexOf(blockData);
+            if (paletteIndex < 0) {
+                if (palette.size() >= MAX_PALETTE) {
+                    throw new IllegalStateException("Microvoxel palette limit reached");
+                }
+                palette.add(blockData);
+                paletteIndex = palette.size() - 1;
+            }
+            cells[cell] = (byte) paletteIndex;
+        }
+        changed();
+    }
+
+    public void setRevision(int revision) {
+        this.revision = revision;
+    }
+
     public int occupiedCount() {
         int count = 0;
         for (byte cell : cells) {

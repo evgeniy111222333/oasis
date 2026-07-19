@@ -34,12 +34,20 @@ public final class MicrovoxelClientState {
     private static final int REGISTER_MATERIAL = 5;
     private static final int BATCH_UPSERT = 6;
     private static final int CLEAR_CHUNK = 7;
+    private static final int DELTA_UPSERT = 8;
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
     private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
     private static final Map<BlockPos, CachedVolume> VOLUMES = new HashMap<>();
     private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
     private static final Map<Integer, String> CLIENT_DICTIONARY = new HashMap<>();
+    private static final Set<BlockPos> MESHING_IN_PROGRESS = new HashSet<>();
+    private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "OasisMesher");
+                t.setDaemon(true);
+                return t;
+            });
     /**
      * A block-state packet and the matching microvoxel sync packet can arrive in either order.
      * Rebuilding once immediately is normally enough; rebuilding the same local boundary two
@@ -105,7 +113,7 @@ public final class MicrovoxelClientState {
                 return;
             }
             if (type == REGISTER_MATERIAL) {
-                int id = input.readUnsignedShort();
+                int id = readVarInt(input);
                 String material = readUtf8(input);
                 CLIENT_DICTIONARY.put(id, material);
                 return;
@@ -116,10 +124,45 @@ public final class MicrovoxelClientState {
                 clearChunk(chunkX, chunkZ);
                 return;
             }
+            if (type == DELTA_UPSERT) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                int posXZ = input.readUnsignedByte();
+                int posY = input.readShort();
+                int revision = readVarInt(input);
+                int cellIndex = readVarInt(input);
+                int registryId = readVarInt(input);
+
+                int x = (chunkX << 4) | ((posXZ >> 4) & 15);
+                int z = (chunkZ << 4) | (posXZ & 15);
+                BlockPos position = new BlockPos(x, posY, z);
+                BlockPos immutable = position.immutable();
+
+                CachedVolume cached = VOLUMES.get(immutable);
+                if (cached != null) {
+                    String material = CLIENT_DICTIONARY.get(registryId);
+                    if (material == null) throw new IOException("Unknown dictionary material ID: " + registryId);
+                    
+                    MicrovoxelVolume volume = cached.volume;
+                    MicrovoxelVolume oldVolume = volume.copy();
+                    volume.update(cellIndex, material);
+                    volume.setRevision(revision);
+
+                    rebuild(immutable);
+
+                    boolean touchBoundary = changesTouchBoundary(oldVolume, volume);
+                    if (touchBoundary) {
+                        queueNeighborsRebuild(immutable);
+                        scheduleBoundaryRebuild(immutable);
+                    }
+                    queueChunkBatch(immutable);
+                }
+                return;
+            }
             if (type == BATCH_UPSERT) {
                 int chunkX = input.readInt();
                 int chunkZ = input.readInt();
-                int size = input.readUnsignedShort();
+                int size = readVarInt(input);
                 for (int entryIdx = 0; entryIdx < size; entryIdx++) {
                     int posXZ = input.readUnsignedByte();
                     int posY = input.readShort();
@@ -127,11 +170,11 @@ public final class MicrovoxelClientState {
                     int z = (chunkZ << 4) | (posXZ & 15);
                     BlockPos position = new BlockPos(x, posY, z);
 
-                    int revision = input.readInt();
-                    int paletteSize = input.readUnsignedByte();
+                    int revision = readVarInt(input);
+                    int paletteSize = readVarInt(input);
                     List<String> palette = new ArrayList<>(paletteSize);
                     for (int index = 0; index < paletteSize; index++) {
-                        int dictId = input.readUnsignedShort();
+                        int dictId = readVarInt(input);
                         String material = CLIENT_DICTIONARY.get(dictId);
                         if (material == null) throw new IOException("Unknown dictionary material ID: " + dictId);
                         palette.add(material);
@@ -142,10 +185,10 @@ public final class MicrovoxelClientState {
                     if (encoding == 0) {
                         if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
                     } else if (encoding == 1) {
-                        int runs = input.readUnsignedShort();
+                        int runs = readVarInt(input);
                         int cursor = 0;
                         for (int run = 0; run < runs; run++) {
-                            int length = input.readUnsignedShort();
+                            int length = readVarInt(input);
                             byte material = input.readByte();
                             if (length < 1 || cursor + length > cells.length) throw new IOException("Invalid RLE run");
                             java.util.Arrays.fill(cells, cursor, cursor + length, material);
@@ -182,8 +225,8 @@ public final class MicrovoxelClientState {
             if (type != UPSERT) return;
             long tStart = System.nanoTime();
             BlockPos position = readPosition(input);
-            int revision = input.readInt();
-            int paletteSize = input.readUnsignedByte();
+            int revision = readVarInt(input);
+            int paletteSize = readVarInt(input);
             if (paletteSize < 1 || paletteSize > 32) throw new IOException("Invalid palette size");
             List<String> palette = new ArrayList<>(paletteSize);
             for (int index = 0; index < paletteSize; index++) palette.add(readUtf8(input));
@@ -193,10 +236,10 @@ public final class MicrovoxelClientState {
             if (encoding == 0) {
                 if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
             } else if (encoding == 1) {
-                int runs = input.readUnsignedShort();
+                int runs = readVarInt(input);
                 int cursor = 0;
                 for (int run = 0; run < runs; run++) {
-                    int length = input.readUnsignedShort();
+                    int length = readVarInt(input);
                     byte material = input.readByte();
                     if (length < 1 || cursor + length > cells.length) throw new IOException("Invalid RLE run");
                     java.util.Arrays.fill(cells, cursor, cursor + length, material);
@@ -336,58 +379,87 @@ public final class MicrovoxelClientState {
     }
 
     private static void rebuild(BlockPos position) {
-        CachedVolume center = VOLUMES.get(position);
+        BlockPos immutablePos = position.immutable();
+        CachedVolume center = VOLUMES.get(immutablePos);
         if (center == null) return;
 
-        CachedVolume downVol = VOLUMES.get(position.below());
-        CachedVolume upVol = VOLUMES.get(position.above());
-        CachedVolume northVol = VOLUMES.get(position.north());
-        CachedVolume southVol = VOLUMES.get(position.south());
-        CachedVolume westVol = VOLUMES.get(position.west());
-        CachedVolume eastVol = VOLUMES.get(position.east());
+        if (!MESHING_IN_PROGRESS.add(immutablePos)) {
+            return;
+        }
 
-        boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(position.below()).isSolidRender();
-        boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(position.above()).isSolidRender();
-        boolean northSolid = (northVol == null && activeLevel != null) && activeLevel.getBlockState(position.north()).isSolidRender();
-        boolean southSolid = (southVol == null && activeLevel != null) && activeLevel.getBlockState(position.south()).isSolidRender();
-        boolean westSolid = (westVol == null && activeLevel != null) && activeLevel.getBlockState(position.west()).isSolidRender();
-        boolean eastSolid = (eastVol == null && activeLevel != null) && activeLevel.getBlockState(position.east()).isSolidRender();
+        CachedVolume downVol = VOLUMES.get(immutablePos.below());
+        CachedVolume upVol = VOLUMES.get(immutablePos.above());
+        CachedVolume northVol = VOLUMES.get(immutablePos.north());
+        CachedVolume southVol = VOLUMES.get(immutablePos.south());
+        CachedVolume westVol = VOLUMES.get(immutablePos.west());
+        CachedVolume eastVol = VOLUMES.get(immutablePos.east());
 
-        center.mesh = MicrovoxelGreedyMesher.build(center.volume, (x, y, z) -> {
-            if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16) {
-                return center.volume.materialAt(x, y, z);
+        boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.below()).isSolidRender();
+        boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.above()).isSolidRender();
+        boolean northSolid = (northVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.north()).isSolidRender();
+        boolean southSolid = (southVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.south()).isSolidRender();
+        boolean westSolid = (westVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.west()).isSolidRender();
+        boolean eastSolid = (eastVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.east()).isSolidRender();
+
+        MicrovoxelVolume centerVol = center.volume.copy();
+        MicrovoxelVolume downVolSnap = downVol != null ? downVol.volume.copy() : null;
+        MicrovoxelVolume upVolSnap = upVol != null ? upVol.volume.copy() : null;
+        MicrovoxelVolume northVolSnap = northVol != null ? northVol.volume.copy() : null;
+        MicrovoxelVolume southVolSnap = southVol != null ? southVol.volume.copy() : null;
+        MicrovoxelVolume westVolSnap = westVol != null ? westVol.volume.copy() : null;
+        MicrovoxelVolume eastVolSnap = eastVol != null ? eastVol.volume.copy() : null;
+
+        MESHING_EXECUTOR.submit(() -> {
+            try {
+                List<MicrovoxelGreedyMesher.Face> mesh = MicrovoxelGreedyMesher.build(centerVol, (x, y, z) -> {
+                    if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16) {
+                        return centerVol.materialAt(x, y, z);
+                    }
+                    int ox = Math.floorDiv(x, 16);
+                    int oy = Math.floorDiv(y, 16);
+                    int oz = Math.floorDiv(z, 16);
+                    MicrovoxelVolume neighbourVol = null;
+                    boolean neighbourSolid = false;
+                    if (ox == -1) {
+                        neighbourVol = westVolSnap;
+                        neighbourSolid = westSolid;
+                    } else if (ox == 1) {
+                        neighbourVol = eastVolSnap;
+                        neighbourSolid = eastSolid;
+                    } else if (oy == -1) {
+                        neighbourVol = downVolSnap;
+                        neighbourSolid = downSolid;
+                    } else if (oy == 1) {
+                        neighbourVol = upVolSnap;
+                        neighbourSolid = upSolid;
+                    } else if (oz == -1) {
+                        neighbourVol = northVolSnap;
+                        neighbourSolid = northSolid;
+                    } else if (oz == 1) {
+                        neighbourVol = southVolSnap;
+                        neighbourSolid = southSolid;
+                    }
+                    if (neighbourVol != null) {
+                        return 0;
+                    }
+                    return neighbourSolid ? 1 : 0;
+                });
+
+                Minecraft.getInstance().execute(() -> {
+                    CachedVolume currentCenter = VOLUMES.get(immutablePos);
+                    if (currentCenter != null && currentCenter.volume.revision() == centerVol.revision()) {
+                        currentCenter.mesh = mesh;
+                        queueChunkBatch(immutablePos);
+                    }
+                    MESHING_IN_PROGRESS.remove(immutablePos);
+                });
+            } catch (Exception error) {
+                EclipseClientMod.LOGGER.error("Failed background meshing for " + immutablePos, error);
+                Minecraft.getInstance().execute(() -> {
+                    MESHING_IN_PROGRESS.remove(immutablePos);
+                });
             }
-            int ox = Math.floorDiv(x, 16);
-            int oy = Math.floorDiv(y, 16);
-            int oz = Math.floorDiv(z, 16);
-            CachedVolume neighbourVol = null;
-            boolean neighbourSolid = false;
-            if (ox == -1) {
-                neighbourVol = westVol;
-                neighbourSolid = westSolid;
-            } else if (ox == 1) {
-                neighbourVol = eastVol;
-                neighbourSolid = eastSolid;
-            } else if (oy == -1) {
-                neighbourVol = downVol;
-                neighbourSolid = downSolid;
-            } else if (oy == 1) {
-                neighbourVol = upVol;
-                neighbourSolid = upSolid;
-            } else if (oz == -1) {
-                neighbourVol = northVol;
-                neighbourSolid = northSolid;
-            } else if (oz == 1) {
-                neighbourVol = southVol;
-                neighbourSolid = southSolid;
-            }
-            if (neighbourVol != null) {
-                // Do not cull shared faces between adjacent microvolumes to prevent sub-pixel culling gaps (sky leaking)
-                return 0;
-            }
-            return neighbourSolid ? 1 : 0;
         });
-        queueChunkBatch(position);
     }
 
     /** Used by the renderer's vertex AO sampler. Coordinates are local to {@code base}. */
@@ -508,6 +580,7 @@ public final class MicrovoxelClientState {
         CHUNK_BATCH_QUEUE.clear();
         PROBE_EMITTED.clear();
         CLIENT_DICTIONARY.clear();
+        MESHING_IN_PROGRESS.clear();
     }
 
     public static void clearChunk(int chunkX, int chunkZ) {
@@ -569,8 +642,22 @@ public final class MicrovoxelClientState {
         return new BlockPos(input.readInt(), input.readInt(), input.readInt());
     }
 
+    private static int readVarInt(DataInputStream in) throws IOException {
+        int value = 0;
+        int position = 0;
+        byte currentByte;
+        while (true) {
+            currentByte = in.readByte();
+            value |= (currentByte & 0x7F) << position;
+            if ((currentByte & 0x80) == 0) break;
+            position += 7;
+            if (position >= 32) throw new IOException("VarInt is too big");
+        }
+        return value;
+    }
+
     private static String readUtf8(DataInputStream input) throws IOException {
-        int length = input.readUnsignedShort();
+        int length = readVarInt(input);
         byte[] bytes = input.readNBytes(length);
         if (bytes.length != length) throw new EOFException("Truncated UTF-8 value");
         return new String(bytes, StandardCharsets.UTF_8);

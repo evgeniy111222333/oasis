@@ -262,7 +262,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             broadcastRemove(key);
         } else {
             updateMarker(key, volume);
-            broadcastUpsert(key, volume);
+            broadcastDelta(key, volume, cell, "");
         }
         markDirty();
         trace(player, "ACTION_APPLIED remove cell=" + cell + " revision=" + volume.revision());
@@ -319,7 +319,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             return;
         }
         updateMarker(key, volume);
-        broadcastUpsert(key, volume);
+        broadcastDelta(key, volume, cell, material.getAsString());
         markDirty();
         trace(player, "ACTION_APPLIED add cell=" + cell + " revision=" + volume.revision());
     }
@@ -1018,9 +1018,13 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
                 java.util.List<java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume>> entries =
                         store.inChunk(chunk.worldId(), chunk.x(), chunk.z());
                 if (!entries.isEmpty()) {
-                    ensureMaterialsRegistered(player, entries);
-                    player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
-                            MicrovoxelProtocol.batchUpsert(chunk.x(), chunk.z(), entries, playerDictionaries.get(playerId)));
+                    for (int i = 0; i < entries.size(); i += 32) {
+                        java.util.List<java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume>> subList =
+                                entries.subList(i, Math.min(i + 32, entries.size()));
+                        ensureMaterialsRegistered(player, subList);
+                        player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL,
+                                MicrovoxelProtocol.batchUpsert(chunk.x(), chunk.z(), subList, playerDictionaries.get(playerId)));
+                    }
                 }
                 subscribed.add(chunk);
             }
@@ -1033,6 +1037,20 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
 
     private void broadcastRemove(MicrovoxelKey key) {
         for (Player player : nearbyPlayers(key)) sendRemove(player, key);
+    }
+
+    private void broadcastDelta(MicrovoxelKey key, MicrovoxelVolume volume, int cellIndex, String material) {
+        for (Player player : nearbyPlayers(key)) {
+            ensureMaterialsRegistered(player, volume);
+            String matToLookup = (material == null) ? "" : material;
+            Integer dictId = playerDictionaries.get(player.getUniqueId()).get(matToLookup);
+            if (dictId == null) {
+                dictId = 1;
+            }
+            byte[] packet = MicrovoxelProtocol.deltaUpsert(
+                    key.chunkX(), key.chunkZ(), key, volume.revision(), cellIndex, dictId);
+            player.sendPluginMessage(plugin, MicrovoxelProtocol.SYNC_CHANNEL, packet);
+        }
     }
 
     private java.util.List<Player> nearbyPlayers(MicrovoxelKey key) {
