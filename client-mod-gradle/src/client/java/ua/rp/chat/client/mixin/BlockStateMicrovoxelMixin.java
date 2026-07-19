@@ -78,6 +78,18 @@ public abstract class BlockStateMicrovoxelMixin {
         }
     }
 
+    @Inject(method = "getDestroySpeed(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F",
+            at = @At("HEAD"), cancellable = true)
+    private void eclipse$microvoxelDestroySpeed(BlockGetter level, BlockPos pos, CallbackInfoReturnable<Float> cir) {
+        if (!eclipse$isMicrovoxelMarker()) return;
+        BlockState baseState = MicrovoxelClientState.getBaseBlockState(pos);
+        if (baseState != null) {
+            cir.setReturnValue(baseState.getDestroySpeed(level, pos));
+        } else {
+            cir.setReturnValue(1.5F); // Default fallback hardness
+        }
+    }
+
     private void eclipse$replaceShape(String hook, BlockPos position, CallbackInfoReturnable<VoxelShape> cir) {
         if (!eclipse$isMicrovoxelMarker()) return;
         VoxelShape shape = MicrovoxelClientState.collisionShape(position);
@@ -89,6 +101,6 @@ public abstract class BlockStateMicrovoxelMixin {
 
     private boolean eclipse$isMicrovoxelMarker() {
         BlockState state = (BlockState) (Object) this;
-        return state.is(Blocks.STRUCTURE_VOID) || state.is(Blocks.LIGHT) || state.is(Blocks.BARRIER);
+        return state.is(Blocks.STRUCTURE_VOID) || state.is(Blocks.LIGHT);
     }
 }

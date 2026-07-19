@@ -65,7 +65,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
     private final Map<UUID, PlayerSyncPosition> syncPositions = new HashMap<>();
     private final Map<UUID, Map<MicrovoxelKey, Integer>> syncedRevisions = new HashMap<>();
     private final Map<UUID, RateWindow> actionRates = new HashMap<>();
-    private final Map<UUID, org.bukkit.scheduler.BukkitTask> miningTasks = new HashMap<>();
+    private final Map<UUID, Long> miningStartTimes = new HashMap<>();
     private boolean saveScheduled;
     private boolean storageAvailable = true;
 
@@ -541,8 +541,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         syncPositions.remove(uuid);
         syncedRevisions.remove(uuid);
         actionRates.remove(uuid);
-        org.bukkit.scheduler.BukkitTask task = miningTasks.remove(uuid);
-        if (task != null) task.cancel();
+        miningStartTimes.remove(uuid);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -560,49 +559,18 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
 
         event.setInstaBreak(false);
 
-        // Migrate old STRUCTURE_VOID markers → BARRIER
-        if (block.getType() == Material.STRUCTURE_VOID) {
-            block.setType(Material.BARRIER, false);
+        // Migrate old BARRIER markers → STRUCTURE_VOID
+        if (block.getType() == Material.BARRIER) {
+            block.setType(Material.STRUCTURE_VOID, false);
         }
 
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
 
-        // Cancel any previous mining task for this player
-        org.bukkit.scheduler.BukkitTask prev = miningTasks.remove(playerId);
-        if (prev != null) prev.cancel();
-
-        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL) return;
-
-        // Calculate required break time based on parent material
-        Material baseMaterial = Material.STONE;
-        String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;
-        if (matStr != null) {
-            try { baseMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
-            catch (Exception ignored) {}
+        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
+            long now = System.currentTimeMillis();
+            miningStartTimes.put(playerId, now);
         }
-        long requiredMs = (long) getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
-        long requiredTicks = Math.max(1, requiredMs / 50);
-
-        org.bukkit.scheduler.BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            miningTasks.remove(playerId);
-            Player p = Bukkit.getPlayer(playerId);
-            if (p == null || !p.isOnline()) return;
-            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) return;
-            MicrovoxelVolume vol = store.get(key);
-            if (vol == null) return;
-
-            // Verify player is still near the block
-            if (!p.getWorld().getUID().equals(key.worldId())) return;
-            double dx = p.getLocation().getX() - (key.x() + 0.5);
-            double dy = p.getLocation().getY() - (key.y() + 0.5);
-            double dz = p.getLocation().getZ() - (key.z() + 0.5);
-            if (dx * dx + dy * dy + dz * dz > 36) return; // ~6 block reach
-
-            performMicrovoxelBreak(p, key, vol);
-        }, requiredTicks);
-
-        miningTasks.put(playerId, task);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -613,35 +581,34 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         if (volume == null) return;
 
         Player player = event.getPlayer();
-
-        // Cancel any pending mining task
-        org.bukkit.scheduler.BukkitTask task = miningTasks.remove(player.getUniqueId());
-        if (task != null) task.cancel();
+        UUID playerId = player.getUniqueId();
 
         if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL) {
-            // BARRIER is unbreakable in survival, so this shouldn't normally fire.
-            // Safety net for legacy STRUCTURE_VOID markers.
-            event.setCancelled(true);
-            return;
+            Long startTime = miningStartTimes.get(playerId);
+            Material baseMaterial = Material.STONE;
+            String matStr = volume.palette().size() > 1 ? volume.palette().get(1) : null;
+            if (matStr != null) {
+                try { baseMaterial = Bukkit.createBlockData(matStr).getMaterial(); }
+                catch (Exception ignored) {}
+            }
+            double requiredTime = getRequiredBreakTimeMs(baseMaterial, player.getInventory().getItemInMainHand());
+            long now = System.currentTimeMillis();
+            long elapsed = startTime == null ? -1 : (now - startTime);
+
+            if (startTime == null || elapsed < requiredTime - 150) {
+                // Not enough time has elapsed; cancel the break.
+                event.setCancelled(true);
+                return;
+            }
         }
 
-        // Creative mode: instant break, no drops
+        // Break successful: clean up tracking and perform microvoxel drop
+        miningStartTimes.remove(playerId);
         event.setDropItems(false);
+
         store.remove(key);
         broadcastRemove(key);
         markDirty();
-    }
-
-    private void performMicrovoxelBreak(Player player, MicrovoxelKey key, MicrovoxelVolume volume) {
-        Block block = markerBlock(key);
-
-        // Remove from database and notify clients
-        store.remove(key);
-        broadcastRemove(key);
-        markDirty();
-
-        // Set block to air
-        block.setType(Material.AIR, false);
 
         // Determine drop material from palette (index 1 = parent material)
         Material dropMaterial = Material.STONE;
@@ -705,6 +672,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
         Location dropLoc = block.getLocation().add(0.5, 0.5, 0.5);
         block.getWorld().dropItemNaturally(dropLoc, dropItem);
     }
+
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
@@ -1057,7 +1025,7 @@ public final class MicrovoxelManager implements Listener, PluginMessageListener,
             }
         }
         if (lightLevel <= 0) {
-            if (marker.getType() != Material.BARRIER) marker.setType(Material.BARRIER, false);
+            if (marker.getType() != Material.STRUCTURE_VOID) marker.setType(Material.STRUCTURE_VOID, false);
             return;
         }
         org.bukkit.block.data.type.Light light = (org.bukkit.block.data.type.Light) Material.LIGHT.createBlockData();

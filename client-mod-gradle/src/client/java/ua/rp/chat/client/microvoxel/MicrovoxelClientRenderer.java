@@ -94,8 +94,7 @@ public final class MicrovoxelClientRenderer {
                     lastPos = position;
                     BlockState marker = minecraft.level.getBlockState(position);
                     lastPosValid = marker.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID)
-                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT)
-                            || marker.is(net.minecraft.world.level.block.Blocks.BARRIER);
+                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT);
                 }
                 if (!lastPosValid) {
                     continue;
