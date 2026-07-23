@@ -3,7 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const childProcess = require('child_process');
-const { Client, Authenticator } = require('minecraft-launcher-core');
+const { Client } = require('minecraft-launcher-core');
+const {
+    OFFLINE_DEVELOPER_ARGUMENT,
+    createOfflineAuthorization
+} = require('./offline-auth');
 const {
     getOptionalMods,
     buildOptionalModViewFromCatalog,
@@ -1078,7 +1082,8 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             logLauncher('All installed optional Fabric mods are enabled for this launch.');
         }
 
-        const authSession = await Authenticator.getAuth(username);
+        const authSession = createOfflineAuthorization(username);
+        logLauncher(`Prepared deterministic offline session uuid=${authSession.uuid}; Mojang User API disabled.`);
 
         // Force Minecraft language to Russian
         try {
@@ -1127,7 +1132,11 @@ ipcMain.on('launch-game', async (event, { username, gamePath, fullscreen }) => {
             // Make the public HTTPS API available before the first world render.
             // Without this, the client guesses http://<game-host>:25580 and every
             // initial skin request waits for a connection timeout.
-            customArgs: customJvmArgs
+            customArgs: customJvmArgs,
+            // The project intentionally authenticates inside the RP server. Tell
+            // Minecraft to use UserApiService.OFFLINE instead of treating the
+            // deterministic UUID as a Mojang access token and producing 401s.
+            customLaunchArgs: [OFFLINE_DEVELOPER_ARGUMENT]
         };
 
         const minecraftProcess = await launcher.launch(opts);

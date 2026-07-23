@@ -1,0 +1,514 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"eclipseclient" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	compileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Local MCEF Mod Dependency
+	implementation files('libs/mcef_fabric_2.2.0_MC_26.1.1.jar')
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.compilerArgs << "-Xlint:deprecation"
+}
+
+tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks segmented limb continuity, wearable growth and UV invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ArticulatedLimbLayoutTest"
+}
+
+tasks.register("verifyStuckProjectileSafety", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks invisible player attachment cuboids and all-empty model crash fallback."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.StuckProjectileAttachmentTest"
+}
+
+sourceSets.test.compileClasspath += sourceSets.client.output
+sourceSets.test.runtimeClasspath += sourceSets.client.output
+
+tasks.register("verifyElbowBridgeRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic elbow renderer with base and overlay layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ElbowBridgeRendererTest"
+}
+
+tasks.register("verifyCameraCollisionMath", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks continuous camera-volume collision and fail-closed invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CameraCollisionMathTest"
+}
+
+tasks.register("verifyRespirationModel", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks respiratory phase continuity, FPS independence and recovery timing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.RespirationModelTest"
+}
+
+tasks.register("verifyBreathingTorsoLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks V-shaped torso geometry, phase propagation and layer clearance."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoLayoutTest"
+}
+
+tasks.register("verifyBreathingTorsoRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic breathing torso renderer for skin and jacket layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoRendererTest"
+}
+
+tasks.register("verifyBreathingShoulderLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks breathing shoulder seam, clearance, symmetry and stability."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingShoulderLayoutTest"
+}
+
+tasks.register("verifyMicrovoxelCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks 16x16x16 greedy meshing, neighbour culling, ray traversal and collision merging."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.MicrovoxelCoreTest"
+}
+
+tasks.register("verifyBloodFxCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks deterministic blood FX cadence, LOD, surface aging and particle budgets."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BloodFxCoreTest"
+}
+
+tasks.register("verifyBloodFxAssets") {
+	group = "verification"
+	description = "Checks every Blood FX sprite and particle atlas declaration."
+	def bloodTextures = layout.projectDirectory.dir(
+			"src/main/resources/assets/eclipseclient/textures/particle/blood")
+	def particleDefs = layout.projectDirectory.dir(
+			"src/main/resources/assets/eclipseclient/particles")
+	inputs.dir(bloodTextures)
+	inputs.dir(particleDefs)
+	doLast {
+		def expected = (0..4).collect { "drop_${it}.png" }
+		expected += (0..7).collect { "splat_${it}.png" }
+		expected += (0..4).collect { "wound_${it}.png" }
+		expected.each { name ->
+			def file = bloodTextures.file(name).asFile
+			assert file.isFile(): "Missing Blood FX sprite: ${name}"
+			def image = javax.imageio.ImageIO.read(file)
+			assert image != null && image.width == 32 && image.height == 32:
+					"Blood FX sprite must be a valid 32x32 PNG: ${name}"
+			assert image.colorModel.hasAlpha(): "Blood FX sprite requires transparency: ${name}"
+			assert ((image.getRGB(0, 0) >>> 24) & 0xff) == 0:
+					"Blood FX sprite corner must be transparent: ${name}"
+			def visible = 0
+			for (int y = 0; y < image.height; y++) {
+				for (int x = 0; x < image.width; x++) {
+					if (((image.getRGB(x, y) >>> 24) & 0xff) > 24) visible++
+				}
+			}
+			assert visible >= 3 && visible <= 800:
+					"Blood FX sprite has invalid visible coverage: ${name} (${visible})"
+		}
+		["blood_drop.json", "blood_decal.json", "blood_wound.json"].each { name ->
+			def file = particleDefs.file(name).asFile
+			assert file.isFile(): "Missing Blood FX particle definition: ${name}"
+			def json = new JsonSlurper().parse(file)
+			assert json.textures && !json.textures.isEmpty(): "Empty Blood FX particle atlas: ${name}"
+		}
+		println "Blood FX assets: 18 transparent sprites and 3 atlases are valid"
+	}
+}
+
+tasks.register("verifyHeavyHammerAnimation", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет непрерывность, кадр контакта и возврат двуручной анимации молота."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerAnimationTest"
+}
+
+tasks.register("verifyHeavyHammerGrip", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет достижимость и точность двуручного хвата молота."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerGripSolverTest"
+}
+
+tasks.register("verifyHeavyHammerGait", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет сужение стойки при ходьбе, противофазу бёдер и безопасный подъём коленей."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerGaitTest"
+}
+
+tasks.register("verifyHeavyHammerCarryMachine", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет реверсивное извлечение, возврат, защёлку и отсутствие скачков молота."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerCarryMachineTest"
+}
+
+tasks.register("verifyHeavyHammerDrawPath", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет полный путь молота из подвеса: защёлку, непрерывность, базис и коллизии с телом."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerDrawPathTest"
+}
+
+tasks.register("verifyHeavyHammerBootstrapSafety") {
+	group = "verification"
+	description = "Запрещает создавать ItemStack подвеса в статическом инициализаторе до привязки компонентов Minecraft."
+	def source = layout.projectDirectory.file("src/client/java/ua/rp/chat/client/heavyhammer/HeavyHammerCarryRenderLayer.java")
+	inputs.file(source)
+	doLast {
+		def text = source.asFile.getText("UTF-8")
+		assert !text.contains("static final ItemStack"):
+				"ItemStack подвеса снова создаётся до привязки компонентов Minecraft"
+		assert text.contains("if (holsterStack == null) holsterStack = createHolsterStack();"):
+				"Ленивая инициализация подвеса отсутствует"
+	}
+}
+
+tasks.register("verifyHeavyHammerHolsterBodyAttachment") {
+	group = "verification"
+	description = "Ensures the holster inherits the animated PlayerModel body transform."
+	def source = layout.projectDirectory.file("src/client/java/ua/rp/chat/client/heavyhammer/HeavyHammerCarryRenderLayer.java")
+	inputs.file(source)
+	doLast {
+		def text = source.asFile.getText("UTF-8")
+		assert text.contains("model.body.translateAndRotate(poseStack);"):
+				"Holster must inherit PlayerModel.body before its local attachment offset is applied"
+		assert text.contains("HeavyHammerHolsterLayout.bodyAttachment(latchClosed)"):
+				"Holster must use the bounded layout attachment rather than a raw root offset"
+	}
+}
+
+tasks.register("verifyPickupPrompt", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client-side right-click pickup range and prompt fade invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.PickupPromptRulesTest"
+}
+
+tasks.register("verifyHeavyHammerHolsterLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет точную посадку втулки и древка молота в процедурную портупею."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerHolsterLayoutTest"
+}
+
+tasks.register("verifyHeavyHammerHolsterAssets") {
+	group = "verification"
+	description = "Проверяет модель, предметное описание, 128px-текстуры и зазор петель портупеи."
+	def modelFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/models/item/heavy_hammer_holster.json")
+	def itemFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/items/heavy_hammer_holster.json")
+	def textureFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/textures/item/heavy_hammer_holster.png")
+	def normalFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/textures/item/heavy_hammer_holster_n.png")
+	def specFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/textures/item/heavy_hammer_holster_s.png")
+	inputs.files(modelFile, itemFile, textureFile, normalFile, specFile)
+	doLast {
+		def model = new JsonSlurper().parse(modelFile.asFile)
+		def item = new JsonSlurper().parse(itemFile.asFile)
+		def elements = model.elements.collectEntries { [(it.name): it] }
+		assert model.texture_size == [128, 128]: "Атлас портупеи должен иметь логическое разрешение 128x128"
+		assert model.elements.size() >= 80: "Детализированная портупея потеряла геометрию: ${model.elements.size()} кубоидов"
+		assert item.model.model == "eclipseclient:item/heavy_hammer_holster": "Предмет ссылается не на ту модель"
+		assert elements.frog_top_left && elements.frog_top_right && elements.frog_top_front && elements.frog_top_back:
+				"В модели отсутствует несущая верхняя петля"
+		def openingX = (elements.frog_top_right.from[0] as Number).doubleValue()
+				- (elements.frog_top_left.to[0] as Number).doubleValue()
+		def openingZ = (elements.frog_top_back.from[2] as Number).doubleValue()
+				- (elements.frog_top_front.to[2] as Number).doubleValue()
+		assert openingX >= 2.20d && openingZ >= 1.90d:
+				"Древко 1.14px не проходит через рабочее окно петли ${openingX}x${openingZ}"
+		[textureFile, normalFile, specFile].each { file ->
+			def image = javax.imageio.ImageIO.read(file.asFile)
+			assert image != null && image.width == 128 && image.height == 128:
+					"Текстура ${file.asFile.name} должна быть валидным PNG 128x128"
+		}
+		println "Heavy hammer holster assets: model, item, textures and frog clearance are valid"
+	}
+}
+
+tasks.register("verifyHeavyHammerItemTransform", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет совпадение процедурных осей молота с ItemInHandLayer."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerItemTransformTest"
+}
+
+tasks.register("verifyHeavyHammerRenderedRig", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет фактическую иерархию плеча, локтя и ладони после Minecraft Euler-преобразований."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerRenderedRigTest"
+}
+
+tasks.register("verifyHeavyHammerRenderedGait", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет фактическую Minecraft-иерархию таза, колена и положения стоп."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerRenderedGaitTest"
+}
+
+tasks.register("verifyHeavyHammerModelBounds") {
+	group = "verification"
+	description = "Проверяет допустимые координаты кубоидов и наличие текстуры тяжёлого молота."
+	def modelFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/models/item/heavy_hammer.json")
+	def textureFile = layout.projectDirectory.file("src/main/resources/assets/eclipseclient/textures/item/heavy_hammer.png")
+	inputs.files(modelFile, textureFile)
+
+	doLast {
+		def model = new JsonSlurper().parse(modelFile.asFile)
+		def elements = model.elements.collectEntries { [(it.name): it] }
+		def shaftScale = (model.display.thirdperson_righthand.scale[1] as Number).doubleValue()
+		def gripPivot = 8.0d
+		def buttToMainGrip = (gripPivot - (elements.ash_haft.from[1] as Number).doubleValue()) * shaftScale
+		def mainGripToSocket = ((elements.socket.from[1] as Number).doubleValue() - gripPivot) * shaftScale
+		def headCenter = (((elements.head_core.from[1] as Number).doubleValue()
+				+ (elements.head_core.to[1] as Number).doubleValue()) * 0.5d - gripPivot) * shaftScale
+		assert Math.abs(buttToMainGrip - 4.25d) < 0.02d:
+				"Под нижней кистью должно оставаться 4.25 px рукояти от центра ладони: ${buttToMainGrip}"
+		assert Math.abs(mainGripToSocket - 16.7d) < 0.02d:
+				"Рабочая зона рукояти должна оставлять запас между верхней кистью и втулкой: ${mainGripToSocket}"
+		assert Math.abs(headCenter - 19.835d) < 0.02d:
+				"Визуальный центр бойка должен совпадать с процедурной длиной: ${headCenter}"
+		assert model.elements && !model.elements.isEmpty(): "Модель тяжёлого молота не содержит кубоидов"
+		model.elements.each { element ->
+			["from", "to"].each { key ->
+				element[key].eachWithIndex { coordinate, axis ->
+					assert coordinate >= -16.0 && coordinate <= 32.0:
+						"${element.name} ${key}[${axis}]=${coordinate} выходит за пределы Minecraft [-16, 32]"
+				}
+			}
+		}
+		assert textureFile.asFile.length() > 0: "Текстура тяжёлого молота отсутствует или пуста"
+		println "Heavy hammer model bounds: all cuboids are valid and texture is present"
+	}
+}
+
+tasks.register("verifyHeavyHammerSpatialRules", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Проверяет, что боёк не пересекает голову и корпус и сохраняет читаемый силуэт."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.HeavyHammerSpatialRulesTest"
+}
+
+tasks.named("test") {
+	failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyArticulatedLimbGeometry")
+	dependsOn tasks.named("verifyStuckProjectileSafety")
+	dependsOn tasks.named("verifyElbowBridgeRenderer")
+	dependsOn tasks.named("verifyCameraCollisionMath")
+	dependsOn tasks.named("verifyRespirationModel")
+	dependsOn tasks.named("verifyBreathingTorsoLayout")
+	dependsOn tasks.named("verifyBreathingTorsoRenderer")
+	dependsOn tasks.named("verifyBreathingShoulderLayout")
+	dependsOn tasks.named("verifyMicrovoxelCore")
+	dependsOn tasks.named("verifyHeavyHammerAnimation")
+	dependsOn tasks.named("verifyHeavyHammerGrip")
+	dependsOn tasks.named("verifyHeavyHammerGait")
+	dependsOn tasks.named("verifyHeavyHammerCarryMachine")
+	dependsOn tasks.named("verifyHeavyHammerDrawPath")
+	dependsOn tasks.named("verifyHeavyHammerBootstrapSafety")
+	dependsOn tasks.named("verifyHeavyHammerHolsterBodyAttachment")
+	dependsOn tasks.named("verifyHeavyHammerHolsterLayout")
+	dependsOn tasks.named("verifyHeavyHammerHolsterAssets")
+	dependsOn tasks.named("verifyHeavyHammerItemTransform")
+	dependsOn tasks.named("verifyHeavyHammerRenderedRig")
+	dependsOn tasks.named("verifyHeavyHammerRenderedGait")
+	dependsOn tasks.named("verifyHeavyHammerModelBounds")
+	dependsOn tasks.named("verifyHeavyHammerSpatialRules")
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+tasks.register("syncClientDistribution") {
+	dependsOn tasks.named("jar")
+
+	def remappedJar = tasks.named("jar").flatMap { it.archiveFile }
+	def clientRoot = layout.projectDirectory.dir("../../plugins/RPChat/client")
+	def fabricClientRoots = [
+		layout.projectDirectory.dir("../plugins/RPChat/client"),
+		layout.projectDirectory.dir("../config/RPChat/client")
+	]
+	def modsDir = clientRoot.dir("mods")
+	def manifestFile = clientRoot.file("mods.json")
+	def modFileName = "eclipse-client-${project.version}.jar"
+	def supersededClientSha1 = "d2a7c3b26354307f9a6d504f16aae5a786a11b7f"
+
+	inputs.file(remappedJar)
+	outputs.file(modsDir.file(modFileName))
+	outputs.file(manifestFile)
+	fabricClientRoots.each { destination ->
+		outputs.file(destination.file("mods/${modFileName}"))
+		outputs.file(destination.file("mods.json"))
+	}
+
+	doLast {
+		def sourceJar = remappedJar.get().asFile
+		def targetJar = modsDir.file(modFileName).asFile
+		targetJar.parentFile.mkdirs()
+		targetJar.bytes = sourceJar.bytes
+
+		def sha1 = MessageDigest.getInstance("SHA-1")
+			.digest(targetJar.bytes)
+			.collect { String.format("%02x", it) }
+			.join()
+
+		def manifest = []
+		if (manifestFile.asFile.exists()) {
+			manifest = new JsonSlurper().parse(manifestFile.asFile) as List
+		}
+		def obsoleteClientEntries = manifest.findAll {
+			it.sha1 == supersededClientSha1 || (it.name?.startsWith("eclipse-client-") && it.name != modFileName)
+		}
+		obsoleteClientEntries.each { obsolete ->
+			def obsoleteFile = modsDir.file(obsolete.name as String).asFile
+			if (obsoleteFile.exists()) {
+				obsoleteFile.delete()
+			}
+		}
+		manifest.removeAll {
+			it.sha1 == supersededClientSha1 || it.name == modFileName || it.name?.startsWith("eclipse-client-")
+		}
+
+		def entry = [
+			name: modFileName,
+			path: "mods/${modFileName}",
+			url: "https://api.eclipse-roleplay.online/dist/client/mods/${modFileName}"
+		]
+		manifest.add(0, entry)
+		entry.path = "mods/${modFileName}"
+		entry.sha1 = sha1
+		entry.size = targetJar.length()
+
+		manifestFile.asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), "UTF-8")
+		fabricClientRoots.each { destination ->
+			def destinationMods = destination.dir("mods").asFile
+			destinationMods.mkdirs()
+			destinationMods.listFiles()?.findAll {
+				it.name.startsWith("eclipse-client-") && it.name != modFileName
+			}?.each { it.delete() }
+			destination.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+			destination.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
+		}
+		println "Synced ${modFileName} to ${targetJar} (${sha1}, ${targetJar.length()} bytes)"
+	}
+}
+
+tasks.named("build") {
+	finalizedBy tasks.named("syncClientDistribution")
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyBloodFxCore")
+	dependsOn tasks.named("verifyBloodFxAssets")
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

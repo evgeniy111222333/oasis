@@ -1,0 +1,291 @@
+Building and verifying Eclipse Fabric server/client...
+
+> Configure project :client
+Fabric Loom: 1.17.16
+
+> Configure project :server
+Fabric Loom: 1.17.16
+
+> Task :client:validateAccessWidener NO-SOURCE
+> Task :server:clean
+> Task :client:compileJava UP-TO-DATE
+> Task :client:processResources UP-TO-DATE
+> Task :client:classes UP-TO-DATE
+> Task :client:compileClientJava UP-TO-DATE
+> Task :client:processClientResources UP-TO-DATE
+> Task :client:processIncludeJars UP-TO-DATE
+> Task :client:jar UP-TO-DATE
+> Task :client:sourcesJar UP-TO-DATE
+> Task :client:clientClasses UP-TO-DATE
+> Task :client:compileTestJava UP-TO-DATE
+> Task :client:processTestResources NO-SOURCE
+> Task :client:testClasses UP-TO-DATE
+> Task :client:test UP-TO-DATE
+
+> Task :client:verifyArticulatedLimbGeometry
+ArticulatedLimbLayoutTest: all geometry and UV invariants passed
+
+> Task :client:verifyBloodFxAssets
+Blood FX assets: 18 transparent sprites and 3 atlases are valid
+
+> Task :client:verifyBloodFxCore
+BloodFxCoreTest: deterministic LOD, cadence, budgets and drying invariants passed
+
+> Task :client:verifyBreathingShoulderLayout
+BreathingShoulderLayoutTest: seam, clearance, symmetry and stability invariants passed
+
+> Task :client:verifyBreathingTorsoLayout
+BreathingTorsoLayoutTest: V-profile, propagation and layer invariants passed
+
+> Task :client:verifyBreathingTorsoRenderer
+[ECLIPSE-TORSO] Continuous V-breathing mesh active: rings=7, quadsPerLayer=26, jacketUsesSharedVertices=true
+BreathingTorsoRendererTest: skin, jacket, UV and normal invariants passed
+
+> Task :client:verifyCameraCollisionMath
+CameraCollisionMathTest: all continuous collision and fail-closed invariants passed
+
+> Task :server:compileJava
+
+> Task :client:verifyElbowBridgeRenderer
+[ECLIPSE-ELBOW] Continuous bridge active: rings=5, baseQuads=16, overlayUsesSameWeights=true
+ElbowBridgeRendererTest: base and overlay rendering passed
+
+> Task :client:verifyHeavyHammerAnimation
+HeavyHammerAnimationTest passed
+
+> Task :client:verifyHeavyHammerBootstrapSafety
+> Task :server:processResources
+> Task :server:classes
+
+> Task :client:verifyHeavyHammerCarryMachine
+HeavyHammerCarryMachineTest passed
+
+> Task :client:verifyHeavyHammerDrawPath
+HeavyHammerDrawPathTest passed; maxHeadStep=0.35997617
+
+> Task :client:verifyHeavyHammerGait
+=== FIELDS of AvatarRenderState ===
+Class: net.minecraft.client.renderer.entity.state.AvatarRenderState
+  net.minecraft.world.entity.player.PlayerSkin skin
+  float capeFlap
+  float capeLean
+  float capeLean2
+  int arrowCount
+  int stingerCount
+  boolean isSpectator
+  boolean showHat
+  boolean showJacket
+  boolean showLeftPants
+  boolean showRightPants
+  boolean showLeftSleeve
+  boolean showRightSleeve
+  boolean showCape
+  float fallFlyingTimeInTicks
+  boolean shouldApplyFlyingYRot
+  float flyingYRot
+  net.minecraft.world.entity.animal.parrot.Parrot$Variant parrotOnLeftShoulder
+  net.minecraft.world.entity.animal.parrot.Parrot$Variant parrotOnRightShoulder
+  int id
+  boolean showExtraEars
+  net.minecraft.client.renderer.item.ItemStackRenderState heldOnHead
+Class: net.minecraft.client.renderer.entity.state.HumanoidRenderState
+  float swimAmount
+  float speedValue
+  float maxCrossbowChargeDuration
+  float ticksUsingItem
+  net.minecraft.world.InteractionHand useItemHand
+  boolean isCrouching
+  boolean isFallFlying
+  boolean isVisuallySwimming
+  boolean isPassenger
+  boolean isUsingItem
+  float elytraRotX
+  float elytraRotY
+  float elytraRotZ
+  net.minecraft.world.item.ItemStack headEquipment
+  net.minecraft.world.item.ItemStack chestEquipment
+  net.minecraft.world.item.ItemStack legsEquipment
+  net.minecraft.world.item.ItemStack feetEquipment
+Class: net.minecraft.client.renderer.entity.state.ArmedEntityRenderState
+  net.minecraft.world.entity.HumanoidArm mainArm
+  net.minecraft.world.entity.HumanoidArm attackArm
+  net.minecraft.client.model.HumanoidModel$ArmPose rightArmPose
+  net.minecraft.client.renderer.item.ItemStackRenderState rightHandItemState
+  net.minecraft.world.item.ItemStack rightHandItemStack
+  net.minecraft.client.model.HumanoidModel$ArmPose leftArmPose
+  net.minecraft.client.renderer.item.ItemStackRenderState leftHandItemState
+  net.minecraft.world.item.ItemStack leftHandItemStack
+  net.minecraft.world.item.SwingAnimationType swingAnimationType
+  float attackTime
+Class: net.minecraft.client.renderer.entity.state.LivingEntityRenderState
+  float bodyRot
+  float yRot
+  float xRot
+  float deathTime
+  float walkAnimationPos
+  float walkAnimationSpeed
+  float scale
+  float ageScale
+  float ticksSinceKineticHitFeedback
+  boolean isUpsideDown
+  boolean isFullyFrozen
+  boolean isBaby
+  boolean isInWater
+  boolean isAutoSpinAttack
+  boolean hasRedOverlay
+  boolean isInvisibleToPlayer
+  net.minecraft.core.Direction bedOrientation
+  net.minecraft.world.entity.Pose pose
+  net.minecraft.client.renderer.item.ItemStackRenderState headItem
+  float wornHeadAnimationPos
+  net.minecraft.world.level.block.SkullBlock$Type wornHeadType
+  net.minecraft.world.item.component.ResolvableProfile wornHeadProfile
+Class: net.minecraft.client.renderer.entity.state.EntityRenderState
+  int NO_OUTLINE
+  net.minecraft.world.entity.EntityType entityType
+  double x
+  double y
+  double z
+  float ageInTicks
+  float boundingBoxWidth
+  float boundingBoxHeight
+  float eyeHeight
+  double distanceToCameraSq
+  boolean isInvisible
+  boolean isDiscrete
+  boolean displayFireAnimation
+  int lightCoords
+  int outlineColor
+  net.minecraft.world.phys.Vec3 passengerOffset
+  net.minecraft.network.chat.Component nameTag
+  net.minecraft.network.chat.Component scoreText
+  net.minecraft.world.phys.Vec3 nameTagAttachment
+  java.util.List leashStates
+  float shadowRadius
+  java.util.List shadowPieces
+Class: java.lang.Object
+HeavyHammerGaitTest passed: idle=5.783785, walk=4.7062597, run=4.52
+
+> Task :client:verifyHeavyHammerGrip
+HeavyHammerGripSolverTest passed
+
+> Task :client:verifyHeavyHammerHolsterAssets
+Heavy hammer holster assets: model, item, textures and frog clearance are valid
+
+> Task :client:verifyHeavyHammerHolsterBodyAttachment
+
+> Task :client:verifyHeavyHammerHolsterLayout
+Heavy hammer holster layout: seat, shaft and draw origin are aligned
+
+> Task :server:processIncludeJars
+(3.49.1.0) is not valid semver for dependency org.xerial:sqlite-jdbc:3.49.1.0
+
+> Task :client:verifyHeavyHammerItemTransform
+HeavyHammerItemTransformTest passed
+
+> Task :client:verifyHeavyHammerModelBounds
+Heavy hammer model bounds: all cuboids are valid and texture is present
+
+> Task :client:verifyHeavyHammerRenderedGait
+HeavyHammerRenderedGaitTest passed: idle=5.7812867, walk=4.6067014..4.650713
+
+> Task :client:verifyHeavyHammerRenderedRig
+HeavyHammerRenderedRigTest passed: actual Minecraft hierarchy follows both grips
+
+> Task :client:verifyHeavyHammerSpatialRules
+HeavyHammerSpatialRulesTest passed; idle front span=13.957534
+
+> Task :client:verifyMicrovoxelCore
+MicrovoxelCoreTest passed
+
+> Task :server:compileTestJava
+> Task :server:processTestResources NO-SOURCE
+> Task :server:testClasses
+
+> Task :client:verifyRespirationModel
+RespirationModelTest: all continuity, timing and recovery invariants passed
+
+> Task :server:test
+> Task :server:validateAccessWidener NO-SOURCE
+> Task :server:verifyBloodFxIntegration
+> Task :server:verifyChunkLoadMarkerSafety
+
+> Task :server:verifyFabricParity
+FabricParityContractTest passed
+
+> Task :server:jar
+
+> Task :client:verifyStuckProjectileSafety
+Stuck projectile attachments are non-empty, invisible and crash-safe
+
+> Task :client:check
+> Task :client:assemble UP-TO-DATE
+> Task :client:build
+> Task :client:syncClientDistribution UP-TO-DATE
+
+> Task :server:verifyServerCore
+[17:51:56] [main/INFO]: [STDOUT]: MicrovoxelServerCoreTest passed
+
+> Task :server:check
+> Task :server:assemble
+> Task :server:build
+> Task :server:syncServerDistribution UP-TO-DATE
+
+BUILD SUCCESSFUL in 23s
+47 actionable tasks: 36 executed, 11 up-to-date
+Build succeeded. Fabric server and client distributions are deployed.
+D:\23\distribution-build\manifests\production.json
+Uploading Fabric server mod e0a21989060b7190c55a8dce46a1ba3873a93e3c396e31c2a586f461219d4f1f -> cbae62e2e88df1b8dad2682a6b69c715e9854b88ccf2128742673fc874ae3b05...
+[server-publish] SERVER_MOD_DEPLOY_OK backup=/opt/eclipse-rp/backups/server-mod-pre-publish-20260723T145204Z sha256=cbae62e2e88df1b8dad2682a6b69c715e9854b88ccf2128742673fc874ae3b05
+SERVER_MOD_PUBLISH_OK sha256=cbae62e2e88df1b8dad2682a6b69c715e9854b88ccf2128742673fc874ae3b05
+GOOGLE_DRIVE_MIRROR_OK release=20260723-144908 folder=https://drive.google.com/drive/folders/1L8YAu4bEd64x3Ac2dgBLSs8N9yUsqeXb
+D:\23\distribution-build\manifests\production.json
+GOOGLE_DRIVE_MIRROR_OK release=20260723-144908 folder=https://drive.google.com/drive/folders/1L8YAu4bEd64x3Ac2dgBLSs8N9yUsqeXb
+[1/16] client/mods/Axiom-5.4.2-for-MC26.1.jar
+[2/16] client/mods/eclipse-client-1.4.5.jar
+[3/16] client/mods/entity_model_features-3.2.4-26.1-fabric.jar
+[4/16] client/mods/entity_texture_features_26.1-fabric-7.1.jar
+[5/16] client/mods/fabric-api-0.153.0+26.1.2.jar
+[6/16] client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar
+[7/16] client/mods/iris-fabric-1.10.9+mc26.1.1.jar
+[8/16] client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar
+[9/16] client/mods/sodium-fabric-0.8.12+mc26.1.2.jar
+[10/16] client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar
+[11/16] client/mods/zoomify-2.16.1+26.1.jar
+[12/16] client/mods.json
+[13/16] client/versions/26.1.2/26.1.2.json
+[14/16] launcher/latest.json
+[15/16] launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.21.exe
+[16/16] manifests/production.json
+Archiving distribution...
+Archive created: dist.tar.gz (146555864 bytes)
+Client archive created: client.tar.gz (66262177 bytes)
+Uploading distribution and verified client snapshot to VPS...
+Archive uploaded successfully.
+Atomically replacing VPS distribution and server client manifest...
+verified 11 managed mods
+[client-sync] CLIENT_SYNC_OK legacy_backup=/opt/eclipse-rp/backups/client-pre-sync-20260723T145447Z.tar.gz fabric_backup=/opt/eclipse-rp/backups/fabric-client-pre-sync-20260723T145447Z.tar.gz
+VPS distribution update complete!
+Publishing distribution to GitHub 'dist' branch...
+Initialized empty Git repository in D:/23/distribution-build/.git/
+[dist (root-commit) 48fe987] Publish distribution build
+ 16 files changed, 2385 insertions(+)
+ create mode 100644 client/mods.json
+ create mode 100644 client/mods/Axiom-5.4.2-for-MC26.1.jar
+ create mode 100644 client/mods/eclipse-client-1.4.5.jar
+ create mode 100644 client/mods/entity_model_features-3.2.4-26.1-fabric.jar
+ create mode 100644 client/mods/entity_texture_features_26.1-fabric-7.1.jar
+ create mode 100644 client/mods/fabric-api-0.153.0+26.1.2.jar
+ create mode 100644 client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar
+ create mode 100644 client/mods/iris-fabric-1.10.9+mc26.1.1.jar
+ create mode 100644 client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar
+ create mode 100644 client/mods/sodium-fabric-0.8.12+mc26.1.2.jar
+ create mode 100644 client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar
+ create mode 100644 client/mods/zoomify-2.16.1+26.1.jar
+ create mode 100644 client/versions/26.1.2/26.1.2.json
+ create mode 100644 launcher/latest.json
+ create mode 100644 launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.21.exe
+ create mode 100644 manifests/production.json
+Successfully published distribution to GitHub 'dist' branch!
+Warning: Could not clean up .git directory: [WinError 5] Access is denied: 'D:\\23\\distribution-build\\.git\\objects\\0b\\d5413f1f1d74d5ee2e251454233f90bc46c4ba'
+Published release push 20260723-144908

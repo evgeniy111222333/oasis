@@ -1,5 +1,5 @@
 plugins {
-	id 'fabric-loom' version "${loom_version}"
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
 }
 
@@ -32,8 +32,7 @@ loom {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings_version}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	compileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
@@ -52,7 +51,8 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
+	it.options.release = 25
+	it.options.compilerArgs << "-Xlint:deprecation"
 }
 
 tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
@@ -342,8 +342,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
 }
 
 jar {
@@ -356,10 +356,12 @@ jar {
 }
 
 tasks.register("syncClientDistribution") {
-	dependsOn tasks.named("remapJar")
+	dependsOn tasks.named("jar")
 
-	def remappedJar = tasks.named("remapJar").flatMap { it.archiveFile }
+	def remappedJar = tasks.named("jar").flatMap { it.archiveFile }
 	def clientRoot = layout.projectDirectory.dir("../plugins/RPChat/client")
+	def deployedClientRoot = layout.projectDirectory.dir("../fabric-server/plugins/RPChat/client")
+	def fabricConfigClientRoot = layout.projectDirectory.dir("../fabric-server/config/RPChat/client")
 	def modsDir = clientRoot.dir("mods")
 	def manifestFile = clientRoot.file("mods.json")
 	def modFileName = "eclipse-client-${project.version}.jar"
@@ -368,6 +370,10 @@ tasks.register("syncClientDistribution") {
 	inputs.file(remappedJar)
 	outputs.file(modsDir.file(modFileName))
 	outputs.file(manifestFile)
+	outputs.file(deployedClientRoot.file("mods/${modFileName}"))
+	outputs.file(deployedClientRoot.file("mods.json"))
+	outputs.file(fabricConfigClientRoot.file("mods/${modFileName}"))
+	outputs.file(fabricConfigClientRoot.file("mods.json"))
 
 	doLast {
 		def sourceJar = remappedJar.get().asFile
@@ -408,6 +414,22 @@ tasks.register("syncClientDistribution") {
 		entry.size = targetJar.length()
 
 		manifestFile.asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), "UTF-8")
+
+		def deployedMods = deployedClientRoot.dir("mods").asFile
+		deployedMods.mkdirs()
+		deployedMods.listFiles()?.findAll {
+			it.name.startsWith("eclipse-client-") && it.name != modFileName
+		}?.each { it.delete() }
+		deployedClientRoot.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+		deployedClientRoot.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
+
+		def fabricConfigMods = fabricConfigClientRoot.dir("mods").asFile
+		fabricConfigMods.mkdirs()
+		fabricConfigMods.listFiles()?.findAll {
+			it.name.startsWith("eclipse-client-") && it.name != modFileName
+		}?.each { it.delete() }
+		fabricConfigClientRoot.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+		fabricConfigClientRoot.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
 		println "Synced ${modFileName} to ${targetJar} (${sha1}, ${targetJar.length()} bytes)"
 	}
 }

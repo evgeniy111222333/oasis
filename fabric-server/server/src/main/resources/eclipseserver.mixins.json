@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "ua.rp.chat.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "AuthContainerMixin",
+    "AuthCommandMixin",
+    "BlockStateMicrovoxelMixin",
+    "CubeVoxelShapeInvoker",
+    "DisplayAccessor",
+    "ItemEntityAccessor",
+    "ItemEntityMixin",
+    "LivingEntityMixin",
+    "PlayerActionMixin",
+    "PlayerListMixin",
+    "ProjectileWeaponItemMixin",
+    "TextDisplayAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "style": "\u0420\u0430\u0431\u043e\u0447\u0430\u044f \u0441\u0440\u0435\u0434\u043d\u0435\u0432\u0435\u043a\u043e\u0432\u0430\u044f \u043a\u043e\u0436\u0430\u043d\u0430\u044f \u043f\u0435\u0440\u0435\u043d\u043e\u0441\u043a\u0430 \u0432 \u0441\u0442\u0438\u043b\u0438\u0441\u0442\u0438\u043a\u0435 Minecraft, \u0434\u0435\u0442\u0430\u043b\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f",
+  "texture": [
+    128,
+    128
+  ],
+  "cuboids": 82,
+  "triangles": 984,
+  "animations": [
+    "carry_idle_sway",
+    "carry_walk_bounce",
+    "draw_hammer"
+  ],
+  "frogAxis": [
+    13.7,
+    8.0
+  ],
+  "hammerSeatY": 6.45,
+  "bounds": {
+    "min": [
+      2.4,
+      0.8,
+      5.12
+    ],
+    "max": [
+      15.52,
+      15.1,
+      11.2
+    ]
+  },
+  "runtimeModel": "eclipseclient:models/item/heavy_hammer_holster.json"
+}

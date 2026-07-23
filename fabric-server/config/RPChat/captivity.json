@@ -1,0 +1,14 @@
+{
+  "d252dd31-70b2-3c72-9702-56cf11bc067c": {
+    "bound": true,
+    "tight": true,
+    "kneeling": false,
+    "material": "поводок",
+    "boundAt": 1783699721646,
+    "boundBy": "85307a7e-3cf5-39fe-98e5-639b63a71759",
+    "restraintMax": 0.0,
+    "restraintHealth": 0.0,
+    "lastWeakenAt": 1783699721646,
+    "searchedMask": 0
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "III",
+    "ISI",
+    " S "
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "S": "minecraft:stick"
+  },
+  "result": {
+    "id": "minecraft:iron_axe",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Тяжкий робочий молот",
+        "italic": false
+      },
+      "minecraft:lore": [
+        {
+          "text": "Простий ковальський інструмент для грубої кам'яної роботи.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "Потребує обох рук і витрачає витривалість.",
+          "color": "dark_gray",
+          "italic": false
+        },
+        {
+          "text": "ЛКМ по microvoxel — важкий круговий удар.",
+          "color": "dark_gray",
+          "italic": false
+        }
+      ],
+      "minecraft:item_model": "eclipseclient:heavy_hammer",
+      "minecraft:custom_model_data": {
+        "floats": [1401.0]
+      },
+      "minecraft:custom_data": {
+        "item_id": "heavy_builder_hammer"
+      },
+      "minecraft:attribute_modifiers": [],
+      "minecraft:max_damage": 420
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "rig": {
+    "root": "HammerHolster_Root",
+    "belt": "Belt_Bone",
+    "baldric": "Baldric_Bone",
+    "frog": "Frog_Bone",
+    "buckle": "Buckle_Bone",
+    "hammerSeat": "Hammer_Seat",
+    "haftTop": "Haft_Axis_Top",
+    "haftBottom": "Haft_Axis_Bottom"
+  },
+  "clips": {
+    "carry_idle_sway": {
+      "duration": 3.2,
+      "loop": true
+    },
+    "carry_walk_bounce": {
+      "duration": 1.0,
+      "loop": true
+    },
+    "draw_hammer": {
+      "duration": 0.9
+    }
+  }
+}

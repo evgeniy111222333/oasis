@@ -1,0 +1,12 @@
+{
+  "textures": [
+    "eclipseclient:blood/splat_0",
+    "eclipseclient:blood/splat_1",
+    "eclipseclient:blood/splat_2",
+    "eclipseclient:blood/splat_3",
+    "eclipseclient:blood/splat_4",
+    "eclipseclient:blood/splat_5",
+    "eclipseclient:blood/splat_6",
+    "eclipseclient:blood/splat_7"
+  ]
+}

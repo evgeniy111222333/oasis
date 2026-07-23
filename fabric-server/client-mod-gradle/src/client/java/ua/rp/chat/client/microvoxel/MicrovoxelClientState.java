@@ -1,0 +1,821 @@
+package ua.rp.chat.client.microvoxel;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.client.mixin.CubeVoxelShapeInvoker;
+import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
+import ua.rp.chat.microvoxel.MicrovoxelVolume;
+
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public final class MicrovoxelClientState {
+    private static final int CLEAR = 1;
+    private static final int UPSERT = 2;
+    private static final int REMOVE = 3;
+    private static final int MESSAGE = 4;
+    private static final int REGISTER_MATERIAL = 5;
+    private static final int BATCH_UPSERT = 6;
+    private static final int CLEAR_CHUNK = 7;
+    private static final int DELTA_UPSERT = 8;
+    private static final long MESH_BUDGET_NANOS = 3_000_000L;
+    private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
+    private static final Map<BlockPos, CachedVolume> VOLUMES = new HashMap<>();
+    private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
+    private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
+    private static final Map<Integer, String> CLIENT_DICTIONARY = new HashMap<>();
+    private static final Map<BlockPos, MeshJob> MESHING_JOBS = new HashMap<>();
+    private static final Set<BlockPos> MESH_DIRTY_DURING_BUILD = new HashSet<>();
+    private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "OasisMesher");
+                t.setDaemon(true);
+                return t;
+            });
+    /**
+     * A block-state packet and the matching microvoxel sync packet can arrive in either order.
+     * Rebuilding once immediately is normally enough; rebuilding the same local boundary two
+     * client ticks later makes the result deterministic without polling every volume every tick.
+     */
+    private static final Map<BlockPos, Integer> DELAYED_BOUNDARY_REBUILDS = new HashMap<>();
+    /**
+     * Rendering never walks the global volume map.  A batch is a stable, flattened snapshot of
+     * one chunk's greedy faces and is rebuilt only when a volume in that chunk changes.  This is
+     * deliberately CPU-side for now: it gives us deterministic dirty-region work and keeps the
+     * renderer ready for a later VBO backend without making edit latency depend on GPU uploads.
+     */
+    private static final Map<Long, ChunkBatch> CHUNK_BATCHES = new HashMap<>();
+    private static final Set<Long> CHUNK_BATCH_QUEUE = new LinkedHashSet<>();
+    /**
+     * One-shot runtime evidence for the microvoxel pipeline.  This is intentionally keyed by
+     * volume revision: a diagnostic session stays compact while still proving which shape and
+     * material were used for every edited state the player actually sees.
+     */
+    private static final Set<String> PROBE_EMITTED = new HashSet<>();
+    private static ClientLevel activeLevel;
+    private static int clientTick;
+    private static int stateGeneration;
+    private static boolean readyPacketSent = false;
+
+    private MicrovoxelClientState() {
+    }
+
+    public static void clientTick(Minecraft minecraft) {
+        clientTick++;
+        if (minecraft.level != activeLevel) {
+            activeLevel = minecraft.level;
+            stateGeneration++;
+            clearVolumes();
+            MicrovoxelClientRenderer.clearMaterialCache();
+            readyPacketSent = false;
+        }
+        if (activeLevel != null && !readyPacketSent && net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE)) {
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new MicrovoxelActionPayload(5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+            readyPacketSent = true;
+        }
+        processDelayedBoundaryRebuilds();
+        rebuildQueuedMeshes();
+        rebuildQueuedChunkBatches();
+    }
+
+    public static void handle(MicrovoxelSyncPayload payload) {
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload.data()))) {
+            int type = input.readUnsignedByte();
+            if (type == CLEAR) {
+                clearVolumes();
+                return;
+            }
+            if (type == REMOVE) {
+                BlockPos position = readPosition(input);
+                if (VOLUMES.remove(position) != null) removeFromChunk(position);
+                queueChunkBatch(position);
+                queueRebuild(position);
+                return;
+            }
+            if (type == MESSAGE) {
+                String message = readUtf8(input);
+                Minecraft minecraft = Minecraft.getInstance();
+                minecraft.gui.setOverlayMessage(Component.literal(message), false);
+                return;
+            }
+            if (type == REGISTER_MATERIAL) {
+                int id = readVarInt(input);
+                String material = readUtf8(input);
+                CLIENT_DICTIONARY.put(id, material);
+                return;
+            }
+            if (type == CLEAR_CHUNK) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                clearChunk(chunkX, chunkZ);
+                return;
+            }
+            if (type == DELTA_UPSERT) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                int posXZ = input.readUnsignedByte();
+                int posY = input.readShort();
+                int revision = readVarInt(input);
+                int cellIndex = readVarInt(input);
+                int registryId = readVarInt(input);
+
+                int x = (chunkX << 4) | ((posXZ >> 4) & 15);
+                int z = (chunkZ << 4) | (posXZ & 15);
+                BlockPos position = new BlockPos(x, posY, z);
+                BlockPos immutable = position.immutable();
+
+                CachedVolume cached = VOLUMES.get(immutable);
+                if (cached != null) {
+                    String material = CLIENT_DICTIONARY.get(registryId);
+                    if (material == null) throw new IOException("Unknown dictionary material ID: " + registryId);
+                    
+                    MicrovoxelVolume volume = cached.volume;
+                    MicrovoxelVolume oldVolume = volume.copy();
+                    volume.update(cellIndex, material);
+                    volume.setRevision(revision);
+
+                    rebuild(immutable);
+
+                    boolean touchBoundary = changesTouchBoundary(oldVolume, volume);
+                    if (touchBoundary) {
+                        queueNeighborsRebuild(immutable);
+                        scheduleBoundaryRebuild(immutable);
+                    }
+                    queueChunkBatch(immutable);
+                }
+                return;
+            }
+            if (type == BATCH_UPSERT) {
+                int chunkX = input.readInt();
+                int chunkZ = input.readInt();
+                int size = readVarInt(input);
+                for (int entryIdx = 0; entryIdx < size; entryIdx++) {
+                    int posXZ = input.readUnsignedByte();
+                    int posY = input.readShort();
+                    int x = (chunkX << 4) | ((posXZ >> 4) & 15);
+                    int z = (chunkZ << 4) | (posXZ & 15);
+                    BlockPos position = new BlockPos(x, posY, z);
+
+                    int revision = readVarInt(input);
+                    int paletteSize = readVarInt(input);
+                    List<String> palette = new ArrayList<>(paletteSize);
+                    for (int index = 0; index < paletteSize; index++) {
+                        int dictId = readVarInt(input);
+                        String material = CLIENT_DICTIONARY.get(dictId);
+                        if (material == null) throw new IOException("Unknown dictionary material ID: " + dictId);
+                        palette.add(material);
+                    }
+
+                    byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
+                    int encoding = input.readUnsignedByte();
+                    if (encoding == 0) {
+                        if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
+                    } else if (encoding == 1) {
+                        int runs = readVarInt(input);
+                        int cursor = 0;
+                        for (int run = 0; run < runs; run++) {
+                            int length = readVarInt(input);
+                            byte material = input.readByte();
+                            if (length < 1 || cursor + length > cells.length) throw new IOException("Invalid RLE run");
+                            java.util.Arrays.fill(cells, cursor, cursor + length, material);
+                            cursor += length;
+                        }
+                        if (cursor != cells.length) throw new IOException("Incomplete RLE volume");
+                    } else {
+                        throw new IOException("Unknown cell encoding");
+                    }
+
+                    MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
+                    BlockPos immutable = position.immutable();
+                    if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
+                    
+                    CachedVolume oldCached = VOLUMES.get(immutable);
+                    VoxelShape fallback = (oldCached != null) ? oldCached.getShape() : null;
+                    CachedVolume cachedVolume = new CachedVolume(immutable, volume, fallback);
+                    if (oldCached != null) {
+                        cachedVolume.mesh = oldCached.mesh;
+                    }
+                    VOLUMES.put(immutable, cachedVolume);
+                    
+                    rebuild(immutable);
+                    
+                    boolean touchBoundary = (oldCached == null || changesTouchBoundary(oldCached.volume, volume));
+                    if (touchBoundary) {
+                        queueNeighborsRebuild(immutable);
+                        scheduleBoundaryRebuild(immutable);
+                    }
+                    queueChunkBatch(immutable);
+                }
+                return;
+            }
+            if (type != UPSERT) return;
+            long tStart = System.nanoTime();
+            BlockPos position = readPosition(input);
+            int revision = readVarInt(input);
+            int paletteSize = readVarInt(input);
+            if (paletteSize < 1 || paletteSize > 32) throw new IOException("Invalid palette size");
+            List<String> palette = new ArrayList<>(paletteSize);
+            for (int index = 0; index < paletteSize; index++) palette.add(readUtf8(input));
+            byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
+            int encoding = input.readUnsignedByte();
+            long tDecodeStart = System.nanoTime();
+            if (encoding == 0) {
+                if (input.readNBytes(cells, 0, cells.length) != cells.length) throw new EOFException("Truncated cells");
+            } else if (encoding == 1) {
+                int runs = readVarInt(input);
+                int cursor = 0;
+                for (int run = 0; run < runs; run++) {
+                    int length = readVarInt(input);
+                    byte material = input.readByte();
+                    if (length < 1 || cursor + length > cells.length) throw new IOException("Invalid RLE run");
+                    java.util.Arrays.fill(cells, cursor, cursor + length, material);
+                    cursor += length;
+                }
+                if (cursor != cells.length) throw new IOException("Incomplete RLE volume");
+            } else {
+                throw new IOException("Unknown cell encoding");
+            }
+            long tDecodeEnd = System.nanoTime();
+            if (input.available() != 0) throw new IOException("Trailing microvoxel payload bytes");
+            MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
+            BlockPos immutable = position.immutable();
+            if (!VOLUMES.containsKey(immutable)) addToChunk(immutable);
+            
+            CachedVolume oldCached = VOLUMES.get(immutable);
+            VoxelShape fallback = (oldCached != null) ? oldCached.getShape() : null;
+            CachedVolume cachedVolume = new CachedVolume(immutable, volume, fallback);
+            if (oldCached != null) {
+                cachedVolume.mesh = oldCached.mesh;
+            }
+            VOLUMES.put(immutable, cachedVolume);
+            
+            long tRebuildStart = System.nanoTime();
+            rebuild(immutable);
+            long tRebuildEnd = System.nanoTime();
+            
+            long tQueueStart = System.nanoTime();
+            boolean touchBoundary = (oldCached == null || changesTouchBoundary(oldCached.volume, volume));
+            if (touchBoundary) {
+                queueNeighborsRebuild(immutable);
+                scheduleBoundaryRebuild(immutable);
+            }
+            long tQueueEnd = System.nanoTime();
+            
+            long tTotal = System.nanoTime() - tStart;
+            double decodeUs = (tDecodeEnd - tDecodeStart) / 1000.0;
+            double rebuildUs = (tRebuildEnd - tRebuildStart) / 1000.0;
+            double queueUs = (tQueueEnd - tQueueStart) / 1000.0;
+            double totalUs = tTotal / 1000.0;
+            
+            EclipseClientMod.LOGGER.info("[MICROVOXEL-PERF] SYNC_UPSERT pos={} | Total: {}us (Decode: {}us, Rebuild: {}us, Queue: {}us) | Faces: {} | BoundaryTouch: {}",
+                    immutable.toShortString(),
+                    String.format("%.2f", totalUs),
+                    String.format("%.2f", decodeUs),
+                    String.format("%.2f", rebuildUs),
+                    String.format("%.2f", queueUs),
+                    cachedVolume.mesh.size(),
+                    touchBoundary
+            );
+        } catch (IOException | RuntimeException error) {
+            EclipseClientMod.LOGGER.warn("[MICROVOXEL] Rejected sync payload: " + error.getMessage());
+        }
+    }
+
+    public static CachedVolume get(BlockPos position) {
+        return VOLUMES.get(position.immutable());
+    }
+
+    public static VoxelShape collisionShape(BlockPos position) {
+        CachedVolume cached = VOLUMES.get(position.immutable());
+        return cached == null ? null : cached.getShape();
+    }
+
+    public static void probeShape(String hook, BlockPos position, VoxelShape shape) {
+        CachedVolume cached = VOLUMES.get(position.immutable());
+        if (cached == null) return;
+        String key = "shape:" + hook + ':' + position.asLong() + ':' + cached.volume.revision();
+        if (!PROBE_EMITTED.add(key)) return;
+        List<MicrovoxelVolume.Cuboid> cuboids = cached.volume.collisionCuboids();
+        EclipseClientMod.LOGGER.info("[MICROVOXEL-PROBE] SHAPE hook={} pos={} revision={} cuboids={} aabbs={} bounds={}",
+                hook, position.toShortString(), cached.volume.revision(), cuboids.size(), shape.toAabbs().size(),
+                shape.isEmpty() ? "empty" : shape.bounds());
+    }
+
+    public static void probeRender(BlockPos position, MicrovoxelGreedyMesher.Face face,
+                                   String material, int layerCount, String renderType, boolean translucent,
+                                   float minU, float maxU, float minV, float maxV) {
+        CachedVolume cached = VOLUMES.get(position.immutable());
+        if (cached == null) return;
+        String key = "render:" + position.asLong() + ':' + cached.volume.revision();
+        if (!PROBE_EMITTED.add(key)) return;
+        EclipseClientMod.LOGGER.info(
+                "[MICROVOXEL-PROBE] RENDER pos={} revision={} material={} face={} layers={} type={} translucent={} uv=[{},{}]x[{},{}]",
+                position.toShortString(), cached.volume.revision(), material, face.direction(), layerCount,
+                renderType, translucent, minU, maxU, minV, maxV);
+    }
+
+    public static Collection<Map.Entry<BlockPos, CachedVolume>> volumesNear(
+            double blockX, double blockZ, double radius) {
+        int minChunkX = floorChunk(blockX - radius);
+        int maxChunkX = floorChunk(blockX + radius);
+        int minChunkZ = floorChunk(blockZ - radius);
+        int maxChunkZ = floorChunk(blockZ + radius);
+        List<Map.Entry<BlockPos, CachedVolume>> result = new ArrayList<>();
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                for (BlockPos position : CHUNKS.getOrDefault(chunkKey(chunkX, chunkZ), Set.of())) {
+                    CachedVolume volume = VOLUMES.get(position);
+                    if (volume != null) result.add(Map.entry(position, volume));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** Returns immutable chunk-level render batches overlapping the requested horizontal radius. */
+    public static Collection<ChunkBatch> batchesNear(double blockX, double blockZ, double radius) {
+        int minChunkX = floorChunk(blockX - radius);
+        int maxChunkX = floorChunk(blockX + radius);
+        int minChunkZ = floorChunk(blockZ - radius);
+        int maxChunkZ = floorChunk(blockZ + radius);
+        List<ChunkBatch> result = new ArrayList<>();
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                ChunkBatch batch = CHUNK_BATCHES.get(chunkKey(chunkX, chunkZ));
+                if (batch != null && !batch.faces.isEmpty()) result.add(batch);
+            }
+        }
+        result.sort(java.util.Comparator.comparingDouble(batch -> batch.distanceSquaredTo(blockX, blockZ)));
+        return result;
+    }
+
+    public static List<MicrovoxelRaycaster.Entry> raycastEntries(double x, double y, double z, double radius) {
+        double radiusSquared = radius * radius;
+        List<MicrovoxelRaycaster.Entry> result = new ArrayList<>();
+        for (Map.Entry<BlockPos, CachedVolume> entry : volumesNear(x, z, radius)) {
+            BlockPos position = entry.getKey();
+            double dx = position.getX() + 0.5 - x;
+            double dy = position.getY() + 0.5 - y;
+            double dz = position.getZ() + 0.5 - z;
+            if (dx * dx + dy * dy + dz * dz <= radiusSquared) {
+                result.add(new MicrovoxelRaycaster.Entry(
+                        position.getX(), position.getY(), position.getZ(), entry.getValue().volume));
+            }
+        }
+        return result;
+    }
+
+    private static void rebuild(BlockPos position) {
+        BlockPos immutablePos = position.immutable();
+        CachedVolume center = VOLUMES.get(immutablePos);
+        if (center == null) return;
+
+        MeshJob job = new MeshJob(stateGeneration, center.volume.revision());
+        if (MESHING_JOBS.putIfAbsent(immutablePos, job) != null) {
+            MESH_DIRTY_DURING_BUILD.add(immutablePos);
+            return;
+        }
+
+        CachedVolume downVol = VOLUMES.get(immutablePos.below());
+        CachedVolume upVol = VOLUMES.get(immutablePos.above());
+        CachedVolume northVol = VOLUMES.get(immutablePos.north());
+        CachedVolume southVol = VOLUMES.get(immutablePos.south());
+        CachedVolume westVol = VOLUMES.get(immutablePos.west());
+        CachedVolume eastVol = VOLUMES.get(immutablePos.east());
+
+        boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.below()).isSolidRender();
+        boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.above()).isSolidRender();
+        boolean northSolid = (northVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.north()).isSolidRender();
+        boolean southSolid = (southVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.south()).isSolidRender();
+        boolean westSolid = (westVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.west()).isSolidRender();
+        boolean eastSolid = (eastVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.east()).isSolidRender();
+
+        MicrovoxelVolume centerVol = center.volume.copy();
+        MicrovoxelVolume downVolSnap = downVol != null ? downVol.volume.copy() : null;
+        MicrovoxelVolume upVolSnap = upVol != null ? upVol.volume.copy() : null;
+        MicrovoxelVolume northVolSnap = northVol != null ? northVol.volume.copy() : null;
+        MicrovoxelVolume southVolSnap = southVol != null ? southVol.volume.copy() : null;
+        MicrovoxelVolume westVolSnap = westVol != null ? westVol.volume.copy() : null;
+        MicrovoxelVolume eastVolSnap = eastVol != null ? eastVol.volume.copy() : null;
+
+        MESHING_EXECUTOR.submit(() -> {
+            try {
+                List<MicrovoxelGreedyMesher.Face> mesh = MicrovoxelGreedyMesher.build(centerVol, (x, y, z) -> {
+                    if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16) {
+                        return centerVol.materialAt(x, y, z);
+                    }
+                    int ox = Math.floorDiv(x, 16);
+                    int oy = Math.floorDiv(y, 16);
+                    int oz = Math.floorDiv(z, 16);
+                    MicrovoxelVolume neighbourVol = null;
+                    boolean neighbourSolid = false;
+                    if (ox == -1) {
+                        neighbourVol = westVolSnap;
+                        neighbourSolid = westSolid;
+                    } else if (ox == 1) {
+                        neighbourVol = eastVolSnap;
+                        neighbourSolid = eastSolid;
+                    } else if (oy == -1) {
+                        neighbourVol = downVolSnap;
+                        neighbourSolid = downSolid;
+                    } else if (oy == 1) {
+                        neighbourVol = upVolSnap;
+                        neighbourSolid = upSolid;
+                    } else if (oz == -1) {
+                        neighbourVol = northVolSnap;
+                        neighbourSolid = northSolid;
+                    } else if (oz == 1) {
+                        neighbourVol = southVolSnap;
+                        neighbourSolid = southSolid;
+                    }
+                    if (neighbourVol != null) {
+                        return neighbourVol.materialAt(
+                                Math.floorMod(x, MicrovoxelVolume.RESOLUTION),
+                                Math.floorMod(y, MicrovoxelVolume.RESOLUTION),
+                                Math.floorMod(z, MicrovoxelVolume.RESOLUTION));
+                    }
+                    return neighbourSolid ? 1 : 0;
+                });
+
+                Minecraft.getInstance().execute(() -> {
+                    if (!MESHING_JOBS.remove(immutablePos, job)) return;
+                    CachedVolume currentCenter = job.generation == stateGeneration ? VOLUMES.get(immutablePos) : null;
+                    boolean current = currentCenter != null && currentCenter.volume.revision() == job.revision;
+                    if (current) {
+                        currentCenter.mesh = mesh;
+                        queueChunkBatch(immutablePos);
+                    }
+                    if (job.generation == stateGeneration
+                            && (MESH_DIRTY_DURING_BUILD.remove(immutablePos) || !current)) {
+                        MESH_QUEUE.add(immutablePos);
+                    }
+                });
+            } catch (Exception error) {
+                EclipseClientMod.LOGGER.error("Failed background meshing for " + immutablePos, error);
+                Minecraft.getInstance().execute(() -> {
+                    if (!MESHING_JOBS.remove(immutablePos, job)) return;
+                    if (job.generation == stateGeneration && MESH_DIRTY_DURING_BUILD.remove(immutablePos)) {
+                        MESH_QUEUE.add(immutablePos);
+                    }
+                });
+            }
+        });
+    }
+
+    /** Used by the renderer's vertex AO sampler. Coordinates are local to {@code base}. */
+    public static boolean solidAt(BlockPos base, int x, int y, int z) {
+        return materialAt(base, x, y, z) != 0;
+    }
+
+    private static final ThreadLocal<BlockPos.MutableBlockPos> SCRATCH_POS =
+            ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+
+    private static int materialAt(BlockPos base, int x, int y, int z) {
+        int offsetX = Math.floorDiv(x, 16);
+        int offsetY = Math.floorDiv(y, 16);
+        int offsetZ = Math.floorDiv(z, 16);
+        if (offsetX == 0 && offsetY == 0 && offsetZ == 0) {
+            CachedVolume cached = VOLUMES.get(base);
+            return cached != null ? cached.volume.materialAt(x, y, z) : 0;
+        }
+        BlockPos.MutableBlockPos scratch = SCRATCH_POS.get();
+        scratch.set(base.getX() + offsetX, base.getY() + offsetY, base.getZ() + offsetZ);
+        CachedVolume cached = VOLUMES.get(scratch);
+        return cached != null ? cached.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16)) : 0;
+    }
+
+    private static boolean changesTouchBoundary(MicrovoxelVolume oldVolume, MicrovoxelVolume newVolume) {
+        if (oldVolume == null) return true;
+        byte[] oldCells = oldVolume.cellsCopy();
+        byte[] newCells = newVolume.cellsCopy();
+        for (int i = 0; i < oldCells.length; i++) {
+            if (oldCells[i] != newCells[i]) {
+                int cx = MicrovoxelVolume.x(i);
+                int cy = MicrovoxelVolume.y(i);
+                int cz = MicrovoxelVolume.z(i);
+                if (cx == 0 || cx == 15 || cy == 0 || cy == 15 || cz == 0 || cz == 15) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void queueRebuild(BlockPos position) {
+        MESH_QUEUE.add(position.immutable());
+        queueNeighborsRebuild(position);
+    }
+
+    private static void queueNeighborsRebuild(BlockPos position) {
+        MESH_QUEUE.add(position.offset(1, 0, 0));
+        MESH_QUEUE.add(position.offset(-1, 0, 0));
+        MESH_QUEUE.add(position.offset(0, 1, 0));
+        MESH_QUEUE.add(position.offset(0, -1, 0));
+        MESH_QUEUE.add(position.offset(0, 0, 1));
+        MESH_QUEUE.add(position.offset(0, 0, -1));
+    }
+
+    private static void scheduleBoundaryRebuild(BlockPos position) {
+        DELAYED_BOUNDARY_REBUILDS.put(position.immutable(), clientTick + 2);
+    }
+
+    private static void processDelayedBoundaryRebuilds() {
+        Iterator<Map.Entry<BlockPos, Integer>> iterator = DELAYED_BOUNDARY_REBUILDS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BlockPos, Integer> entry = iterator.next();
+            if (entry.getValue() > clientTick) continue;
+            queueRebuild(entry.getKey());
+            iterator.remove();
+        }
+    }
+
+    private static void queueChunkBatch(BlockPos position) {
+        CHUNK_BATCH_QUEUE.add(chunkKey(position.getX() >> 4, position.getZ() >> 4));
+    }
+
+    private static void rebuildQueuedMeshes() {
+        long deadline = System.nanoTime() + MESH_BUDGET_NANOS;
+        Iterator<BlockPos> iterator = MESH_QUEUE.iterator();
+        int rebuilt = 0;
+        while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
+            BlockPos position = iterator.next();
+            iterator.remove();
+            rebuild(position);
+            rebuilt++;
+        }
+    }
+
+    private static void rebuildQueuedChunkBatches() {
+        long deadline = System.nanoTime() + CHUNK_BATCH_BUDGET_NANOS;
+        Iterator<Long> iterator = CHUNK_BATCH_QUEUE.iterator();
+        int rebuilt = 0;
+        while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
+            long key = iterator.next();
+            iterator.remove();
+            Set<BlockPos> positions = CHUNKS.get(key);
+            if (positions == null || positions.isEmpty()) {
+                CHUNK_BATCHES.remove(key);
+                rebuilt++;
+                continue;
+            }
+            List<ChunkFace> faces = new ArrayList<>();
+            for (BlockPos position : positions) {
+                CachedVolume cached = VOLUMES.get(position);
+                if (cached == null) continue;
+                for (MicrovoxelGreedyMesher.Face face : cached.mesh) {
+                    faces.add(new ChunkFace(position, cached, face));
+                }
+            }
+            CHUNK_BATCHES.put(key, new ChunkBatch((int) (key >> 32), (int) key, faces));
+            rebuilt++;
+        }
+    }
+
+    private static void clearVolumes() {
+        VOLUMES.clear();
+        CHUNKS.clear();
+        MESH_QUEUE.clear();
+        DELAYED_BOUNDARY_REBUILDS.clear();
+        CHUNK_BATCHES.clear();
+        CHUNK_BATCH_QUEUE.clear();
+        PROBE_EMITTED.clear();
+        CLIENT_DICTIONARY.clear();
+        MESHING_JOBS.clear();
+        MESH_DIRTY_DURING_BUILD.clear();
+    }
+
+    public static void clearChunk(int chunkX, int chunkZ) {
+        long key = chunkKey(chunkX, chunkZ);
+        Set<BlockPos> positions = CHUNKS.remove(key);
+        if (positions != null) {
+            for (BlockPos pos : positions) {
+                VOLUMES.remove(pos);
+                queueRebuild(pos);
+            }
+            CHUNK_BATCH_QUEUE.add(key);
+        }
+    }
+
+    private static void addToChunk(BlockPos position) {
+        CHUNKS.computeIfAbsent(chunkKey(position.getX() >> 4, position.getZ() >> 4), ignored -> new HashSet<>())
+                .add(position);
+        queueChunkBatch(position);
+    }
+
+    private static void removeFromChunk(BlockPos position) {
+        long key = chunkKey(position.getX() >> 4, position.getZ() >> 4);
+        Set<BlockPos> indexed = CHUNKS.get(key);
+        if (indexed == null) return;
+        indexed.remove(position);
+        if (indexed.isEmpty()) CHUNKS.remove(key);
+        CHUNK_BATCH_QUEUE.add(key);
+    }
+
+    private static int floorChunk(double blockCoordinate) {
+        return ((int) Math.floor(blockCoordinate)) >> 4;
+    }
+
+    private static long chunkKey(int x, int z) {
+        return ((long) x << 32) ^ (z & 0xFFFFFFFFL);
+    }
+
+    private static VoxelShape combineShapes(VoxelShape[] shapes, int start, int end) {
+        if (start >= end) return Shapes.empty();
+        if (start == end - 1) return shapes[start];
+        int mid = (start + end) / 2;
+        return Shapes.or(combineShapes(shapes, start, mid), combineShapes(shapes, mid, end));
+    }
+
+    private static VoxelShape buildShape(MicrovoxelVolume volume) {
+        MicrovoxelVolume.CollisionPlan plan = volume.collisionPlan();
+        if (plan.backend() == MicrovoxelVolume.CollisionBackend.GRID) {
+            BitSetDiscreteVoxelShape discrete = new BitSetDiscreteVoxelShape(
+                    MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION);
+            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
+                if (volume.occupied(cell)) {
+                    discrete.fill(MicrovoxelVolume.x(cell), MicrovoxelVolume.y(cell), MicrovoxelVolume.z(cell));
+                }
+            }
+            return CubeVoxelShapeInvoker.eclipse$create(discrete);
+        }
+
+        List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
+        if (cuboids.isEmpty()) return Shapes.empty();
+        VoxelShape[] parts = new VoxelShape[cuboids.size()];
+        for (int index = 0; index < cuboids.size(); index++) {
+            MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
+            parts[index] = Shapes.box(
+                    cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
+                    cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
+        }
+        return combineShapes(parts, 0, parts.length).optimize();
+    }
+
+    private static BlockPos readPosition(DataInputStream input) throws IOException {
+        return new BlockPos(input.readInt(), input.readInt(), input.readInt());
+    }
+
+    private static int readVarInt(DataInputStream in) throws IOException {
+        int value = 0;
+        int position = 0;
+        byte currentByte;
+        while (true) {
+            currentByte = in.readByte();
+            value |= (currentByte & 0x7F) << position;
+            if ((currentByte & 0x80) == 0) break;
+            position += 7;
+            if (position >= 32) throw new IOException("VarInt is too big");
+        }
+        return value;
+    }
+
+    private static String readUtf8(DataInputStream input) throws IOException {
+        int length = readVarInt(input);
+        byte[] bytes = input.readNBytes(length);
+        if (bytes.length != length) throw new EOFException("Truncated UTF-8 value");
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static final java.util.concurrent.ExecutorService SHAPE_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "Microvoxel-Shape-Generator");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    public static net.minecraft.world.level.block.state.BlockState getBaseBlockState(BlockPos pos) {
+        CachedVolume cached = VOLUMES.get(pos.immutable());
+        if (cached == null) return null;
+        return cached.getBaseBlockState();
+    }
+
+    public static final class CachedVolume {
+        public final BlockPos position;
+        public final MicrovoxelVolume volume;
+        private final VoxelShape fallback;
+        private volatile VoxelShape shape;
+        private volatile boolean shapeGenerating = false;
+        public volatile List<MicrovoxelGreedyMesher.Face> mesh = List.of();
+        private net.minecraft.world.level.block.state.BlockState baseBlockState;
+
+        private CachedVolume(BlockPos position, MicrovoxelVolume volume, VoxelShape fallback) {
+            this.position = position.immutable();
+            this.volume = volume;
+            this.fallback = fallback;
+        }
+
+        public net.minecraft.world.level.block.state.BlockState getBaseBlockState() {
+            if (baseBlockState == null) {
+                String matStr = null;
+                for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
+                    if (volume.occupied(cell)) {
+                        matStr = volume.material(cell);
+                        break;
+                    }
+                }
+                if (matStr != null && !matStr.isEmpty()) {
+                    baseBlockState = parseBlockState(matStr);
+                } else {
+                    baseBlockState = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+                }
+            }
+            return baseBlockState;
+        }
+
+        private static net.minecraft.world.level.block.state.BlockState parseBlockState(String value) {
+            try {
+                int propertiesStart = value.indexOf('[');
+                String identifierText = propertiesStart < 0 ? value : value.substring(0, propertiesStart);
+                net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(
+                        net.minecraft.resources.Identifier.parse(identifierText));
+                return block.defaultBlockState();
+            } catch (RuntimeException error) {
+                return net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+            }
+        }
+
+        public VoxelShape getShape() {
+            VoxelShape s = shape;
+            if (s == null) {
+                triggerAsyncShapeGen();
+                return fallback != null ? fallback : Shapes.block();
+            }
+            return s;
+        }
+
+        private synchronized void triggerAsyncShapeGen() {
+            if (shapeGenerating || shape != null) return;
+            shapeGenerating = true;
+            MicrovoxelVolume snapshot = volume.copy();
+            int requestedRevision = snapshot.revision();
+            SHAPE_EXECUTOR.submit(() -> {
+                try {
+                    long start = System.nanoTime();
+                    VoxelShape newShape = buildShape(snapshot);
+                    long durationNs = System.nanoTime() - start;
+                    Minecraft.getInstance().execute(() -> {
+                        if (volume.revision() == requestedRevision) {
+                            this.shape = newShape;
+                        }
+                        shapeGenerating = false;
+                        if (shape == null) triggerAsyncShapeGen();
+                    });
+                    EclipseClientMod.LOGGER.info(
+                            "[MICROVOXEL-PERF] ASYNC_SHAPE_GEN pos={} | Duration: {}us | Backend: {}",
+                            position.toShortString(), String.format("%.2f", durationNs / 1000.0),
+                            snapshot.collisionPlan().backend());
+                } catch (Throwable t) {
+                    EclipseClientMod.LOGGER.error("Failed to generate async shape", t);
+                    Minecraft.getInstance().execute(() -> shapeGenerating = false);
+                }
+            });
+        }
+    }
+
+    public static final class ChunkBatch {
+        private final int chunkX;
+        private final int chunkZ;
+        private final List<ChunkFace> faces;
+
+        private ChunkBatch(int chunkX, int chunkZ, List<ChunkFace> faces) {
+            this.chunkX = chunkX;
+            this.chunkZ = chunkZ;
+            this.faces = List.copyOf(faces);
+        }
+
+        public List<ChunkFace> faces() {
+            return faces;
+        }
+
+        private double distanceSquaredTo(double blockX, double blockZ) {
+            double dx = (chunkX << 4) + 8.0 - blockX;
+            double dz = (chunkZ << 4) + 8.0 - blockZ;
+            return dx * dx + dz * dz;
+        }
+    }
+
+    public record ChunkFace(BlockPos position, CachedVolume cached, MicrovoxelGreedyMesher.Face face) {
+    }
+
+    private record MeshJob(int generation, int revision) {
+    }
+}

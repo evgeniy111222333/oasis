@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "eclipseclient",
+  "name": "Eclipse RolePlay Client",
+  "version": "${version}",
+  "description": "Integrated Eclipse RolePlay client systems and interfaces.",
+  "entrypoints": {
+    "main": [
+      "ua.rp.chat.EclipseClientCore"
+    ],
+    "client": [
+      "ua.rp.chat.client.EclipseClientMod"
+    ]
+  },
+  "mixins": [
+    "eclipseclient.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.1",
+    "fabric-api": "*",
+    "java": ">=25"
+  }
+}

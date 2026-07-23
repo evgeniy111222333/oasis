@@ -5,11 +5,15 @@ ARCHIVE="${1:?Usage: sync_client_manifest_atomic.sh ARCHIVE EXPECTED_SHA256 [SER
 EXPECTED_SHA256="${2:?Expected SHA-256 is required}"
 SERVER_ROOT="${3:-/opt/eclipse-rp}"
 CLIENT_PATH="$SERVER_ROOT/plugins/RPChat/client"
+FABRIC_CLIENT_PATH="$SERVER_ROOT/config/RPChat/client"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 PREVIOUS_PATH="$SERVER_ROOT/plugins/RPChat/client.pre-sync-$STAMP"
+FABRIC_PREVIOUS_PATH="$SERVER_ROOT/config/RPChat/client.pre-sync-$STAMP"
 BACKUP_PATH="$SERVER_ROOT/backups/client-pre-sync-$STAMP.tar.gz"
+FABRIC_BACKUP_PATH="$SERVER_ROOT/backups/fabric-client-pre-sync-$STAMP.tar.gz"
 STAGING="$(mktemp -d "$SERVER_ROOT/.client-sync.XXXXXX")"
 SWAPPED=0
+FABRIC_SWAPPED=0
 SUCCESS=0
 
 log() { printf '[client-sync] %s\n' "$*"; }
@@ -20,6 +24,11 @@ rollback() {
     log "Sync failed; restoring previous client directory"
     if [[ -d "$CLIENT_PATH" ]]; then mv -- "$CLIENT_PATH" "$CLIENT_PATH.failed-$STAMP" || true; fi
     if [[ -d "$PREVIOUS_PATH" ]]; then mv -- "$PREVIOUS_PATH" "$CLIENT_PATH" || true; fi
+  fi
+  if [[ "$SUCCESS" -eq 0 && "$FABRIC_SWAPPED" -eq 1 ]]; then
+    log "Sync failed; restoring previous Fabric client directory"
+    if [[ -d "$FABRIC_CLIENT_PATH" ]]; then mv -- "$FABRIC_CLIENT_PATH" "$FABRIC_CLIENT_PATH.failed-$STAMP" || true; fi
+    if [[ -d "$FABRIC_PREVIOUS_PATH" ]]; then mv -- "$FABRIC_PREVIOUS_PATH" "$FABRIC_CLIENT_PATH" || true; fi
   fi
   rm -rf -- "$STAGING" || true
   exit "$exit_code"
@@ -37,6 +46,7 @@ fi
 
 tar -xzf "$ARCHIVE" -C "$STAGING"
 NEW_CLIENT="$STAGING/client"
+NEW_FABRIC_CLIENT="$STAGING/fabric-client"
 if [[ ! -f "$NEW_CLIENT/mods.json" ]]; then log "Staged mods.json is missing"; exit 1; fi
 
 python3 - "$NEW_CLIENT" <<'PY'
@@ -63,19 +73,32 @@ for descriptor in mods:
 print(f"verified {len(mods)} managed mods")
 PY
 
+cp -a -- "$NEW_CLIENT" "$NEW_FABRIC_CLIENT"
+
 mkdir -p -- "$SERVER_ROOT/backups"
 tar -C "$SERVER_ROOT/plugins/RPChat" -czf "$BACKUP_PATH" client
 test -s "$BACKUP_PATH"
+mkdir -p -- "$SERVER_ROOT/config/RPChat"
+if [[ -d "$FABRIC_CLIENT_PATH" ]]; then
+  tar -C "$SERVER_ROOT/config/RPChat" -czf "$FABRIC_BACKUP_PATH" client
+  test -s "$FABRIC_BACKUP_PATH"
+fi
 
 mv -- "$CLIENT_PATH" "$PREVIOUS_PATH"
 mv -- "$NEW_CLIENT" "$CLIENT_PATH"
 SWAPPED=1
+if [[ -d "$FABRIC_CLIENT_PATH" ]]; then mv -- "$FABRIC_CLIENT_PATH" "$FABRIC_PREVIOUS_PATH"; fi
+mv -- "$NEW_FABRIC_CLIENT" "$FABRIC_CLIENT_PATH"
+FABRIC_SWAPPED=1
 chown -R minecraft:minecraft "$CLIENT_PATH"
+chown -R minecraft:minecraft "$FABRIC_CLIENT_PATH"
 find "$CLIENT_PATH" -type d -exec chmod 750 {} +
 find "$CLIENT_PATH" -type f -exec chmod 640 {} +
+find "$FABRIC_CLIENT_PATH" -type d -exec chmod 750 {} +
+find "$FABRIC_CLIENT_PATH" -type f -exec chmod 640 {} +
 
 SUCCESS=1
 trap - ERR INT TERM
 rm -rf -- "$STAGING"
 rm -f -- "$ARCHIVE"
-log "CLIENT_SYNC_OK backup=$BACKUP_PATH previous=$PREVIOUS_PATH"
+log "CLIENT_SYNC_OK legacy_backup=$BACKUP_PATH fabric_backup=$FABRIC_BACKUP_PATH"

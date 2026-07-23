@@ -23,6 +23,17 @@ def main() -> None:
 
     deployment_dir = Path(__file__).resolve().parent
     repo = deployment_dir.parent
+    fabric_build = repo / "fabric-server" / "build.ps1"
+    if not fabric_build.is_file():
+        raise FileNotFoundError(f"Authoritative Fabric build script is missing: {fabric_build}")
+    # Always compile and verify both Fabric sides from the authoritative source tree.
+    # This also refreshes the exact client/server JARs consumed by the release stages.
+    subprocess.run([
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", str(fabric_build),
+    ], cwd=repo, check=True)
     now = datetime.now(timezone.utc)
     release = {
         "id": args.id or now.strftime("%Y%m%d-%H%M%S"),
@@ -39,6 +50,10 @@ def main() -> None:
         encoding="utf-8",
     )
     subprocess.run([sys.executable, str(deployment_dir / "build_distribution.py")], cwd=repo, check=True)
+    # Bring the authoritative Fabric gameplay implementation online before clients receive
+    # the matching release. The deployer skips restarts when the production checksum is current
+    # and performs an automatic rollback if startup/readiness verification fails.
+    subprocess.run([sys.executable, str(deployment_dir / "deploy_vps_server_mod.py")], cwd=repo, check=True)
     drive_config = deployment_dir / "google_drive.local.json"
     if drive_config.exists():
         try:

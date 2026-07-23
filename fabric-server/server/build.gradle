@@ -1,0 +1,133 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    
+    compileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Minecraft does not ship a JDBC driver. Keep auth.db self-contained in the
+    // Fabric mod instead of accidentally relying on Paper's old libraries folder.
+    implementation include("org.xerial:sqlite-jdbc:3.49.1.0")
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+    it.options.compilerArgs << "-Xmaxerrs" << "5000" << "-Xlint:deprecation"
+}
+
+processResources {
+    def modVersion = project.version
+    inputs.property "version", modVersion
+    exclude "plugin.yml"
+    filesMatching("fabric.mod.json") {
+        expand "version": modVersion
+    }
+}
+
+tasks.register("verifyServerCore", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks microvoxel persistence, collision, protocol, hammer and item-pickup invariants."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.microvoxel.MicrovoxelServerCoreTest"
+}
+
+tasks.register("verifyFabricParity", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks Fabric auth isolation and production configuration contracts."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.FabricParityContractTest"
+}
+
+tasks.register("verifyChunkLoadMarkerSafety") {
+    group = "verification"
+    description = "Prevents synchronous world/chunk access from returning to the C2ME CHUNK_LOAD callback."
+    def source = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    inputs.file(source)
+    doLast {
+        def text = source.asFile.getText("UTF-8")
+        def start = text.indexOf("public void restoreMarkers(ServerLevel world, LevelChunk chunk)")
+        def end = text.indexOf("private void restoreMarkersInLoadedChunks()", start)
+        assert start >= 0 && end > start: "restoreMarkers chunk-load boundary is missing"
+        def callback = text.substring(start, end)
+        assert callback.contains("markerRestoreQueue.schedule"):
+                "CHUNK_LOAD must only enqueue marker restoration"
+        assert !callback.contains("updateMarker("):
+                "CHUNK_LOAD must not update blocks synchronously"
+        assert !callback.contains("getBlockState(") && !callback.contains("setBlock("):
+                "CHUNK_LOAD must not re-enter chunk access"
+        assert text.contains("getChunkSource().getChunkNow"):
+                "Deferred restoration must refuse to synchronously load an absent chunk"
+        assert text.contains("MAX_MARKER_RESTORES_PER_TICK"):
+                "Deferred restoration must remain bounded per tick"
+    }
+}
+
+tasks.register("verifyBloodFxIntegration") {
+    group = "verification"
+    description = "Prevents vanilla blood dust and server-side droplet simulation from returning."
+    def staminaSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/vitals/StaminaManager.java")
+    def bootstrapSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/RPChat.java")
+    def serverPayload = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/client/blood/BloodFxPayload.java")
+    def clientPayload = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/blood/BloodFxPayload.java")
+    inputs.files(staminaSource, bootstrapSource, serverPayload, clientPayload)
+    doLast {
+        def stamina = staminaSource.asFile.getText("UTF-8")
+        def bootstrap = bootstrapSource.asFile.getText("UTF-8")
+        assert !stamina.contains("DustParticleOptions"):
+                "Blood visuals must not fall back to the old red dust cloud"
+        assert !stamina.contains("sendParticles("):
+                "The server must send wound semantics, not simulate individual droplets"
+        assert stamina.contains("syncBloodFxTo"):
+                "Late joiners must receive persistent wound state"
+        assert stamina.contains("woundSeed") && stamina.contains("woundSide") && stamina.contains("woundHeight"):
+                "Persistent wounds must retain deterministic body-local placement"
+        assert stamina.contains("Double.isFinite(part.woundSide)")
+                && stamina.contains("Double.isFinite(savedWoundSide)"):
+                "Wound persistence must sanitize legacy non-finite coordinates"
+        assert bootstrap.contains("BloodFxPayload.TYPE") && bootstrap.contains("BloodFxPayload.CODEC"):
+                "Blood FX payload must be registered before play connections"
+        assert serverPayload.asFile.getText("UTF-8") == clientPayload.asFile.getText("UTF-8"):
+                "Server and client Blood FX payload definitions diverged"
+    }
+}
+
+tasks.named("test") {
+    failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+    dependsOn tasks.named("verifyServerCore")
+    dependsOn tasks.named("verifyFabricParity")
+    dependsOn tasks.named("verifyChunkLoadMarkerSafety")
+    dependsOn tasks.named("verifyBloodFxIntegration")
+}
+
+tasks.register("syncServerDistribution", Copy) {
+    dependsOn tasks.named("jar")
+    group = "distribution"
+    description = "Deploys the remapped Fabric server mod to the runnable server mods directory."
+    from(tasks.named("jar").flatMap { it.archiveFile })
+    into(rootProject.layout.projectDirectory.dir("mods"))
+    rename { "eclipseserver-${project.version}.jar" }
+}
+
+tasks.named("build") {
+    finalizedBy tasks.named("syncServerDistribution")
+}
