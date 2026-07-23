@@ -234,6 +234,13 @@ public class SmartCameraManager {
             double kneel = pose.kneeling() ? 1.0
                     : pose.active() && !pose.actor() && "KNEEL".equals(pose.action()) ? smoothStep(0.0, 1.0, pose.progress()) : 0.0f;
             y -= 0.34 * kneel;
+
+            float crawlProgress = ua.rp.chat.client.crawling.CrawlingClientState.getCrawlProgress(client.player);
+            if (crawlProgress > 0.001f) {
+                y -= 0.85 * crawlProgress;
+                x -= Math.sin(yawRad) * (0.25 * crawlProgress);
+                z += Math.cos(yawRad) * (0.25 * crawlProgress);
+            }
         }
         RespirationModel.Snapshot breath = RespirationController.getInstance().sampleFrame();
         double visibleBreath = smoothStep(0.30, 0.95, breath.intensity());

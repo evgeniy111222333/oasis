@@ -74,6 +74,7 @@ public class EclipseClientMod implements ClientModInitializer {
         MicrovoxelInteractionController.register();
         HammerRenderQaController.register();
         HeavyHammerCarryRenderLayer.register();
+        CrawlingClientState.init();
         // Предмет доступен в творческом инвентаре, но создаётся только после завершения загрузки реестров.
         CreativeModeTabEvents.modifyOutputEvent(TOOLS_AND_UTILITIES_TAB).register(output ->
                 output.prepend(HammerHolsterClientState.createStack()));
@@ -97,6 +98,8 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AppearanceRefreshPayload.TYPE, AppearanceRefreshPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(ua.rp.chat.client.crawling.CrawlStatePayload.TYPE, ua.rp.chat.client.crawling.CrawlStatePayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ua.rp.chat.client.crawling.CrawlStatePayload.TYPE, ua.rp.chat.client.crawling.CrawlStatePayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -124,6 +127,9 @@ public class EclipseClientMod implements ClientModInitializer {
                         LOGGER.warn("[APPEARANCE] Ignored malformed refresh payload: {}", payload.playerUuid());
                     }
                 }));
+        ClientPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.crawling.CrawlStatePayload.TYPE, (payload, context) ->
+                context.client().execute(() -> ua.rp.chat.client.crawling.CrawlingClientState.handleRemoteSync(
+                        context.player().getUUID(), payload.crawling(), payload.stealth(), payload.progress())));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
@@ -137,13 +143,8 @@ public class EclipseClientMod implements ClientModInitializer {
             HammerRenderQaController.clientTick(client);
             PickupClientState.clientTick(client);
             GroundedLootRenderer.clientTick(client);
+            ua.rp.chat.client.crawling.CrawlingClientState.clientTick(client);
             handleBodyStatusKey(client);
-            pollAuthSession(client);
-        });
-    }
-
-    private void handleBodyStatusKey(Minecraft client) {
-        if (client == null || bodyStatusKey == null) {
             return;
         }
         while (bodyStatusKey.consumeClick()) {

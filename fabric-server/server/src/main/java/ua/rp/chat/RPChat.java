@@ -129,6 +129,7 @@ public class RPChat implements DedicatedServerModInitializer {
         heavyHammerManager.start();
         itemPickupManager = new ItemPickupManager(this);
         itemPickupManager.start();
+        ua.rp.chat.crawling.CrawlingServerManager.init();
 
         // Extract web resources for customizability
         extractWebAssets();
