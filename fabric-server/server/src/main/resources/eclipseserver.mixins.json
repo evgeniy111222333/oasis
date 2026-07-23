@@ -13,6 +13,7 @@
     "LivingEntityMixin",
     "PlayerActionMixin",
     "PlayerListMixin",
+    "PlayerPoseMixin",
     "ProjectileWeaponItemMixin",
     "TextDisplayAccessor"
   ],

@@ -128,8 +128,7 @@ public class EclipseClientMod implements ClientModInitializer {
                     }
                 }));
         ClientPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.crawling.CrawlStatePayload.TYPE, (payload, context) ->
-                context.client().execute(() -> ua.rp.chat.client.crawling.CrawlingClientState.handleRemoteSync(
-                        context.player().getUUID(), payload.crawling(), payload.stealth(), payload.progress())));
+                context.client().execute(() -> ua.rp.chat.client.crawling.CrawlingClientState.handleServerSync(payload)));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);

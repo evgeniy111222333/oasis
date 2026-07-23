@@ -5,7 +5,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
@@ -36,6 +35,7 @@ public final class CrawlingClientState {
                 GLFW.GLFW_KEY_C,
                 KeyMapping.Category.GAMEPLAY
         ));
+        System.out.println("[CRAWL-DEBUG-CLIENT] Key mapping registered (C key, translation=key.eclipseclient.crawl)");
     }
 
     public static void clientTick(Minecraft client) {
@@ -46,14 +46,18 @@ public final class CrawlingClientState {
         // Handle C key press
         if (crawlKey != null) {
             while (crawlKey.consumeClick()) {
+                System.out.println("[CRAWL-DEBUG-CLIENT] Key C clicked! Previous crawling state=" + localCrawling);
                 if (localCrawling) {
                     if (canStandUp(player)) {
                         localCrawling = false;
+                        System.out.println("[CRAWL-DEBUG-CLIENT] Standing clearance OK -> disabling crawl mode");
                     } else {
                         client.gui.setOverlayMessage(Component.literal("Занадто низько, щоб підвестися!"), false);
+                        System.out.println("[CRAWL-DEBUG-CLIENT] Ceiling blocked! Standing up denied.");
                     }
                 } else {
                     localCrawling = true;
+                    System.out.println("[CRAWL-DEBUG-CLIENT] Enabling crawl mode!");
                 }
                 syncState(true);
             }
@@ -62,6 +66,7 @@ public final class CrawlingClientState {
         // Auto-crawl if forced into low space
         if (!localCrawling && isCeilingLow(player)) {
             localCrawling = true;
+            System.out.println("[CRAWL-DEBUG-CLIENT] Low ceiling detected -> auto-enabling crawl mode!");
             syncState(true);
         }
 
@@ -78,6 +83,7 @@ public final class CrawlingClientState {
         boolean currentStealth = localCrawling && player.isShiftKeyDown();
         if (currentStealth != localStealth) {
             localStealth = currentStealth;
+            System.out.println("[CRAWL-DEBUG-CLIENT] Stealth state changed -> " + localStealth);
             syncState(true);
         }
 
@@ -129,12 +135,28 @@ public final class CrawlingClientState {
     }
 
     private static void syncState(boolean immediate) {
-        if (!ClientPlayNetworking.canSend(CrawlStatePayload.TYPE)) return;
-        ClientPlayNetworking.send(new CrawlStatePayload(localCrawling, localStealth, localProgress));
-        lastStateSendTime = System.currentTimeMillis();
+        CrawlStatePayload payload = new CrawlStatePayload(localCrawling, localStealth, localProgress);
+        System.out.println("[CRAWL-DEBUG-CLIENT] Sending CrawlStatePayload -> crawling=" + localCrawling
+                + ", stealth=" + localStealth + ", progress=" + localProgress);
+        try {
+            ClientPlayNetworking.send(payload);
+            lastStateSendTime = System.currentTimeMillis();
+        } catch (Throwable t) {
+            System.out.println("[CRAWL-DEBUG-CLIENT] Failed to send CrawlStatePayload: " + t.getMessage());
+        }
+    }
+
+    public static void handleServerSync(CrawlStatePayload payload) {
+        System.out.println("[CRAWL-DEBUG-CLIENT] Received CrawlStatePayload from server -> crawling="
+                + payload.crawling() + ", stealth=" + payload.stealth() + ", progress=" + payload.progress());
+        localCrawling = payload.crawling();
+        localStealth = payload.stealth();
+        localProgress = payload.progress();
     }
 
     public static void handleRemoteSync(UUID playerUuid, boolean crawling, boolean stealth, float progress) {
+        System.out.println("[CRAWL-DEBUG-CLIENT] Received remote player crawl sync: uuid=" + playerUuid
+                + ", crawling=" + crawling + ", stealth=" + stealth + ", progress=" + progress);
         REMOTE_STATES.put(playerUuid, new RemoteCrawlInfo(crawling, stealth, progress, System.currentTimeMillis()));
     }
 

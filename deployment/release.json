@@ -1,9 +1,9 @@
 {
-  "id": "20260723-151150",
+  "id": "20260723-152742",
   "published": true,
-  "publishedAt": "2026-07-23T15:11:50.682618Z",
-  "title": "Crawling & Prone System",
-  "summary": "Custom Crawling, Prone Mode, and Smooth Animations for Full RP",
+  "publishedAt": "2026-07-23T15:27:42.126985Z",
+  "title": "Исправление синхронизации ползания клиента и сервера",
+  "summary": "Исправлен обработчик сетевых пакетов CrawlStatePayload на клиенте для мгновенного отклика кастомных команд /crawl, /prone, /lay и клавиши C.",
   "notes": [],
   "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
   "successMessage": "Обновление загружено и установлено."
