@@ -12,8 +12,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
-
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -166,7 +164,6 @@ public final class GroundedLootRenderer {
     }
 
     private enum Profile {
-        HAMMER(1.0f, 1.0f, 1, 0.0f, 0.0f),
         // The vanilla GROUND transform has already reduced a block to ~50%.
         // 0.92 here produces a readable physical block at about 46% of placed-block size.
         BLOCK_SAMPLE(0.92f, 0.92f, 3, 0.026f, 0.022f),
@@ -196,7 +193,6 @@ public final class GroundedLootRenderer {
         }
 
         private static Profile forStack(ItemStack stack, AABB bounds) {
-            if (HeavyHammerClientState.isHolding(stack)) return HAMMER;
             // A dropped building block must keep its cubic volume. The previous special
             // plank profile compressed it into a slab, which contradicted the item itself.
             if (stack.getItem() instanceof BlockItem) return BLOCK_SAMPLE;

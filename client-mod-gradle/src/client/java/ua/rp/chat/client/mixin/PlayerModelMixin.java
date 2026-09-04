@@ -29,7 +29,6 @@ import ua.rp.chat.client.AcquaintanceClientState;
 import ua.rp.chat.RespirationModel;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.debug.EclipsePoseDebugExporter;
-import ua.rp.chat.client.debug.HammerRenderQaController;
 import ua.rp.chat.client.render.LocalPlayerRenderState;
 import ua.rp.chat.client.render.BreathingPoseState;
 import ua.rp.chat.client.render.BreathingTorsoRenderer;
@@ -37,10 +36,6 @@ import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.client.render.KneeBridgeRenderer;
 import ua.rp.chat.ArticulatedLimbLayout;
 import ua.rp.chat.BreathingShoulderLayout;
-import ua.rp.chat.HeavyHammerAnimation;
-import ua.rp.chat.HeavyHammerGait;
-import ua.rp.chat.HeavyHammerItemTransform;
-import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
 
 @Mixin(PlayerModel.class)
 public class PlayerModelMixin {
@@ -102,25 +97,6 @@ public class PlayerModelMixin {
         // one bone without changing vanilla placement when the bend is zero.
         forearm.translateAndRotate(poseStack);
         poseStack.translate(-forearm.x / 16.0f, -forearm.y / 16.0f, -forearm.z / 16.0f);
-
-        if (side == HumanoidArm.RIGHT) {
-            Player player = eclipse$getRenderedPlayer(state);
-            HeavyHammerAnimation.Sample hammer = HeavyHammerClientState.poseFor(player, state.ageInTicks);
-            if (hammer != null && player != null
-                    && HeavyHammerClientState.isHolding(player.getMainHandItem())) {
-                eclipse$orientProceduralHammer(poseStack, arm, forearm, hammer);
-            }
-        }
-    }
-
-    @Unique
-    private void eclipse$orientProceduralHammer(
-            PoseStack poseStack, ModelPart arm, ModelPart forearm, HeavyHammerAnimation.Sample hammer) {
-        HeavyHammerItemTransform.Result transform = HeavyHammerItemTransform.solve(hammer,
-                arm.xRot, arm.yRot, arm.zRot, forearm.xRot, forearm.yRot, forearm.zRot);
-        poseStack.mulPose(transform.correction());
-        poseStack.translate(transform.compensation().x,
-                transform.compensation().y, transform.compensation().z);
     }
 
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
@@ -155,7 +131,6 @@ public class PlayerModelMixin {
             SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
         }
         Player player = eclipse$getRenderedPlayer(state);
-        eclipse$applyHeavyHammerPose(model, state, player);
         eclipse$applyPhysicalInteractionPose(model, state, player);
         if (localFirstPerson) {
             eclipse$anchorUpperBodyAtHips(model);
@@ -569,75 +544,6 @@ public class PlayerModelMixin {
     }
 
     @Unique
-    private void eclipse$applyHeavyHammerPose(PlayerModel model, AvatarRenderState state, Player player) {
-        HeavyHammerAnimation.Sample pose = HeavyHammerClientState.poseFor(player, state.ageInTicks);
-        if (pose == null) return;
-
-        float poseWeight = eclipse$clamp(pose.poseWeight(), 0.0f, 1.0f);
-        float leftHandWeight = poseWeight * eclipse$clamp(pose.offhandWeight(), 0.0f, 1.0f);
-
-        // IK решается от фиксированных плеч. Дыхание не должно сдвигать корни рук уже после решения,
-        // иначе визуальная ладонь и рассчитанная точка хвата оказываются в разных системах координат.
-        model.rightArm.x = eclipse$lerp(model.rightArm.x, HeavyHammerAnimation.RIGHT_SHOULDER.x(), poseWeight);
-        model.rightArm.y = eclipse$lerp(model.rightArm.y, HeavyHammerAnimation.RIGHT_SHOULDER.y(), poseWeight);
-        model.rightArm.z = eclipse$lerp(model.rightArm.z, HeavyHammerAnimation.RIGHT_SHOULDER.z(), poseWeight);
-        model.leftArm.x = eclipse$lerp(model.leftArm.x, HeavyHammerAnimation.LEFT_SHOULDER.x(), leftHandWeight);
-        model.leftArm.y = eclipse$lerp(model.leftArm.y, HeavyHammerAnimation.LEFT_SHOULDER.y(), leftHandWeight);
-        model.leftArm.z = eclipse$lerp(model.leftArm.z, HeavyHammerAnimation.LEFT_SHOULDER.z(), leftHandWeight);
-
-        // Сначала движется жёсткий молот, затем обе руки решаются к его реальным
-        // точкам хвата. Корпус и ноги переносят массу по той же фазе, поэтому
-        // удар не выглядит как вращение неподвижной стойки с приклеенными руками.
-        model.body.xRot += pose.bodyX() * poseWeight;
-        model.body.yRot += pose.bodyY() * poseWeight;
-        model.body.zRot += pose.bodyZ() * poseWeight;
-        model.head.xRot += pose.headX() * poseWeight;
-        model.head.yRot += pose.headY() * poseWeight;
-        model.rightArm.xRot = eclipse$lerp(model.rightArm.xRot, pose.rightX(), poseWeight);
-        model.rightArm.yRot = eclipse$lerp(model.rightArm.yRot, pose.rightY(), poseWeight);
-        model.rightArm.zRot = eclipse$lerp(model.rightArm.zRot, pose.rightZ(), poseWeight);
-        model.leftArm.xRot = eclipse$lerp(model.leftArm.xRot, pose.leftX(), leftHandWeight);
-        model.leftArm.yRot = eclipse$lerp(model.leftArm.yRot, pose.leftY(), leftHandWeight);
-        model.leftArm.zRot = eclipse$lerp(model.leftArm.zRot, pose.leftZ(), leftHandWeight);
-        eclipse$blendHammerLowerArm(model.rightArm, pose.rightLower(), pose.rightWristTwist(), poseWeight);
-        eclipse$blendHammerLowerArm(model.leftArm, pose.leftLower(), pose.leftWristTwist(), leftHandWeight);
-
-        // Широкая стойка создаётся наклоном ног, а не разрывом тазобедренных шарниров.
-        float carryWeight = poseWeight * eclipse$clamp(pose.gaitWeight(), 0.0f, 1.0f);
-        float actionWeight = poseWeight * (1.0f - eclipse$clamp(pose.gaitWeight(), 0.0f, 1.0f));
-        if (carryWeight > 0.0f) {
-            HammerRenderQaController.GaitRig qaGait = HammerRenderQaController.gaitRig();
-            HeavyHammerGait.Sample gait = qaGait == null
-                    ? HeavyHammerGait.sample(state.walkAnimationPos, state.walkAnimationSpeed,
-                    state.walkAnimationSpeed * 0.5f, state.isCrouching)
-                    : HeavyHammerGait.sample(qaGait.walkPosition(), qaGait.walkSpeed(),
-                    qaGait.linearSpeed(), false);
-            float stanceRoll = ArticulatedLimbLayout.stanceRoll(gait.stanceOffset());
-            model.rightLeg.xRot = eclipse$lerp(model.rightLeg.xRot, gait.rightHipPitch(), carryWeight);
-            model.leftLeg.xRot = eclipse$lerp(model.leftLeg.xRot, gait.leftHipPitch(), carryWeight);
-            model.rightLeg.zRot = eclipse$lerp(model.rightLeg.zRot,
-                    gait.rightHipRoll() + stanceRoll, carryWeight);
-            model.leftLeg.zRot = eclipse$lerp(model.leftLeg.zRot,
-                    gait.leftHipRoll() - stanceRoll, carryWeight);
-            eclipse$blendLowerLeg(model.rightLeg, gait.rightKnee(), carryWeight);
-            eclipse$blendLowerLeg(model.leftLeg, gait.leftKnee(), carryWeight);
-            model.body.xRot += gait.torsoPitch() * carryWeight;
-            model.body.yRot += gait.torsoYaw() * carryWeight;
-            model.body.zRot += gait.torsoRoll() * carryWeight;
-        }
-        if (actionWeight > 0.0f) {
-            float stanceRoll = ArticulatedLimbLayout.stanceRoll(pose.stanceWidth());
-            model.rightLeg.xRot += pose.rightLegX() * actionWeight;
-            model.leftLeg.xRot += pose.leftLegX() * actionWeight;
-            model.rightLeg.zRot += (pose.rightLegZ() + stanceRoll) * actionWeight;
-            model.leftLeg.zRot += (pose.leftLegZ() - stanceRoll) * actionWeight;
-            eclipse$blendLowerLeg(model.rightLeg, pose.rightKnee(), actionWeight);
-            eclipse$blendLowerLeg(model.leftLeg, pose.leftKnee(), actionWeight);
-        }
-        eclipse$syncWearableLayers(model);
-    }
-
-    @Unique
     private void eclipse$remapLowerSegment(
             ModelPart limb, String lowerName, String wearableName, boolean deriveCapsFromSideTexture) {
         ModelPart lower = eclipse$getChildOrNull(limb, lowerName);
@@ -944,19 +850,6 @@ public class PlayerModelMixin {
         ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
         if (forearm != null) {
             forearm.xRot = -bend;
-        }
-    }
-
-    @Unique
-    private void eclipse$blendHammerLowerArm(ModelPart arm, float bend, float wristTwist, float weight) {
-        ModelPart forearm = eclipse$getChildOrNull(arm, "eclipse_forearm");
-        if (forearm != null) {
-            forearm.xRot = eclipse$lerp(forearm.xRot, -bend, weight);
-            // У текущего рига нет отдельной кости кисти. Y-поворот всего предплечья после X-сгиба
-            // смещает конец руки и ломает IK-хват; twist допустим только для будущей отдельной кисти.
-            forearm.yRot = eclipse$lerp(forearm.yRot,
-                    ArticulatedLimbLayout.forearmYForTwoHandedGrip(wristTwist), weight);
-            forearm.zRot = eclipse$lerp(forearm.zRot, 0.0f, weight);
         }
     }
 

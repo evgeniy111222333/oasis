@@ -11,10 +11,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 import ua.rp.chat.client.camera.SmartCameraManager;
-import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
-import ua.rp.chat.HeavyHammerAnimation;
-import ua.rp.chat.HeavyHammerRenderedGait;
-import ua.rp.chat.HeavyHammerRenderedRig;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +19,6 @@ import java.nio.file.Path;
 
 public final class EclipsePoseDebugExporter {
     private static long lastWriteMs = 0L;
-    private static volatile HammerRigSnapshot latestHammerRig;
 
     private EclipsePoseDebugExporter() {
     }
@@ -35,7 +30,6 @@ public final class EclipsePoseDebugExporter {
         }
 
         long now = System.currentTimeMillis();
-        captureHammerRig(model, state, player, now);
         if (now - lastWriteMs < 100L) {
             return;
         }
@@ -47,45 +41,6 @@ public final class EclipsePoseDebugExporter {
             Files.writeString(debugDir.resolve("live-pose.json"), toJson(client, model, state, player, now), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
         }
-    }
-
-    public static HammerRigSnapshot latestHammerRig() {
-        return latestHammerRig;
-    }
-
-    private static void captureHammerRig(PlayerModel model, AvatarRenderState state, Player player, long now) {
-        HeavyHammerAnimation.Sample hammer = HeavyHammerClientState.poseFor(player, state.ageInTicks);
-        if (hammer == null) {
-            latestHammerRig = null;
-            return;
-        }
-        ModelPart rightForearm = child(model.rightArm, "eclipse_forearm");
-        ModelPart leftForearm = child(model.leftArm, "eclipse_forearm");
-        ModelPart rightShin = child(model.rightLeg, "eclipse_shin");
-        ModelPart leftShin = child(model.leftLeg, "eclipse_shin");
-        if (rightForearm == null || leftForearm == null || rightShin == null || leftShin == null) {
-            latestHammerRig = null;
-            return;
-        }
-        HeavyHammerRenderedRig.ArmPose right = armPose(model.rightArm, rightForearm);
-        HeavyHammerRenderedRig.ArmPose left = armPose(model.leftArm, leftForearm);
-        HeavyHammerRenderedGait.LegPose rightLeg = legPose(model.rightLeg, rightShin);
-        HeavyHammerRenderedGait.LegPose leftLeg = legPose(model.leftLeg, leftShin);
-        latestHammerRig = new HammerRigSnapshot(now, hammer.progress(),
-                HeavyHammerRenderedRig.evaluate(hammer, right, left), right, left,
-                HeavyHammerRenderedGait.evaluate(rightLeg, leftLeg), rightLeg, leftLeg);
-    }
-
-    private static HeavyHammerRenderedRig.ArmPose armPose(ModelPart arm, ModelPart forearm) {
-        return new HeavyHammerRenderedRig.ArmPose(
-                arm.x, arm.y, arm.z, arm.xRot, arm.yRot, arm.zRot,
-                forearm.xRot, forearm.yRot, forearm.zRot);
-    }
-
-    private static HeavyHammerRenderedGait.LegPose legPose(ModelPart leg, ModelPart shin) {
-        return new HeavyHammerRenderedGait.LegPose(
-                leg.x, leg.y, leg.z, leg.xRot, leg.yRot, leg.zRot,
-                shin.xRot, shin.yRot, shin.zRot);
     }
 
     private static ModelPart child(ModelPart parent, String name) {
@@ -105,7 +60,6 @@ public final class EclipsePoseDebugExporter {
         EclipseAppearanceManager.DebugSkinInfo skin = EclipseAppearanceManager.getDebugSkinInfo(player.getUUID());
         ItemStack mainHand = player.getMainHandItem();
         Identifier itemModel = mainHand.get(DataComponents.ITEM_MODEL);
-        HeavyHammerAnimation.Sample hammer = HeavyHammerClientState.poseFor(player, state.ageInTicks);
 
         StringBuilder json = new StringBuilder(4096);
         json.append("{\n");
@@ -132,16 +86,6 @@ public final class EclipsePoseDebugExporter {
         prop(json, "mainHandItem", mainHand.isEmpty() ? "" : mainHand.getItem().toString()).append(",\n");
         prop(json, "mainHandName", mainHand.isEmpty() ? "" : mainHand.getHoverName().getString()).append(",\n");
         prop(json, "mainHandModel", itemModel == null ? "" : itemModel.toString()).append(",\n");
-        prop(json, "heavyHammerPose", HeavyHammerClientState.isHolding(mainHand)).append(",\n");
-        prop(json, "hammerProgress", hammer == null ? -1.0f : hammer.progress()).append(",\n");
-        prop(json, "hammerPoseWeight", hammer == null ? 0.0f : hammer.poseWeight()).append(",\n");
-        prop(json, "hammerOffhandWeight", hammer == null ? 0.0f : hammer.offhandWeight()).append(",\n");
-        prop(json, "hammerGaitWeight", hammer == null ? 0.0f : hammer.gaitWeight()).append(",\n");
-        prop(json, "hammerMainClamp", hammer == null ? -1.0f : hammer.mainClampDistance()).append(",\n");
-        prop(json, "hammerOffhandClamp", hammer == null ? -1.0f : hammer.gripClampDistance()).append(",\n");
-        prop(json, "hammerShaftX", hammer == null ? 0.0f : hammer.shaftX()).append(",\n");
-        prop(json, "hammerShaftY", hammer == null ? 0.0f : hammer.shaftY()).append(",\n");
-        prop(json, "hammerShaftZ", hammer == null ? 0.0f : hammer.shaftZ()).append(",\n");
         prop(json, "skinPath", skin == null ? "" : skin.path()).append(",\n");
         prop(json, "skinHash", skin == null ? "" : skin.hash()).append(",\n");
         prop(json, "skinModel", skin == null ? "" : skin.model()).append(",\n");
@@ -245,14 +189,5 @@ public final class EclipsePoseDebugExporter {
             return "";
         }
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    public record HammerRigSnapshot(long timestamp, float progress,
-                                    HeavyHammerRenderedRig.Result result,
-                                    HeavyHammerRenderedRig.ArmPose right,
-                                    HeavyHammerRenderedRig.ArmPose left,
-                                    HeavyHammerRenderedGait.Result gait,
-                                    HeavyHammerRenderedGait.LegPose rightLeg,
-                                    HeavyHammerRenderedGait.LegPose leftLeg) {
     }
 }

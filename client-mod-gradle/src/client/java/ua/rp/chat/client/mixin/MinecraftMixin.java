@@ -12,8 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
-import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
-import ua.rp.chat.client.heavyhammer.HammerHolsterClientState;
 import ua.rp.chat.client.pickup.PickupClientState;
 
 @Mixin(Minecraft.class)
@@ -21,10 +19,6 @@ public abstract class MinecraftMixin {
     @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelAttack(CallbackInfoReturnable<Boolean> cir) {
         Minecraft minecraft = (Minecraft) (Object) this;
-        if (HeavyHammerInteractionController.handleAttack(minecraft)) {
-            cir.setReturnValue(true);
-            return;
-        }
         if (MicrovoxelInteractionController.handleAttack(minecraft)) cir.setReturnValue(true);
     }
 
@@ -44,10 +38,6 @@ public abstract class MinecraftMixin {
     private void eclipse$microvoxelUse(CallbackInfo ci) {
         Minecraft minecraft = (Minecraft) (Object) this;
         if (PickupClientState.handleUse(minecraft)) {
-            ci.cancel();
-            return;
-        }
-        if (HammerHolsterClientState.handleUse(minecraft)) {
             ci.cancel();
             return;
         }

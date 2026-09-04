@@ -6,14 +6,9 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.item.CreativeModeTab;
 import com.mojang.blaze3d.platform.InputConstants;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
@@ -22,17 +17,11 @@ import ua.rp.chat.client.camera.EclipseHudOverlay;
 import ua.rp.chat.client.camera.SmartCameraManager;
 import ua.rp.chat.client.vitals.VitalsClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelActionPayload;
+import ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
-import ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload;
-import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
-import ua.rp.chat.client.heavyhammer.HeavyHammerCarryRenderLayer;
-import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
-import ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload;
-import ua.rp.chat.client.heavyhammer.HammerHolsterClientState;
-import ua.rp.chat.client.debug.HammerRenderQaController;
 import ua.rp.chat.client.pickup.PickupClientState;
 import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
@@ -41,6 +30,9 @@ import ua.rp.chat.client.rpfeed.RpChatFeedPayload;
 import ua.rp.chat.client.appearance.EclipseAppearanceManager;
 import ua.rp.chat.client.blood.BloodFxClientState;
 import ua.rp.chat.client.blood.BloodFxPayload;
+import ua.rp.chat.client.blood.BloodFootprintPayload;
+import ua.rp.chat.client.blood.BloodSurfacePayload;
+import ua.rp.chat.client.blood.EmbeddedArrowRenderLayer;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -52,13 +44,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EclipseClientMod implements ClientModInitializer {
 
+    // Unique client identifier used by payload channels and asset namespaces.
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "blood-fx-2-20260723-1";
+    public static final String DIAGNOSTIC_BUILD = "blood-fx-4-persistent-footprints-20260728-1";
+    // Shared client logger; auth, microvoxel and vitals subsystems all report through it.
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
-    private static final ResourceKey<CreativeModeTab> TOOLS_AND_UTILITIES_TAB = ResourceKey.create(
-            Registries.CREATIVE_MODE_TAB,
-            Identifier.withDefaultNamespace("tools_and_utilities")
-    );
+    // Guards the periodic web-session poll so slow HTTP responses never stack up.
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
     private static int sessionPollTicks = 0;
@@ -70,16 +61,22 @@ public class EclipseClientMod implements ClientModInitializer {
         LOGGER.info("Eclipse RolePlay Client initialized! Diagnostic build=" + DIAGNOSTIC_BUILD
                 + ", java=" + System.getProperty("java.version")
                 + ", os=" + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+        // Render-path observability: microvoxel water surfaces degrade to vanilla full-cube
+        // under Sodium (see MicrovoxelSectionModel), so the active path must be greppable.
+        LOGGER.info("[MICROVOXEL] Render path: sodium="
+                + net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("sodium")
+                + ", iris=" + net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("iris")
+                + ", legacyRenderer=" + Boolean.getBoolean("rpchat.microvoxel.legacyRenderer"));
         EclipseHudOverlay.register();
         PickupClientState.register();
         MicrovoxelClientRenderer.register();
         MicrovoxelInteractionController.register();
-        HammerRenderQaController.register();
-        HeavyHammerCarryRenderLayer.register();
         BloodFxClientState.register();
-        // Предмет доступен в творческом инвентаре, но создаётся только после завершения загрузки реестров.
-        CreativeModeTabEvents.modifyOutputEvent(TOOLS_AND_UTILITIES_TAB).register(output ->
-                output.prepend(HammerHolsterClientState.createStack()));
+        if (BloodFxClientState.EMBEDDED_PROJECTILE_VISUALS_ENABLED) {
+            EmbeddedArrowRenderLayer.register();
+        } else {
+            LOGGER.warn("[BLOOD-FX] Embedded-arrow visuals are temporarily disabled.");
+        }
         bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.body_status",
                 InputConstants.Type.KEYSYM,
@@ -95,12 +92,15 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
-        PayloadTypeRegistry.clientboundPlay().register(HeavyHammerSyncPayload.TYPE, HeavyHammerSyncPayload.CODEC);
-        PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(MicrovoxelBatchPayload.TYPE, MicrovoxelBatchPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(BloodFootprintPayload.TYPE, BloodFootprintPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(BloodSurfacePayload.TYPE, BloodSurfacePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AppearanceRefreshPayload.TYPE, AppearanceRefreshPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BloodFxPayload.TYPE, BloodFxPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BloodFootprintPayload.TYPE, BloodFootprintPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BloodSurfacePayload.TYPE, BloodSurfacePayload.CODEC);
 
         // Register packet receiver
         ClientPlayNetworking.registerGlobalReceiver(AuthPayload.TYPE, (payload, context) -> {
@@ -116,8 +116,6 @@ public class EclipseClientMod implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
-        ClientPlayNetworking.registerGlobalReceiver(HeavyHammerSyncPayload.TYPE, (payload, context) ->
-                context.client().execute(() -> HeavyHammerClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> RpChatFeedClientState.accept(payload)));
         ClientPlayNetworking.registerGlobalReceiver(AppearanceRefreshPayload.TYPE, (payload, context) ->
@@ -130,6 +128,10 @@ public class EclipseClientMod implements ClientModInitializer {
                 }));
         ClientPlayNetworking.registerGlobalReceiver(BloodFxPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> BloodFxClientState.handle(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(BloodFootprintPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> BloodFxClientState.handleFootprint(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(BloodSurfacePayload.TYPE, (payload, context) ->
+                context.client().execute(() -> BloodFxClientState.handleSurface(payload)));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
@@ -137,10 +139,6 @@ public class EclipseClientMod implements ClientModInitializer {
             AcquaintanceClientState.clientTick(client);
             MicrovoxelClientState.clientTick(client);
             MicrovoxelInteractionController.tick(client);
-            HeavyHammerInteractionController.tick(client);
-            HeavyHammerClientState.clientTick(client);
-            HammerHolsterClientState.clientTick(client);
-            HammerRenderQaController.clientTick(client);
             PickupClientState.clientTick(client);
             GroundedLootRenderer.clientTick(client);
             BloodFxClientState.clientTick(client);

@@ -6,14 +6,9 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.item.CreativeModeTab;
 import com.mojang.blaze3d.platform.InputConstants;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
@@ -26,13 +21,6 @@ import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
-import ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload;
-import ua.rp.chat.client.heavyhammer.HeavyHammerClientState;
-import ua.rp.chat.client.heavyhammer.HeavyHammerCarryRenderLayer;
-import ua.rp.chat.client.heavyhammer.HeavyHammerInteractionController;
-import ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload;
-import ua.rp.chat.client.heavyhammer.HammerHolsterClientState;
-import ua.rp.chat.client.debug.HammerRenderQaController;
 import ua.rp.chat.client.pickup.PickupClientState;
 import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
@@ -51,12 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EclipseClientMod implements ClientModInitializer {
 
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "heavy-hammer-holster-equipment-20260717-1";
+    public static final String DIAGNOSTIC_BUILD = "eclipse-client-20260717-1";
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
-    private static final ResourceKey<CreativeModeTab> TOOLS_AND_UTILITIES_TAB = ResourceKey.create(
-            Registries.CREATIVE_MODE_TAB,
-            Identifier.withDefaultNamespace("tools_and_utilities")
-    );
     private static final AtomicBoolean SESSION_CHECK_IN_FLIGHT = new AtomicBoolean(false);
     private static KeyMapping bodyStatusKey;
     private static int sessionPollTicks = 0;
@@ -72,12 +56,7 @@ public class EclipseClientMod implements ClientModInitializer {
         PickupClientState.register();
         MicrovoxelClientRenderer.register();
         MicrovoxelInteractionController.register();
-        HammerRenderQaController.register();
-        HeavyHammerCarryRenderLayer.register();
         CrawlingClientState.init();
-        // Предмет доступен в творческом инвентаре, но создаётся только после завершения загрузки реестров.
-        CreativeModeTabEvents.modifyOutputEvent(TOOLS_AND_UTILITIES_TAB).register(output ->
-                output.prepend(HammerHolsterClientState.createStack()));
         bodyStatusKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.body_status",
                 InputConstants.Type.KEYSYM,
@@ -93,8 +72,6 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
-        PayloadTypeRegistry.clientboundPlay().register(HeavyHammerSyncPayload.TYPE, HeavyHammerSyncPayload.CODEC);
-        PayloadTypeRegistry.serverboundPlay().register(HeavyHammerActionPayload.TYPE, HeavyHammerActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AppearanceRefreshPayload.TYPE, AppearanceRefreshPayload.CODEC);
@@ -115,8 +92,6 @@ public class EclipseClientMod implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
-        ClientPlayNetworking.registerGlobalReceiver(HeavyHammerSyncPayload.TYPE, (payload, context) ->
-                context.client().execute(() -> HeavyHammerClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> RpChatFeedClientState.accept(payload)));
         ClientPlayNetworking.registerGlobalReceiver(AppearanceRefreshPayload.TYPE, (payload, context) ->
@@ -136,10 +111,6 @@ public class EclipseClientMod implements ClientModInitializer {
             AcquaintanceClientState.clientTick(client);
             MicrovoxelClientState.clientTick(client);
             MicrovoxelInteractionController.tick(client);
-            HeavyHammerInteractionController.tick(client);
-            HeavyHammerClientState.clientTick(client);
-            HammerHolsterClientState.clientTick(client);
-            HammerRenderQaController.clientTick(client);
             PickupClientState.clientTick(client);
             GroundedLootRenderer.clientTick(client);
             ua.rp.chat.client.crawling.CrawlingClientState.clientTick(client);

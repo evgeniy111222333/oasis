@@ -9,9 +9,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import ua.rp.chat.heavyhammer.HeavyHammerImpact;
-import ua.rp.chat.heavyhammer.HeavyHammerProtocol;
-import ua.rp.chat.heavyhammer.HeavyHammerRules;
 import ua.rp.chat.interaction.ItemPickupRules;
 
 public final class MicrovoxelServerCoreTest {
@@ -79,36 +76,6 @@ public final class MicrovoxelServerCoreTest {
                 "Authoritative raycast must select the nearest occupied microvoxel");
         require(nearest.face() == ServerMicrovoxelRaycaster.Face.WEST,
                 "Raycast must preserve the entered face for adjacent placement");
-
-        int hammerAnchor = MicrovoxelVolume.index(0, 8, 8);
-        List<Integer> dent = HeavyHammerImpact.cells(hammerAnchor, HeavyHammerImpact.Face.WEST);
-        require(dent.size() >= 45, "Тяжёлый молот должен оставлять заметную, а не одиночную вмятину");
-        require(dent.stream().allMatch(cell -> MicrovoxelVolume.x(cell) >= 0),
-                "Вмятина не должна выходить за границы микровоксельного блока");
-        require(dent.stream().anyMatch(cell -> MicrovoxelVolume.x(cell) == 3),
-                "Вмятина должна углубляться внутрь поверхности");
-        require(HeavyHammerRules.canImpact(HeavyHammerRules.IMPACT_TICK),
-                "Сервер обязан разрешить воздействие в кадре контакта");
-        require(!HeavyHammerRules.canImpact(HeavyHammerRules.IMPACT_TICK - 1),
-                "Сервер не должен разрушать материал до контакта");
-
-        byte[] hammerStart = HeavyHammerProtocol.start(UUID.fromString("00000000-0000-0000-0000-000000000123"),
-                17, HeavyHammerRules.DURATION_TICKS, HeavyHammerRules.IMPACT_TICK,
-                -12, 64, 27, hammerAnchor, HeavyHammerProtocol.Face.WEST);
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(hammerStart))) {
-            require(input.readUnsignedByte() == HeavyHammerProtocol.START, "Пакет молота должен содержать тип START");
-            require(input.readLong() == 0L && input.readLong() == 0x123L, "UUID анимации должен передаваться без потерь");
-            require(input.readInt() == 17, "Последовательность удара должна сохраняться");
-            require(input.readUnsignedShort() == HeavyHammerRules.DURATION_TICKS
-                            && input.readUnsignedShort() == HeavyHammerRules.IMPACT_TICK,
-                    "Клиент и сервер должны получать одинаковый тайминг");
-            require(input.readInt() == -12 && input.readInt() == 64 && input.readInt() == 27,
-                    "START обязан передавать блок фактической цели");
-            require(input.readUnsignedShort() == hammerAnchor
-                            && input.readUnsignedByte() == HeavyHammerProtocol.Face.WEST.ordinal(),
-                    "START обязан передавать микровоксель и грань контакта");
-            require(input.available() == 0, "В пакете молота не должно быть лишних байтов");
-        }
 
         boolean duplicatePaletteRejected = false;
         try {
