@@ -2,6 +2,16 @@ package ua.rp.chat.microvoxel;
 
 import java.util.Collection;
 
+/**
+ * Micro-cell DDA raycaster shared by targeting, prediction and validation.
+ *
+ * <p>Each volume is entered through its unit-block slab, then traversed cell by cell (up to 52
+ * micro-steps, covering the full 16x16x16 diagonal). Empty cells never stop the ray: aiming
+ * through a carved cavity keeps travelling until the first occupied cell, which is what makes
+ * inner walls of U-shaped hollows selectable. The walk ends only when the ray leaves the unit
+ * block ({@code !inside}) or exhausts the slab/reach bound. Multi-volume traversal is owned by
+ * the caller, which casts every nearby volume and keeps the nearest hit.</p>
+ */
 public final class MicrovoxelRaycaster {
     private static final double EPSILON = 1.0E-7;
 
@@ -51,7 +61,11 @@ public final class MicrovoxelRaycaster {
                 z += dz > 0 ? 1 : -1;
                 enteredFace = dz > 0 ? MicrovoxelGreedyMesher.Direction.NORTH : MicrovoxelGreedyMesher.Direction.SOUTH;
             }
-            if (!MicrovoxelVolume.inside(x, y, z)) break;
+            // Leaving the 16^3 lattice means leaving the unit block itself (straight ray
+            // through a convex box cannot re-enter), so the traversal of THIS volume is over.
+            // Empty cavities inside were already stepped through above; only the caller moves
+            // on to the next volume along the ray.
+            if (!MicrovoxelVolume.inside(x, y, z)) return null;
         }
         return null;
     }

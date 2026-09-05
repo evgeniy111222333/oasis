@@ -17,15 +17,12 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3fc;
-import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.microvoxel.MicrovoxelAnchorRules;
+import ua.rp.chat.microvoxel.MicrovoxelBlocks;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
@@ -61,6 +58,7 @@ public final class MicrovoxelClientRenderer {
     }
 
     public static void register() {
+        MicrovoxelSectionModel.register();
         LevelRenderEvents.END_MAIN.register(MicrovoxelClientRenderer::render);
     }
 
@@ -72,6 +70,12 @@ public final class MicrovoxelClientRenderer {
     private static void render(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) return;
+        if (!Boolean.getBoolean("rpchat.microvoxel.legacyRenderer")) {
+            Set<RenderType> overlayTypes = new LinkedHashSet<>();
+            renderSelection(context, minecraft, minecraft.gameRenderer.getMainCamera().position(), overlayTypes);
+            for (RenderType type : overlayTypes) context.bufferSource().endBatch(type);
+            return;
+        }
         Object modelSet = minecraft.getModelManager().getBlockStateModelSet();
         if (cachedModelSet != modelSet) {
             MATERIALS.clear();
@@ -94,17 +98,12 @@ public final class MicrovoxelClientRenderer {
                 if (lastPos == null || !lastPos.equals(position)) {
                     lastPos = position;
                     BlockState marker = minecraft.level.getBlockState(position);
-                    // Accept STRUCTURE_VOID, LIGHT (normal markers) and AIR (client
-                    // predicted a break but the server hasn't confirmed removal yet).
-                    // Once the server sends REMOVE, the volume data is cleared and
-                    // the batch no longer contains this position.
-                    lastPosValid = marker.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID)
-                            || marker.is(net.minecraft.world.level.block.Blocks.LIGHT)
-                            || marker.isAir();
+                    lastPosValid = isRenderableAnchor(marker);
                 }
                 if (!lastPosValid) {
                     continue;
                 }
+                if (!context.levelRenderer().isSectionCompiledAndVisible(position)) continue;
                 double dx = position.getX() + 0.5 - camera.x;
                 double dy = position.getY() + 0.5 - camera.y;
                 double dz = position.getZ() + 0.5 - camera.z;
@@ -134,6 +133,14 @@ public final class MicrovoxelClientRenderer {
             }
         }
 
+        drawCalls.get(RenderPass.TRANSLUCENT).sort(java.util.Comparator.comparingDouble(
+                (DrawCall call) -> {
+                    double dx = call.position.getX() + 0.5 - camera.x;
+                    double dy = call.position.getY() + 0.5 - camera.y;
+                    double dz = call.position.getZ() + 0.5 - camera.z;
+                    return dx * dx + dy * dy + dz * dz;
+                }).reversed());
+
         Set<RenderType> usedTypes = new LinkedHashSet<>();
         for (RenderPass pass : RenderPass.values()) {
             for (DrawCall call : drawCalls.get(pass)) {
@@ -151,6 +158,18 @@ public final class MicrovoxelClientRenderer {
 
         renderSelection(context, minecraft, camera, usedTypes);
         for (RenderType type : usedTypes) context.bufferSource().endBatch(type);
+    }
+
+    /**
+     * Keeps the native marker and the two legacy migration anchors renderable. Air is accepted
+     * only for the short client-prediction window before the authoritative REMOVE packet arrives.
+     */
+    public static boolean isRenderableAnchor(BlockState state) {
+        return MicrovoxelAnchorRules.renderable(
+                MicrovoxelBlocks.isMarker(state),
+                state.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID),
+                state.is(net.minecraft.world.level.block.Blocks.LIGHT),
+                state.isAir());
     }
 
     /** A thin, material-aware hover plate: no intrusive wire cube and no wall-visible outline. */
@@ -198,6 +217,38 @@ public final class MicrovoxelClientRenderer {
         emitFace(consumer, context.poseStack().last(), vertices, uv, selected.direction(),
                 position.getX() - camera.x, position.getY() - camera.y, position.getZ() - camera.z,
                 0x00F000F0, colors);
+
+        List<MicrovoxelInteractionController.PreviewCell> preview =
+                MicrovoxelInteractionController.brushPreview();
+        if (preview.isEmpty()) return;
+        Map<PreviewKey, MicrovoxelInteractionController.PreviewCell> lattice = new HashMap<>();
+        for (MicrovoxelInteractionController.PreviewCell previewCell : preview) {
+            int previewCellIndex = previewCell.cell();
+            BlockPos previewPos = previewCell.position();
+            lattice.put(new PreviewKey(
+                            previewPos.getX() * 16 + MicrovoxelVolume.x(previewCellIndex),
+                            previewPos.getY() * 16 + MicrovoxelVolume.y(previewCellIndex),
+                            previewPos.getZ() * 16 + MicrovoxelVolume.z(previewCellIndex)),
+                    previewCell);
+        }
+        int brushColor = shade(0x72FFD36E, pulse);
+        int[] brushColors = {brushColor, brushColor, brushColor, brushColor};
+        for (Map.Entry<PreviewKey, MicrovoxelInteractionController.PreviewCell> entry : lattice.entrySet()) {
+            PreviewKey key = entry.getKey();
+            MicrovoxelInteractionController.PreviewCell previewCell = entry.getValue();
+            for (MicrovoxelGreedyMesher.Direction previewDirection : MicrovoxelGreedyMesher.Direction.values()) {
+                if (lattice.containsKey(new PreviewKey(key.x + previewDirection.dx,
+                        key.y + previewDirection.dy, key.z + previewDirection.dz))) continue;
+                MicrovoxelGreedyMesher.Face previewFace =
+                        cellFace(previewCell.cell(), previewDirection, 1);
+                emitFace(consumer, context.poseStack().last(),
+                        faceVertices(previewFace, 0.0015f, 0.001f), uv, previewDirection,
+                        previewCell.position().getX() - camera.x,
+                        previewCell.position().getY() - camera.y,
+                        previewCell.position().getZ() - camera.z,
+                        0x00F000F0, brushColors);
+            }
+        }
     }
 
     private static MicrovoxelGreedyMesher.Face cellFace(int cell, MicrovoxelGreedyMesher.Direction direction,
@@ -213,6 +264,9 @@ public final class MicrovoxelClientRenderer {
             case WEST -> new MicrovoxelGreedyMesher.Face(direction, material, x, y, z, x, y + 1, z + 1);
             case EAST -> new MicrovoxelGreedyMesher.Face(direction, material, x + 1, y, z, x + 1, y + 1, z + 1);
         };
+    }
+
+    private record PreviewKey(int x, int y, int z) {
     }
 
     private static FaceMaterial faceMaterial(Minecraft minecraft, String materialName,
@@ -288,34 +342,14 @@ public final class MicrovoxelClientRenderer {
                 false, false));
     }
 
+    /**
+     * Single blockstate-string parser for the legacy renderer. Delegates to the section model
+     * instead of carrying a third copy of the same codec (the per-call warn log was dropped
+     * deliberately: corrupt palette entries already surface through resync metrics, and this
+     * path runs per material per frame).
+     */
     private static BlockState parseBlockState(String value) {
-        try {
-            int propertiesStart = value.indexOf('[');
-            String identifierText = propertiesStart < 0 ? value : value.substring(0, propertiesStart);
-            Block block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(identifierText));
-            BlockState state = block.defaultBlockState();
-            if (propertiesStart >= 0 && value.endsWith("]")) {
-                String properties = value.substring(propertiesStart + 1, value.length() - 1);
-                for (String assignment : properties.split(",")) {
-                    int equals = assignment.indexOf('=');
-                    if (equals < 1) continue;
-                    String name = assignment.substring(0, equals);
-                    String propertyValue = assignment.substring(equals + 1);
-                    for (Property<?> property : state.getProperties()) {
-                        if (property.getName().equals(name)) state = setProperty(state, property, propertyValue);
-                    }
-                }
-            }
-            return state;
-        } catch (RuntimeException error) {
-            EclipseClientMod.LOGGER.warn("[MICROVOXEL] Invalid block state " + value + ": " + error.getMessage());
-            return net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
-        }
-    }
-
-    private static <T extends Comparable<T>> BlockState setProperty(BlockState state, Property<T> property,
-                                                                      String value) {
-        return property.getValue(value).map(parsed -> state.setValue(property, parsed)).orElse(state);
+        return MicrovoxelSectionModel.parseBlockState(value);
     }
 
     private static Vertex[] faceVertices(MicrovoxelGreedyMesher.Face face, float inset, float push) {
@@ -457,7 +491,7 @@ public final class MicrovoxelClientRenderer {
         };
     }
 
-    private enum RenderPass { OPAQUE, CUTOUT, TRANSLUCENT, EMISSIVE }
+    private enum RenderPass { OPAQUE, CUTOUT, EMISSIVE, TRANSLUCENT }
 
     private record MaterialModel(BlockState state,
                                  EnumMap<MicrovoxelGreedyMesher.Direction, List<FaceLayer>> faces,

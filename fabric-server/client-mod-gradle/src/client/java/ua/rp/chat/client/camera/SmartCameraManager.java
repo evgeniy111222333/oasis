@@ -314,6 +314,17 @@ public class SmartCameraManager {
         }
 
         LocalPlayer player = client.player;
+        if (ua.rp.chat.client.carver.CarverCameraRig.active()) {
+            // Drafting close-up: the camera orbits outside the skull, so the head
+            // renders in full like the rest of the body instead of being culled
+            // for the inside-the-head first-person view.
+            model.head.visible = true;
+            model.hat.visible = true;
+            model.head.skipDraw = false;
+            model.hat.skipDraw = false;
+            model.body.visible = true;
+            return;
+        }
         model.head.visible = false;
         model.hat.visible = false;
         model.head.skipDraw = true;

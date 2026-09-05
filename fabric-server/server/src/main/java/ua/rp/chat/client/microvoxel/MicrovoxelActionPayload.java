@@ -5,7 +5,8 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
-public record MicrovoxelActionPayload(int action, int x, int y, int z, int cell, int revision,
+public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
+                                      int action, int x, int y, int z, int cell, int revision,
                                       float lookX, float lookY, float lookZ,
                                       float eyeX, float eyeY, float eyeZ)
         implements CustomPacketPayload {
@@ -15,6 +16,8 @@ public record MicrovoxelActionPayload(int action, int x, int y, int z, int cell,
             MicrovoxelActionPayload::write, MicrovoxelActionPayload::read);
 
     private void write(RegistryFriendlyByteBuf buffer) {
+        buffer.writeVarInt(protocolVersion);
+        buffer.writeVarLong(transactionId);
         buffer.writeByte(action);
         buffer.writeInt(x);
         buffer.writeInt(y);
@@ -31,6 +34,7 @@ public record MicrovoxelActionPayload(int action, int x, int y, int z, int cell,
 
     private static MicrovoxelActionPayload read(RegistryFriendlyByteBuf buffer) {
         return new MicrovoxelActionPayload(
+                buffer.readVarInt(), buffer.readVarLong(),
                 buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readUnsignedShort(), buffer.readInt(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat(),

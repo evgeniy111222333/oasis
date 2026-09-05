@@ -22,40 +22,49 @@ public final class BloodFxService {
         this.plugin = plugin;
     }
 
-    public void impact(ServerPlayer victim, int zone, int profile, float localSide, float localHeight,
-                       float intensity, float bleeding, Vec3 direction, long seed, int flags) {
+    public void impact(ServerPlayer victim, long woundId, int zone, int face, int profile, float localSide, float localHeight,
+                       float intensity, float bleeding, float impactVolumeMl, float flowMlPerSecond,
+                       float remainingBloodMl, float penetrationDepth, Vec3 direction, long seed, int flags) {
         Vec3 safeDirection = normalize(direction);
         broadcast(victim, new BloodFxPayload(
                 BloodFxPayload.IMPACT,
                 victim.getId(),
                 victim.getUUID(),
+                woundId,
                 zone,
+                face,
                 profile,
                 clamp(localSide, -1.0f, 1.0f),
                 clamp(localHeight, 0.0f, 1.0f),
                 clamp(intensity, 0.0f, 1.0f),
                 clamp(bleeding, 0.0f, 100.0f),
+                clamp(impactVolumeMl, 0.0f, 40.0f),
+                clamp(flowMlPerSecond, 0.0f, 20.0f),
+                clamp(remainingBloodMl, 0.0f, 5_000.0f),
                 (float) safeDirection.x,
                 (float) safeDirection.y,
                 (float) safeDirection.z,
+                clamp(penetrationDepth, 0.0f, 0.75f),
                 seed,
                 nextRevision(),
                 flags
         ));
     }
 
-    public void syncWound(ServerPlayer victim, int zone, int profile, float localSide, float localHeight,
-                          float intensity, float bleeding, long seed, int flags) {
-        broadcast(victim, woundPayload(victim, zone, profile, localSide, localHeight,
-                intensity, bleeding, seed, flags));
+    public void syncWound(ServerPlayer victim, long woundId, int zone, int face, int profile, float localSide, float localHeight,
+                          float intensity, float bleeding, float flowMlPerSecond, float remainingBloodMl,
+                          float penetrationDepth, Vec3 direction, long seed, int flags) {
+        broadcast(victim, woundPayload(victim, woundId, zone, face, profile, localSide, localHeight,
+                intensity, bleeding, flowMlPerSecond, remainingBloodMl, penetrationDepth, direction, seed, flags));
     }
 
-    public void syncWoundTo(ServerPlayer observer, ServerPlayer victim, int zone, int profile,
+    public void syncWoundTo(ServerPlayer observer, ServerPlayer victim, long woundId, int zone, int face, int profile,
                             float localSide, float localHeight, float intensity, float bleeding,
-                            long seed, int flags) {
+                            float flowMlPerSecond, float remainingBloodMl,
+                            float penetrationDepth, Vec3 direction, long seed, int flags) {
         if (!canObserve(observer, victim)) return;
-        send(observer, woundPayload(victim, zone, profile, localSide, localHeight,
-                intensity, bleeding, seed, flags));
+        send(observer, woundPayload(victim, woundId, zone, face, profile, localSide, localHeight,
+                intensity, bleeding, flowMlPerSecond, remainingBloodMl, penetrationDepth, direction, seed, flags));
     }
 
     public void clear(ServerPlayer victim, int zone) {
@@ -63,8 +72,14 @@ public final class BloodFxService {
                 BloodFxPayload.CLEAR,
                 victim.getId(),
                 victim.getUUID(),
+                0L,
                 zone,
                 0,
+                0,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
                 0.0f,
                 0.0f,
                 0.0f,
@@ -78,22 +93,30 @@ public final class BloodFxService {
         ));
     }
 
-    private BloodFxPayload woundPayload(ServerPlayer victim, int zone, int profile,
+    private BloodFxPayload woundPayload(ServerPlayer victim, long woundId, int zone, int face, int profile,
                                         float localSide, float localHeight, float intensity,
-                                        float bleeding, long seed, int flags) {
+                                        float bleeding, float flowMlPerSecond, float remainingBloodMl,
+                                        float penetrationDepth, Vec3 direction, long seed, int flags) {
+        Vec3 safeDirection = normalize(direction);
         return new BloodFxPayload(
                 BloodFxPayload.WOUND_SYNC,
                 victim.getId(),
                 victim.getUUID(),
+                woundId,
                 zone,
+                face,
                 profile,
                 clamp(localSide, -1.0f, 1.0f),
                 clamp(localHeight, 0.0f, 1.0f),
                 clamp(intensity, 0.0f, 1.0f),
                 clamp(bleeding, 0.0f, 100.0f),
                 0.0f,
-                0.0f,
-                0.0f,
+                clamp(flowMlPerSecond, 0.0f, 20.0f),
+                clamp(remainingBloodMl, 0.0f, 5_000.0f),
+                (float) safeDirection.x,
+                (float) safeDirection.y,
+                (float) safeDirection.z,
+                clamp(penetrationDepth, 0.0f, 0.75f),
                 seed,
                 nextRevision(),
                 flags

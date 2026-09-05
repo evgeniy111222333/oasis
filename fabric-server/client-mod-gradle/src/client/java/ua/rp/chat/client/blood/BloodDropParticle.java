@@ -7,18 +7,24 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import ua.rp.chat.blood.BloodFxRules;
 
 final class BloodDropParticle extends SingleQuadParticle {
     private final long seed;
     private final float impactEnergy;
+    private final float volumeMl;
     private boolean completionReported;
 
     BloodDropParticle(ClientLevel level, double x, double y, double z,
                       double vx, double vy, double vz, float size,
-                      long seed, TextureAtlasSprite sprite) {
+                      float volumeMl, long seed, TextureAtlasSprite sprite) {
         super(level, x, y, z, vx, vy, vz, sprite);
         this.seed = seed;
+        this.volumeMl = Math.max(0.05f, volumeMl);
         this.impactEnergy = Math.min(1.0f, (float) Math.sqrt(vx * vx + vy * vy + vz * vz) * 4.2f + size);
         this.xd = vx;
         this.yd = vy;
@@ -39,7 +45,7 @@ final class BloodDropParticle extends SingleQuadParticle {
                                       double vx, double vy, double vz, RandomSource random,
                                       FabricSpriteSet sprites) {
         return new BloodDropParticle(level, x, y, z, vx, vy, vz, 0.45f,
-                random.nextLong(), sprites.get(random));
+                0.55f, random.nextLong(), sprites.get(random));
     }
 
     @Override
@@ -59,6 +65,17 @@ final class BloodDropParticle extends SingleQuadParticle {
         double beforeX = x;
         double beforeY = y;
         double beforeZ = z;
+        Vec3 start = new Vec3(beforeX, beforeY, beforeZ);
+        Vec3 requestedEnd = start.add(requestedX, requestedY, requestedZ);
+        BlockHitResult rayHit = level.clip(new ClipContext(start, requestedEnd,
+                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()));
+        if (rayHit.getType() == HitResult.Type.BLOCK) {
+            Vec3 normal = Vec3.atLowerCornerOf(rayHit.getDirection().getUnitVec3i());
+            BloodFxClientState.onDropCollision(level,
+                    rayHit.getLocation().add(normal.scale(0.002)), normal, impactEnergy, volumeMl, seed);
+            remove();
+            return;
+        }
         move(requestedX, requestedY, requestedZ);
         double movedX = x - beforeX;
         double movedY = y - beforeY;
@@ -82,7 +99,8 @@ final class BloodDropParticle extends SingleQuadParticle {
             } else {
                 normal = new Vec3(0.0, 0.0, requestedZ <= 0.0 ? 1.0 : -1.0);
             }
-            BloodFxClientState.onDropCollision(level, new Vec3(x, y, z), normal, impactEnergy, seed);
+            BloodFxClientState.onDropCollision(level, new Vec3(x, y, z), normal,
+                    impactEnergy, volumeMl, seed);
             remove();
             return;
         }

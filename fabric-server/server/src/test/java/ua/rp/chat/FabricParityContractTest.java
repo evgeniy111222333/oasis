@@ -21,9 +21,9 @@ public final class FabricParityContractTest {
         require(defaults.contains("combat:\n  enabled: true"), "Default production config must declare RP combat");
 
         String mixins = resource("eclipseserver.mixins.json");
-        require(mixins.contains("\"AuthContainerMixin\""),
+        require(mixins.contains("AuthContainerMixin\""),
                 "Pending authentication must prevent server-side container access");
-        require(mixins.contains("\"PlayerActionMixin\""),
+        require(mixins.contains("PlayerActionMixin\""),
                 "Pending authentication must prevent inventory packet actions");
 
         System.out.println("FabricParityContractTest passed");

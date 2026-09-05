@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.logging.Level;
 
 import com.google.gson.Gson;
@@ -26,13 +27,18 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.RPChat;
+import ua.rp.chat.blood.BloodVolumeRules;
 import ua.rp.chat.client.blood.BloodFxPayload;
+import ua.rp.chat.projectile.ArrowImpactPhysics;
+import ua.rp.chat.projectile.ArrowImpactRuntime;
 import ua.rp.chat.combat.CombatBodyZone;
 import ua.rp.chat.combat.CombatDamageProfile;
 
@@ -62,6 +68,7 @@ public class StaminaManager {
     private final File storageFile;
     private final Map<UUID, Vitals> vitals = new ConcurrentHashMap<>();
     private final Map<UUID, PendingTreatment> treatments = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> internalDamage = ConcurrentHashMap.newKeySet();
     private int saveTicks = 0;
     private boolean dirty = false;
 
@@ -93,9 +100,16 @@ public class StaminaManager {
                 BodyPartState part = state.zone(zone);
                 if (part.bleeding <= 0.1 && !part.openWound && !part.bandaged && !part.embeddedArrow) continue;
                 ensureWoundVisual(part, zone);
-                bloodFx.syncWoundTo(observer, victim, zone.ordinal(), part.woundProfile,
-                        (float) part.woundSide, (float) part.woundHeight, (float) part.woundIntensity,
-                        (float) part.bleeding, part.woundSeed, bloodFxFlags(part));
+                float bleedingShare = (float) (part.bleeding / Math.max(1, part.wounds.size()));
+                float partFlow = state.blood <= 0.0 ? 0.0f
+                        : partFlowMlPerSecond(part, movementFactor(victim));
+                for (WoundVisual wound : part.wounds) {
+                    bloodFx.syncWoundTo(observer, victim, wound.id, zone.ordinal(), wound.face, wound.profile,
+                            (float) wound.side, (float) wound.height, (float) wound.intensity,
+                            bleedingShare, woundFlowShare(part, wound, partFlow),
+                            remainingBloodMl(state), (float) wound.penetrationDepth,
+                            wound.direction, wound.seed, bloodFxFlags(part, wound));
+                }
             }
         }
     }
@@ -292,7 +306,8 @@ public class StaminaManager {
 
     public void applyCombatInjury(ServerPlayer victim, CombatBodyZone combatZone, double medicalDamage,
                                   double healthDamage, CombatDamageProfile combatProfile,
-                                  Vec3 incomingDirection, double hitRatio, double lateral) {
+                                  Vec3 incomingDirection, double hitRatio, double lateral,
+                                  ArrowImpactPhysics.Result projectileImpact) {
         if (victim == null || !victim.isAlive() || medicalDamage <= 0.0) {
             return;
         }
@@ -300,19 +315,30 @@ public class StaminaManager {
         Vitals v = getVitals(victim);
         BodyZone zone = bodyZoneFor(combatZone);
         DamageProfile profile = damageProfileFor(combatProfile);
-        applyInjury(victim, v, zone, medicalDamage, profile);
+        double scaledMedicalDamage = projectileImpact == null
+                ? medicalDamage : medicalDamage * projectileImpact.damageScale();
+        double scaledHealthDamage = projectileImpact == null
+                ? healthDamage : healthDamage * projectileImpact.damageScale();
+        applyInjury(victim, v, zone, scaledMedicalDamage, profile);
         BodyPartState part = v.zone(zone);
-        updateWoundVisual(part, zone, profile, medicalDamage, hitRatio, lateral);
-        v.lastDamage = Math.max(v.lastDamage, medicalDamage);
+        if (projectileImpact != null && projectileImpact.embedded()) {
+            part.embeddedArrow = true;
+        }
+        WoundVisual wound = updateWoundVisual(victim, part, zone, profile, scaledMedicalDamage,
+                hitRatio, lateral, incomingDirection, projectileImpact);
+        if (projectileImpact != null && projectileImpact.exits()) {
+            createExitWound(victim, part, zone, wound, incomingDirection);
+        }
+        v.lastDamage = Math.max(v.lastDamage, scaledMedicalDamage);
         v.lastDamageCause = profile.id;
-        v.breathDebt = clamp(v.breathDebt + medicalDamage * profile.breathDebt, 0.0, 100.0);
-        v.fatigue = clamp(v.fatigue + medicalDamage * profile.fatigue, 0.0, 100.0);
+        v.breathDebt = clamp(v.breathDebt + scaledMedicalDamage * profile.breathDebt, 0.0, 100.0);
+        v.fatigue = clamp(v.fatigue + scaledMedicalDamage * profile.fatigue, 0.0, 100.0);
         markDirty();
 
-        emitBloodImpact(victim, zone, part, profile, medicalDamage, incomingDirection);
+        emitBloodImpact(victim, zone, part, wound, profile, scaledMedicalDamage, incomingDirection);
         syncBloodWound(victim, zone, part);
         playSound(victim, SoundEvents.PLAYER_HURT, 0.75f, profile == DamageProfile.BLUNT ? 0.72f : 0.92f);
-        damagePlayerSilently(victim, healthDamage);
+        damagePlayerSilently(victim, scaledHealthDamage);
     }
 
     public JsonObject startTreatment(ServerPlayer player, String partId, String actionId) {
@@ -388,7 +414,7 @@ public class StaminaManager {
 
     
     public void onDamage(ServerPlayer player, DamageSource source, float amount) {
-        if (amount <= 0.0) {
+        if (amount <= 0.0 || internalDamage.contains(player.getUUID())) {
             return;
         }
 
@@ -396,16 +422,25 @@ public class StaminaManager {
         Vitals v = getVitals(player);
         DamageProfile profile = profileFor(source, player);
         BodyZone zone = chooseZone(source, player, profile);
-        applyInjury(player, v, zone, amount, profile);
+        ArrowImpactPhysics.Result projectileImpact =
+                resolveProjectileImpact(player, source, zone.ordinal());
+        double scaledAmount = projectileImpact == null ? amount : amount * projectileImpact.damageScale();
+        applyInjury(player, v, zone, scaledAmount, profile);
         BodyPartState part = v.zone(zone);
+        if (projectileImpact != null && projectileImpact.embedded()) part.embeddedArrow = true;
         long placementSeed = ThreadLocalRandom.current().nextLong();
         double fallbackSide = unit(placementSeed) * 1.5 - 0.75;
         double fallbackHeight = unit(placementSeed ^ 0x632be59bd9b4e019L);
-        updateWoundVisual(part, zone, profile, amount, fallbackGlobalRatio(zone, fallbackHeight), fallbackSide);
-        emitBloodImpact(player, zone, part, profile, amount, incomingDirection(player, source));
+        Vec3 incoming = incomingDirection(player, source);
+        WoundVisual wound = updateWoundVisual(player, part, zone, profile, scaledAmount,
+                fallbackGlobalRatio(zone, fallbackHeight), fallbackSide, incoming, projectileImpact);
+        if (projectileImpact != null && projectileImpact.exits()) {
+            createExitWound(player, part, zone, wound, incoming);
+        }
+        emitBloodImpact(player, zone, part, wound, profile, scaledAmount, incoming);
         syncBloodWound(player, zone, part);
 
-        v.lastDamage = Math.max(v.lastDamage, (double) amount);
+        v.lastDamage = Math.max(v.lastDamage, scaledAmount);
         v.lastDamageCause = profile.id;
         v.breathDebt = clamp(v.breathDebt + amount * profile.breathDebt, 0.0, 100.0);
         v.fatigue = clamp(v.fatigue + amount * profile.fatigue, 0.0, 100.0);
@@ -688,6 +723,7 @@ public class StaminaManager {
         }
         if (part.bleeding <= 0.1 && !part.openWound && !part.bandaged
                 && !part.tourniquet && !part.embeddedArrow) {
+            part.wounds.clear();
             bloodFx.clear(player, zone.ordinal());
         } else {
             syncBloodWound(player, zone, part);
@@ -723,11 +759,21 @@ public class StaminaManager {
     }
 
     private void tickInjuries(ServerPlayer player, Vitals v) {
-        double bleeding = v.totalBleeding();
-        if (bleeding > 0.0) {
-            v.blood = clamp(v.blood - bleeding * 0.0025, 0.0, MAX_BLOOD);
+        float movement = movementFactor(player);
+        double externalFlowMlPerSecond = 0.0;
+        if (v.blood > 0.0) {
+            for (BodyPartState part : v.parts.values()) {
+                externalFlowMlPerSecond += partFlowMlPerSecond(part, movement);
+            }
+        }
+        if (externalFlowMlPerSecond > 0.0) {
+            double requestedMl = externalFlowMlPerSecond / 20.0;
+            double availableMl = remainingBloodMl(v);
+            double lostMl = Math.min(requestedMl, availableMl);
+            v.blood = clamp(v.blood - BloodVolumeRules.bloodUnitsForVolume((float) lostMl),
+                    0.0, MAX_BLOOD);
             if (v.ticks % 40 == 0) {
-                damagePlayerSilently(player, Math.min(0.65, bleeding * 0.065));
+                damagePlayerSilently(player, Math.min(0.65, externalFlowMlPerSecond * 0.026));
             }
         } else {
             v.blood = clamp(v.blood + 0.004, 0.0, MAX_BLOOD);
@@ -911,18 +957,87 @@ public class StaminaManager {
         };
     }
 
-    private void updateWoundVisual(BodyPartState part, BodyZone zone, DamageProfile profile,
-                                   double damage, double globalHitRatio, double lateral) {
-        if (part == null) return;
-        part.woundSeed = ThreadLocalRandom.current().nextLong();
-        part.woundSide = clamp(lateral, -1.0, 1.0);
-        part.woundHeight = zoneLocalHeight(zone, globalHitRatio);
-        part.woundIntensity = Math.max(part.woundIntensity,
-                clamp(damage / 11.0 + part.bleeding / 42.0, 0.08, 1.0));
-        part.woundProfile = bloodProfile(profile);
+    private WoundVisual updateWoundVisual(ServerPlayer victim, BodyPartState part, BodyZone zone,
+                                          DamageProfile profile, double damage,
+                                          double globalHitRatio, double lateral, Vec3 direction,
+                                          ArrowImpactPhysics.Result projectileImpact) {
+        if (part == null) return null;
+        double side = clamp(lateral, -1.0, 1.0);
+        double height = zoneLocalHeight(zone, globalHitRatio);
+        int face = impactFace(victim, direction);
+        double intensity = clamp(damage / 11.0 + part.bleeding / 42.0, 0.08, 1.0);
+        WoundVisual nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (WoundVisual candidate : part.wounds) {
+            if (candidate.face != face) continue;
+            double distance = Math.hypot(candidate.side - side, candidate.height - height);
+            if (distance < nearestDistance) {
+                nearest = candidate;
+                nearestDistance = distance;
+            }
+        }
+        if (nearest != null && nearestDistance <= 0.17) {
+            nearest.side = nearest.side * 0.72 + side * 0.28;
+            nearest.height = nearest.height * 0.72 + height * 0.28;
+            nearest.intensity = clamp(nearest.intensity + intensity * 0.34, 0.08, 1.0);
+            nearest.flowWeight = Math.max(nearest.flowWeight,
+                    BloodVolumeRules.woundFlowWeight(bloodProfile(profile), (float) intensity));
+            if (direction != null && direction.lengthSqr() > 1.0e-6) nearest.direction = direction.normalize();
+            applyProjectileResult(nearest, projectileImpact);
+        } else {
+            long seed = ThreadLocalRandom.current().nextLong();
+            if (seed == 0L) seed = 1L;
+            nearest = new WoundVisual(seed, seed, side, height, intensity, bloodProfile(profile), face,
+                    direction == null ? Vec3.ZERO : direction.normalize(),
+                    BloodVolumeRules.woundFlowWeight(bloodProfile(profile), (float) intensity));
+            applyProjectileResult(nearest, projectileImpact);
+            part.wounds.add(nearest);
+            if (part.wounds.size() > 8) {
+                part.wounds.remove(part.wounds.stream()
+                        .min((a, b) -> Double.compare(a.intensity, b.intensity)).orElse(part.wounds.get(0)));
+            }
+        }
+        mirrorPrimaryWound(part, nearest);
+        return nearest;
+    }
+
+    private void applyProjectileResult(WoundVisual wound, ArrowImpactPhysics.Result impact) {
+        if (wound == null || impact == null) return;
+        wound.penetrationDepth = clamp(impact.penetrationDepthBlocks(), 0.0, 0.75);
+        wound.embeddedProjectile = impact.embedded();
+        wound.projectileExit = false;
+        wound.projectileShallow = impact.outcome() == ArrowImpactPhysics.Outcome.SHALLOW;
+    }
+
+    private WoundVisual createExitWound(ServerPlayer victim, BodyPartState part, BodyZone zone,
+                                        WoundVisual entry, Vec3 direction) {
+        if (entry == null || part == null) return null;
+        long id = entry.id ^ 0x6a09e667f3bcc909L;
+        int oppositeFace = switch (entry.face) {
+            case 0 -> 1;
+            case 1 -> 0;
+            case 2 -> 3;
+            default -> 2;
+        };
+        WoundVisual exit = new WoundVisual(id, entry.seed ^ 0xbb67ae8584caa73bL,
+                -entry.side, entry.height, clamp(entry.intensity * 1.08, 0.08, 1.0),
+                1, oppositeFace, direction == null ? Vec3.ZERO : direction.normalize(),
+                entry.flowWeight * 1.12);
+        exit.projectileExit = true;
+        exit.penetrationDepth = 0.0;
+        part.wounds.add(exit);
+        if (part.wounds.size() > 8) {
+            part.wounds.remove(part.wounds.stream()
+                    .min((a, b) -> Double.compare(a.intensity, b.intensity)).orElse(part.wounds.get(0)));
+        }
+        return exit;
     }
 
     private void ensureWoundVisual(BodyPartState part, BodyZone zone) {
+        if (!part.wounds.isEmpty()) {
+            mirrorPrimaryWound(part, part.wounds.get(part.wounds.size() - 1));
+            return;
+        }
         if (part.woundSeed == 0L) {
             long seed = UUID.nameUUIDFromBytes((zone.id + ':' + part.lastCause + ':' + part.openWoundTicks)
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8)).getMostSignificantBits();
@@ -937,34 +1052,111 @@ public class StaminaManager {
         if (part.woundProfile < 0 || part.woundProfile > 4) {
             part.woundProfile = bloodProfile(part.lastCause);
         }
+        part.wounds.add(new WoundVisual(part.woundSeed, part.woundSeed, part.woundSide,
+                part.woundHeight, part.woundIntensity, part.woundProfile, 0, Vec3.ZERO,
+                BloodVolumeRules.woundFlowWeight(part.woundProfile, (float) part.woundIntensity)));
     }
 
-    private void emitBloodImpact(ServerPlayer victim, BodyZone zone, BodyPartState part,
+    private void emitBloodImpact(ServerPlayer victim, BodyZone zone, BodyPartState part, WoundVisual wound,
                                  DamageProfile profile, double damage, Vec3 direction) {
         if (profile == DamageProfile.FALL || profile == DamageProfile.BURN) return;
         ensureWoundVisual(part, zone);
-        bloodFx.impact(victim, zone.ordinal(), bloodProfile(profile),
-                (float) part.woundSide, (float) part.woundHeight,
-                (float) clamp(Math.max(part.woundIntensity, damage / 12.0), 0.0, 1.0),
-                (float) part.bleeding, direction, part.woundSeed, bloodFxFlags(part));
+        WoundVisual active = wound == null ? part.wounds.get(part.wounds.size() - 1) : wound;
+        Vitals state = getVitals(victim);
+        float impactVolumeMl = BloodVolumeRules.impactVolumeMl(
+                bloodProfile(profile), (float) damage, (float) active.intensity, part.embeddedArrow);
+        impactVolumeMl = Math.min(impactVolumeMl, remainingBloodMl(state));
+        if (impactVolumeMl < BloodVolumeRules.MIN_VISIBLE_DROP_ML) return;
+        state.blood = clamp(state.blood - BloodVolumeRules.bloodUnitsForVolume(impactVolumeMl),
+                0.0, MAX_BLOOD);
+        float bleedingShare = (float) (part.bleeding / Math.max(1, part.wounds.size()));
+        float partFlow = state.blood <= 0.0 ? 0.0f
+                : partFlowMlPerSecond(part, movementFactor(victim));
+        bloodFx.impact(victim, active.id, zone.ordinal(), active.face, bloodProfile(profile),
+                (float) active.side, (float) active.height,
+                (float) clamp(Math.max(active.intensity, damage / 12.0), 0.0, 1.0),
+                bleedingShare, impactVolumeMl, woundFlowShare(part, active, partFlow),
+                remainingBloodMl(state), (float) active.penetrationDepth,
+                direction, active.seed, bloodFxFlags(part, active));
     }
 
     private void syncBloodWound(ServerPlayer victim, BodyZone zone, BodyPartState part) {
         if (part == null) return;
         if (part.bleeding <= 0.1 && !part.openWound && !part.bandaged && !part.embeddedArrow) {
+            part.wounds.clear();
             bloodFx.clear(victim, zone.ordinal());
             return;
         }
         ensureWoundVisual(part, zone);
-        bloodFx.syncWound(victim, zone.ordinal(), part.woundProfile,
-                (float) part.woundSide, (float) part.woundHeight, (float) part.woundIntensity,
-                (float) part.bleeding, part.woundSeed, bloodFxFlags(part));
+        Vitals state = getVitals(victim);
+        float bleedingShare = (float) (part.bleeding / Math.max(1, part.wounds.size()));
+        float partFlow = state.blood <= 0.0 ? 0.0f
+                : partFlowMlPerSecond(part, movementFactor(victim));
+        for (WoundVisual wound : part.wounds) {
+            bloodFx.syncWound(victim, wound.id, zone.ordinal(), wound.face, wound.profile,
+                    (float) wound.side, (float) wound.height, (float) wound.intensity,
+                    bleedingShare, woundFlowShare(part, wound, partFlow),
+                    remainingBloodMl(state), (float) wound.penetrationDepth,
+                    wound.direction, wound.seed, bloodFxFlags(part, wound));
+        }
     }
 
-    private int bloodFxFlags(BodyPartState part) {
+    private float partFlowMlPerSecond(BodyPartState part, float movement) {
+        if (part == null) return 0.0f;
+        boolean hasExternalWound = part.wounds.stream().anyMatch(wound -> wound.profile == 0 || wound.profile == 1);
+        return hasExternalWound
+                ? BloodVolumeRules.flowRateMlPerSecond((float) part.bleeding, part.openWound,
+                part.bandaged, part.tourniquet, part.embeddedArrow, movement)
+                : 0.0f;
+    }
+
+    private float woundFlowShare(BodyPartState part, WoundVisual wound, float partFlow) {
+        if (part == null || wound == null || partFlow <= 0.0f || wound.profile > 1) return 0.0f;
+        double totalWeight = part.wounds.stream()
+                .filter(candidate -> candidate.profile <= 1)
+                .mapToDouble(candidate -> Math.max(0.0, candidate.flowWeight))
+                .sum();
+        if (totalWeight <= 1.0e-6) return 0.0f;
+        return (float) (partFlow * Math.max(0.0, wound.flowWeight) / totalWeight);
+    }
+
+    private float movementFactor(ServerPlayer player) {
+        if (player == null) return 0.0f;
+        return (float) clamp(player.getDeltaMovement().horizontalDistance() * 7.0, 0.0, 1.0);
+    }
+
+    private float remainingBloodMl(Vitals state) {
+        if (state == null) return 0.0f;
+        return (float) clamp(state.blood * BloodVolumeRules.MILLILITRES_PER_BLOOD_UNIT,
+                0.0, MAX_BLOOD * BloodVolumeRules.MILLILITRES_PER_BLOOD_UNIT);
+    }
+
+    private void mirrorPrimaryWound(BodyPartState part, WoundVisual wound) {
+        part.woundSeed = wound.seed;
+        part.woundSide = wound.side;
+        part.woundHeight = wound.height;
+        part.woundIntensity = wound.intensity;
+        part.woundProfile = wound.profile;
+    }
+
+    private int impactFace(ServerPlayer victim, Vec3 incoming) {
+        if (victim == null || incoming == null || incoming.horizontalDistanceSqr() < 1.0e-6) return 0;
+        Vec3 direction = incoming.normalize().scale(-1.0);
+        double yaw = Math.toRadians(victim.yBodyRot);
+        Vec3 forward = new Vec3(-Math.sin(yaw), 0.0, Math.cos(yaw));
+        Vec3 right = new Vec3(Math.cos(yaw), 0.0, Math.sin(yaw));
+        double forwardDot = direction.dot(forward);
+        double rightDot = direction.dot(right);
+        if (Math.abs(forwardDot) >= Math.abs(rightDot)) return forwardDot >= 0.0 ? 0 : 1;
+        return rightDot >= 0.0 ? 3 : 2;
+    }
+
+    private int bloodFxFlags(BodyPartState part, WoundVisual wound) {
         int flags = 0;
         if (part.bandaged || part.tourniquet) flags |= BloodFxPayload.FLAG_BANDAGED;
-        if (part.embeddedArrow) flags |= BloodFxPayload.FLAG_EMBEDDED_PROJECTILE;
+        if (wound != null && wound.embeddedProjectile) flags |= BloodFxPayload.FLAG_EMBEDDED_PROJECTILE;
+        if (wound != null && wound.projectileExit) flags |= BloodFxPayload.FLAG_PROJECTILE_EXIT;
+        if (wound != null && wound.projectileShallow) flags |= BloodFxPayload.FLAG_PROJECTILE_SHALLOW;
         if (part.openWound) flags |= BloodFxPayload.FLAG_OPEN_WOUND;
         return flags;
     }
@@ -989,6 +1181,9 @@ public class StaminaManager {
 
     private Vec3 incomingDirection(ServerPlayer victim, DamageSource source) {
         Entity attacker = source == null ? null : source.getDirectEntity();
+        if (attacker instanceof AbstractArrow arrow && arrow.getDeltaMovement().lengthSqr() > 1.0e-6) {
+            return arrow.getDeltaMovement().normalize();
+        }
         if (attacker == null && source != null) attacker = source.getEntity();
         if (attacker != null) {
             Vec3 direction = victim.getBoundingBox().getCenter().subtract(attacker.getBoundingBox().getCenter());
@@ -996,6 +1191,61 @@ public class StaminaManager {
         }
         double yaw = Math.toRadians(victim.getYRot());
         return new Vec3(-Math.sin(yaw), 0.10, Math.cos(yaw)).normalize();
+    }
+
+    public ArrowImpactPhysics.Result resolveProjectileImpact(ServerPlayer victim, DamageSource source,
+                                                              int zoneOrdinal) {
+        if (victim == null || source == null
+                || !(source.getDirectEntity() instanceof AbstractArrow arrow)) {
+            return null;
+        }
+        Vec3 velocity = arrow.getDeltaMovement();
+        double speed = velocity.length();
+        if (speed < 1.0e-5) return null;
+        Vec3 normal = contactNormal(victim, arrow.position());
+        double incidence = Math.abs(velocity.normalize().dot(normal));
+        double armor = projectileArmorResistance(victim, zoneOrdinal);
+        long seed = arrow.getUUID().getMostSignificantBits()
+                ^ arrow.getUUID().getLeastSignificantBits()
+                ^ victim.getUUID().getLeastSignificantBits();
+        ArrowImpactPhysics.Result result = ArrowImpactPhysics.resolve(
+                new ArrowImpactPhysics.Input(speed, incidence, armor, zoneOrdinal, seed));
+        ArrowImpactRuntime.record(arrow.getUUID(), result);
+        return result;
+    }
+
+    private double projectileArmorResistance(ServerPlayer victim, int zoneOrdinal) {
+        EquipmentSlot slot = switch (zoneOrdinal) {
+            case 0 -> EquipmentSlot.HEAD;
+            case 1, 2, 3 -> EquipmentSlot.CHEST;
+            default -> EquipmentSlot.LEGS;
+        };
+        String itemId = BuiltInRegistries.ITEM.getKey(victim.getItemBySlot(slot).getItem()).toString();
+        double coverage = switch (zoneOrdinal) {
+            case 2, 3 -> 0.65;
+            case 4, 5 -> 0.85;
+            default -> 1.0;
+        };
+        return ArrowImpactPhysics.armorResistance(itemId) * coverage;
+    }
+
+    private Vec3 contactNormal(ServerPlayer victim, Vec3 point) {
+        var box = victim.getBoundingBox();
+        double[] distances = {
+                Math.abs(point.x - box.minX), Math.abs(box.maxX - point.x),
+                Math.abs(point.y - box.minY), Math.abs(box.maxY - point.y),
+                Math.abs(point.z - box.minZ), Math.abs(box.maxZ - point.z)
+        };
+        Vec3[] normals = {
+                new Vec3(-1, 0, 0), new Vec3(1, 0, 0),
+                new Vec3(0, -1, 0), new Vec3(0, 1, 0),
+                new Vec3(0, 0, -1), new Vec3(0, 0, 1)
+        };
+        int nearest = 0;
+        for (int i = 1; i < distances.length; i++) {
+            if (distances[i] < distances[nearest]) nearest = i;
+        }
+        return normals[nearest];
     }
 
     private double fallbackGlobalRatio(BodyZone zone, double localHeight) {
@@ -1065,12 +1315,6 @@ public class StaminaManager {
         }
         part.injury = profile.label;
         part.lastCause = profile.id;
-        if (profile == DamageProfile.PROJECTILE && ThreadLocalRandom.current().nextDouble() < 0.72) {
-            part.embeddedArrow = true;
-            part.openWound = true;
-            part.bandaged = false;
-            part.bleeding = clamp(part.bleeding + 5.0, 0.0, 100.0);
-        }
         if ((profile == DamageProfile.FALL && damage > 5.5 && ThreadLocalRandom.current().nextDouble() < fractureChance(damage))
                 || (profile == DamageProfile.BLUNT && damage > 7.0 && ThreadLocalRandom.current().nextDouble() < 0.20)) {
             part.fracture = true;
@@ -1272,7 +1516,13 @@ public class StaminaManager {
         if (amount <= 0.0 || !player.isAlive()) {
             return;
         }
-        player.hurtServer((ServerLevel) player.level(), player.damageSources().generic(), (float) amount);
+        UUID playerId = player.getUUID();
+        internalDamage.add(playerId);
+        try {
+            player.hurtServer((ServerLevel) player.level(), player.damageSources().generic(), (float) amount);
+        } finally {
+            internalDamage.remove(playerId);
+        }
     }
 
     private void knockdown(ServerPlayer player, Vitals v, int ticks, String reason) {
@@ -1463,6 +1713,27 @@ public class StaminaManager {
         json.addProperty("woundIntensity", part.woundIntensity);
         json.addProperty("woundSeed", part.woundSeed);
         json.addProperty("woundProfile", part.woundProfile);
+        JsonArray wounds = new JsonArray();
+        for (WoundVisual wound : part.wounds) {
+            JsonObject item = new JsonObject();
+            item.addProperty("id", wound.id);
+            item.addProperty("seed", wound.seed);
+            item.addProperty("side", wound.side);
+            item.addProperty("height", wound.height);
+            item.addProperty("intensity", wound.intensity);
+            item.addProperty("profile", wound.profile);
+            item.addProperty("face", wound.face);
+            item.addProperty("flowWeight", wound.flowWeight);
+            item.addProperty("directionX", wound.direction.x);
+            item.addProperty("directionY", wound.direction.y);
+            item.addProperty("directionZ", wound.direction.z);
+            item.addProperty("penetrationDepth", wound.penetrationDepth);
+            item.addProperty("embeddedProjectile", wound.embeddedProjectile);
+            item.addProperty("projectileExit", wound.projectileExit);
+            item.addProperty("projectileShallow", wound.projectileShallow);
+            wounds.add(item);
+        }
+        json.add("wounds", wounds);
         return json;
     }
 
@@ -1494,6 +1765,34 @@ public class StaminaManager {
         part.woundIntensity = clamp(readDouble(json, "woundIntensity", 0.0), 0.0, 1.0);
         part.woundSeed = readLong(json, "woundSeed", 0L);
         part.woundProfile = readInt(json, "woundProfile", -1);
+        if (json.has("wounds") && json.get("wounds").isJsonArray()) {
+            for (JsonElement element : json.getAsJsonArray("wounds")) {
+                if (!element.isJsonObject() || part.wounds.size() >= 8) continue;
+                JsonObject item = element.getAsJsonObject();
+                long id = readLong(item, "id", 0L);
+                long seed = readLong(item, "seed", id);
+                if (id == 0L) id = seed == 0L ? ThreadLocalRandom.current().nextLong() : seed;
+                if (seed == 0L) seed = id;
+                WoundVisual loaded = new WoundVisual(id, seed,
+                        clamp(readDouble(item, "side", 0.0), -1.0, 1.0),
+                        clamp(readDouble(item, "height", 0.5), 0.0, 1.0),
+                        clamp(readDouble(item, "intensity", 0.1), 0.08, 1.0),
+                        Math.max(0, Math.min(4, readInt(item, "profile", 0))),
+                        Math.max(0, Math.min(3, readInt(item, "face", 0))),
+                        new Vec3(readDouble(item, "directionX", 0.0),
+                                readDouble(item, "directionY", 0.0),
+                                readDouble(item, "directionZ", 0.0)),
+                        Math.max(0.0, readDouble(item, "flowWeight",
+                                BloodVolumeRules.woundFlowWeight(
+                                        Math.max(0, Math.min(4, readInt(item, "profile", 0))),
+                                        (float) clamp(readDouble(item, "intensity", 0.1), 0.08, 1.0)))));
+                loaded.penetrationDepth = clamp(readDouble(item, "penetrationDepth", 0.0), 0.0, 0.75);
+                loaded.embeddedProjectile = readBoolean(item, "embeddedProjectile", false);
+                loaded.projectileExit = readBoolean(item, "projectileExit", false);
+                loaded.projectileShallow = readBoolean(item, "projectileShallow", false);
+                part.wounds.add(loaded);
+            }
+        }
         return part;
     }
 
@@ -1613,6 +1912,7 @@ public class StaminaManager {
         private double woundIntensity = 0.0;
         private long woundSeed = 0L;
         private int woundProfile = -1;
+        private final List<WoundVisual> wounds = new ArrayList<>();
 
         private boolean isBroken() {
             return fracture || condition < 22.0;
@@ -1638,6 +1938,36 @@ public class StaminaManager {
                 value *= 0.84;
             }
             return value;
+        }
+    }
+
+    private static final class WoundVisual {
+        private final long id;
+        private final long seed;
+        private double side;
+        private double height;
+        private double intensity;
+        private int profile;
+        private final int face;
+        private Vec3 direction;
+        private double flowWeight;
+        private double penetrationDepth;
+        private boolean embeddedProjectile;
+        private boolean projectileExit;
+        private boolean projectileShallow;
+
+        private WoundVisual(long id, long seed, double side, double height,
+                            double intensity, int profile, int face, Vec3 direction,
+                            double flowWeight) {
+            this.id = id;
+            this.seed = seed;
+            this.side = side;
+            this.height = height;
+            this.intensity = intensity;
+            this.profile = profile;
+            this.face = face;
+            this.direction = direction == null ? Vec3.ZERO : direction;
+            this.flowWeight = Math.max(0.0, flowWeight);
         }
     }
 

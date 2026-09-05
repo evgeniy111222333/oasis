@@ -27,8 +27,9 @@ import ua.rp.chat.auth.*;
 import ua.rp.chat.combat.CombatManager;
 import ua.rp.chat.vitals.StaminaManager;
 import ua.rp.chat.vitals.BloodFxService;
+import ua.rp.chat.vitals.BloodFootprintService;
+import ua.rp.chat.vitals.BloodSurfaceFilmService;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
-import ua.rp.chat.heavyhammer.HeavyHammerManager;
 import ua.rp.chat.interaction.ItemPickupManager;
 
 import java.io.File;
@@ -53,11 +54,13 @@ public class RPChat implements DedicatedServerModInitializer {
     private AppearanceManager appearanceManager;
     private StaminaManager staminaManager;
     private BloodFxService bloodFxService;
+    private BloodFootprintService bloodFootprintService;
+    private BloodSurfaceFilmService bloodSurfaceFilmService;
     private RpChatService rpChatService;
     private CombatManager combatManager;
     private AcquaintanceManager acquaintanceManager;
     private MicrovoxelManager microvoxelManager;
-    private HeavyHammerManager heavyHammerManager;
+    private ua.rp.chat.carver.CarverManager carverManager;
     private ItemPickupManager itemPickupManager;
     private SimpleConfig config;
     private Logger logger = Logger.getLogger("RPChat");
@@ -90,6 +93,7 @@ public class RPChat implements DedicatedServerModInitializer {
     @Override
     public void onInitializeServer() {
         instance = this;
+        ua.rp.chat.microvoxel.MicrovoxelBlocks.register();
         ua.rp.chat.vitals.BloodParticleTypes.register();
         File dataFolder = getDataFolder();
         migrateLegacyDataFolder(dataFolder);
@@ -116,17 +120,23 @@ public class RPChat implements DedicatedServerModInitializer {
             throw new IllegalStateException("Failed to initialize Fabric authentication database", e);
         }
 
+        registerFluidDispenserBehavior();
+
         authManager = new AuthManager(this, authDatabase, appearanceManager);
         rpChatService = new RpChatService(this);
         bloodFxService = new BloodFxService(this);
+        bloodFootprintService = new BloodFootprintService(this);
+        bloodSurfaceFilmService = new BloodSurfaceFilmService(this);
         staminaManager = new StaminaManager(this, bloodFxService);
         staminaManager.start();
         combatManager = new CombatManager(this);
         acquaintanceManager = new AcquaintanceManager(this);
         acquaintanceManager.start();
         microvoxelManager = new MicrovoxelManager(this);
-        heavyHammerManager = new HeavyHammerManager(this, microvoxelManager);
-        heavyHammerManager.start();
+        ua.rp.chat.carver.CarverItems.register();
+        carverManager = new ua.rp.chat.carver.CarverManager(
+                this, microvoxelManager, staminaManager);
+        carverManager.reloadTuning();
         itemPickupManager = new ItemPickupManager(this);
         itemPickupManager.start();
         ua.rp.chat.crawling.CrawlingServerManager.init();
@@ -143,8 +153,11 @@ public class RPChat implements DedicatedServerModInitializer {
         serverbound.register(ua.rp.chat.client.CombatIntentPayload.TYPE, ua.rp.chat.client.CombatIntentPayload.CODEC);
         serverbound.register(ua.rp.chat.client.AcquaintanceActionPayload.TYPE, ua.rp.chat.client.AcquaintanceActionPayload.CODEC);
         serverbound.register(ua.rp.chat.client.microvoxel.MicrovoxelActionPayload.TYPE, ua.rp.chat.client.microvoxel.MicrovoxelActionPayload.CODEC);
-        serverbound.register(ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload.TYPE, ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload.CODEC);
+        serverbound.register(ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload.TYPE, ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload.CODEC);
         serverbound.register(ua.rp.chat.client.pickup.ItemPickupPayload.TYPE, ua.rp.chat.client.pickup.ItemPickupPayload.CODEC);
+        serverbound.register(ua.rp.chat.client.blood.BloodFootprintPayload.TYPE, ua.rp.chat.client.blood.BloodFootprintPayload.CODEC);
+        serverbound.register(ua.rp.chat.client.blood.BloodSurfacePayload.TYPE, ua.rp.chat.client.blood.BloodSurfacePayload.CODEC);
+        serverbound.register(ua.rp.chat.client.carver.CarverActionPayload.TYPE, ua.rp.chat.client.carver.CarverActionPayload.CODEC);
 
         var clientbound = net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.clientboundPlay();
         clientbound.register(ua.rp.chat.client.AuthPayload.TYPE, ua.rp.chat.client.AuthPayload.CODEC);
@@ -152,8 +165,10 @@ public class RPChat implements DedicatedServerModInitializer {
         clientbound.register(ua.rp.chat.client.AppearanceRefreshPayload.TYPE, ua.rp.chat.client.AppearanceRefreshPayload.CODEC);
         clientbound.register(ua.rp.chat.client.rpfeed.RpChatFeedPayload.TYPE, ua.rp.chat.client.rpfeed.RpChatFeedPayload.CODEC);
         clientbound.register(ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload.TYPE, ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload.CODEC);
-        clientbound.register(ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload.TYPE, ua.rp.chat.client.heavyhammer.HeavyHammerSyncPayload.CODEC);
         clientbound.register(ua.rp.chat.client.blood.BloodFxPayload.TYPE, ua.rp.chat.client.blood.BloodFxPayload.CODEC);
+        clientbound.register(ua.rp.chat.client.blood.BloodFootprintPayload.TYPE, ua.rp.chat.client.blood.BloodFootprintPayload.CODEC);
+        clientbound.register(ua.rp.chat.client.blood.BloodSurfacePayload.TYPE, ua.rp.chat.client.blood.BloodSurfacePayload.CODEC);
+        clientbound.register(ua.rp.chat.client.carver.CarverSyncPayload.TYPE, ua.rp.chat.client.carver.CarverSyncPayload.CODEC);
 
         // Managers that touch worlds or the network start only after MinecraftServer exists.
         ServerLifecycleEvents.SERVER_STARTING.register(srv -> server = srv);
@@ -169,8 +184,11 @@ public class RPChat implements DedicatedServerModInitializer {
             staminaManager.tick();
             acquaintanceManager.tick();
             rpChatService.tickBubbles();
-            heavyHammerManager.tick();
             microvoxelManager.tick();
+            carverManager.tick();
+            bloodFootprintService.tick();
+            bloodSurfaceFilmService.tick();
+            if (tickCounter % 1200 == 0) carverManager.reloadTuning();
         });
 
         // Register Auth Listener callbacks
@@ -180,8 +198,9 @@ public class RPChat implements DedicatedServerModInitializer {
             authListener.onJoin(player);
             
             microvoxelManager.onJoin(player);
-            heavyHammerManager.onJoin(player);
             staminaManager.syncBloodFxTo(player);
+            bloodFootprintService.onJoin(player);
+            bloodSurfaceFilmService.onJoin(player);
         });
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, srv) -> {
@@ -190,7 +209,9 @@ public class RPChat implements DedicatedServerModInitializer {
             staminaManager.onQuit(player);
             
             microvoxelManager.onQuit(player);
-            heavyHammerManager.onQuit(player);
+            carverManager.onQuit(player);
+            bloodFootprintService.onQuit(player);
+            bloodSurfaceFilmService.onQuit(player);
         });
 
         // Block chat from unauthenticated players
@@ -213,10 +234,31 @@ public class RPChat implements DedicatedServerModInitializer {
 
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.microvoxel.MicrovoxelActionPayload.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
-            if (isPendingAuth(player)) return;
-            microvoxelManager.handleAction(player, payload.action(), payload.x(), payload.y(), payload.z(), payload.cell(), payload.revision(),
+            if (isPendingAuth(player)
+                    && !MicrovoxelProtocol.isSynchronizationAction(payload.action())) return;
+            microvoxelManager.handleAction(player, payload.protocolVersion(), payload.transactionId(),
+                    payload.action(), payload.x(), payload.y(), payload.z(), payload.cell(), payload.revision(),
                     new net.minecraft.world.phys.Vec3(payload.lookX(), payload.lookY(), payload.lookZ()),
                     new net.minecraft.world.phys.Vec3(payload.eyeX(), payload.eyeY(), payload.eyeZ()));
+        });
+        // Batched edits: each entry flows through the exact single-action path (auth gate,
+        // rate limit, revision and raycast validation per entry), so batching only saves
+        // packets and never weakens validation.
+        ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload.TYPE, (payload, context) -> {
+            ServerPlayer player = context.player();
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.batch");
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.add("net.batch.entries", payload.entries().size());
+            net.minecraft.world.phys.Vec3 look = new net.minecraft.world.phys.Vec3(
+                    payload.lookX(), payload.lookY(), payload.lookZ());
+            net.minecraft.world.phys.Vec3 eye = new net.minecraft.world.phys.Vec3(
+                    payload.eyeX(), payload.eyeY(), payload.eyeZ());
+            for (ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload.Entry entry : payload.entries()) {
+                if (isPendingAuth(player)
+                        && !MicrovoxelProtocol.isSynchronizationAction(entry.action())) return;
+                microvoxelManager.handleAction(player, payload.protocolVersion(), entry.transactionId(),
+                        entry.action(), entry.x(), entry.y(), entry.z(), entry.cell(), entry.revision(),
+                        look, eye);
+            }
         });
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.AcquaintanceActionPayload.TYPE, (payload, context) -> {
             if (!isPendingAuth(context.player())) {
@@ -224,15 +266,32 @@ public class RPChat implements DedicatedServerModInitializer {
             }
         });
 
-        ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.heavyhammer.HeavyHammerActionPayload.TYPE, (payload, context) -> {
-            if (!isPendingAuth(context.player())) {
-                heavyHammerManager.handleAction(context.player(), payload.x(), payload.y(), payload.z(),
-                        payload.cell(), payload.revision(), payload.clientSequence());
-            }
-        });
-
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.pickup.ItemPickupPayload.TYPE, (payload, context) ->
                 itemPickupManager.handlePickup(context.player(), payload.itemId()));
+        ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.blood.BloodFootprintPayload.TYPE,
+                (payload, context) -> {
+                    if (!isPendingAuth(context.player())) {
+                        bloodFootprintService.handleRequest(context.player(), payload);
+                    }
+                });
+        ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.blood.BloodSurfacePayload.TYPE,
+                (payload, context) -> {
+                    if (!isPendingAuth(context.player())) {
+                        bloodSurfaceFilmService.handle(context.player(), payload);
+                    }
+                });
+        ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.carver.CarverActionPayload.TYPE,
+                (payload, context) -> {
+                    ServerPlayer actionPlayer = context.player();
+                    if (isPendingAuth(actionPlayer)) return;
+                    if (payload.protocolVersion() != ua.rp.chat.carver.CarverProtocol.VERSION) {
+                        actionPlayer.sendSystemMessage(Component.literal(
+                                "Версия клиентского модуля резчика не совместима с сервером."), true);
+                        return;
+                    }
+                    context.server().execute(() -> carverManager.handleAction(actionPlayer,
+                            payload.action(), payload.x(), payload.y(), payload.z(), payload.data()));
+                });
 
         // Restore the gameplay hooks that previously came from Bukkit listeners.
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, level, hand) -> {
@@ -249,8 +308,53 @@ public class RPChat implements DedicatedServerModInitializer {
             if (isPendingAuth(serverPlayer)) return InteractionResult.FAIL;
             if (acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
             net.minecraft.core.BlockPos placementPos = hit.getBlockPos().relative(hit.getDirection());
-            if (microvoxelManager.onBlockPlace(serverPlayer, player.getItemInHand(hand), placementPos)) {
+            net.minecraft.world.item.ItemStack held = player.getItemInHand(hand);
+            if (microvoxelManager.isPortableVolumeItem(held)) {
+                return microvoxelManager.onBlockPlace(serverPlayer, held, placementPos)
+                        ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+            }
+            // Architect's scroll: right-click on a block enters Carver design mode.
+            if (held.is(ua.rp.chat.carver.CarverItems.SCROLL)) {
+                return carverManager.tryEnterDesign(serverPlayer, hit.getBlockPos())
+                        ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+            }
+            // Voxel fluid UX: a water bucket on a carved basin fills it (custom path, because
+            // vanilla flow may never replace the marker), while an empty bucket passes through
+            // to the vanilla scoop (the marker reads as water through its fluid state).
+            if (held.is(net.minecraft.world.item.Items.WATER_BUCKET)
+                    && microvoxelManager.protectsMarker(serverLevel, hit.getBlockPos())) {
+                return microvoxelManager.fillWithBucket(
+                        serverPlayer, serverLevel, hit.getBlockPos(), hand)
+                        ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+            }
+            // Mob buckets stock wet basins with live fish instead of placing blocks.
+            if (microvoxelManager.fishBucketType(held) != null
+                    && microvoxelManager.protectsMarker(serverLevel, hit.getBlockPos())) {
+                return microvoxelManager.stockWithBucket(
+                        serverPlayer, serverLevel, hit.getBlockPos(), hand, held)
+                        ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+            }
+            if (held.is(net.minecraft.world.item.Items.LAVA_BUCKET)
+                    && microvoxelManager.protectsMarker(serverLevel, hit.getBlockPos())) {
+                return microvoxelManager.fillWithLavaBucket(
+                        serverPlayer, serverLevel, hit.getBlockPos(), hand)
+                        ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+            }
+            // Vanilla cannot scoop lava markers (no lava fluidstate to grab), so lava
+            // scooping is custom while water scooping stays native below.
+            if (held.is(net.minecraft.world.item.Items.BUCKET)
+                    && microvoxelManager.protectsMarker(serverLevel, hit.getBlockPos())
+                    && microvoxelManager.scoopLavaBucket(
+                            serverPlayer, serverLevel, hit.getBlockPos(), hand)) {
                 return InteractionResult.SUCCESS;
+            }
+            if (held.is(net.minecraft.world.item.Items.BUCKET)) {
+                return InteractionResult.PASS;
+            }
+            if (microvoxelManager.isPartiallyConsumedMaterial(held)) {
+                serverPlayer.sendSystemMessage(Component.literal(
+                        "Этот блок частично израсходован на микровоксели и не может быть установлен целиком."), true);
+                return InteractionResult.FAIL;
             }
             microvoxelManager.refreshAdjacentMicrovoxelMeshes(serverLevel, placementPos);
             return microvoxelManager.protectsMarker(serverLevel, hit.getBlockPos())
@@ -314,6 +418,7 @@ public class RPChat implements DedicatedServerModInitializer {
                 (entity, source, baseDamage, damageTaken, blocked) -> {
                     if (entity instanceof ServerPlayer player && damageTaken > 0.0f) {
                         staminaManager.onDamage(player, source, damageTaken);
+                        carverManager.onDamaged(player);
                     }
                 });
 
@@ -401,6 +506,19 @@ public class RPChat implements DedicatedServerModInitializer {
                         ServerPlayer player = context.getSource().getPlayerOrException();
                         String attempt = MessageArgument.getMessage(context, "attempt").getString();
                         rpChatService.sendTry(player, attempt, java.util.concurrent.ThreadLocalRandom.current().nextBoolean());
+                        return 1;
+                    }))
+            );
+
+            dispatcher.register(Commands.literal("carver")
+                .then(Commands.literal("kit")
+                    .executes(context -> {
+                        ServerPlayer player = context.getSource().getPlayerOrException();
+                        if (authManager.isPendingAuth(player.getUUID())) {
+                            player.sendSystemMessage(Component.literal("Спочатку авторизуйтесь."));
+                            return 0;
+                        }
+                        carverManager.giveKit(player);
                         return 1;
                     }))
             );
@@ -537,22 +655,14 @@ public class RPChat implements DedicatedServerModInitializer {
                 })
             );
 
-            dispatcher.register(Commands.literal("heavyhammer")
-                .requires(source -> RPChat.hasPermission(source, "rpchat.heavyhammer.give", 4))
-                .then(Commands.argument("player", EntityArgument.player())
-                    .executes(context -> {
-                        ServerPlayer target = EntityArgument.getPlayer(context, "player");
-                        heavyHammerManager.giveHammer(target, context.getSource().getPlayerOrException());
-                        return 1;
-                    }))
-            );
-
             dispatcher.register(Commands.literal("microvoxel")
                 .requires(source -> RPChat.hasPermission(source, "rpchat.microvoxels.edit", 2))
                 .then(Commands.literal("convert")
                     .executes(context -> {
                         ServerPlayer player = context.getSource().getPlayerOrException();
-                        microvoxelManager.handleAction(player, MicrovoxelProtocol.ACTION_CONVERT, 0, 0, 0, 0, 0, Vec3.ZERO, Vec3.ZERO);
+                        microvoxelManager.handleAction(player, MicrovoxelProtocol.VERSION, 0L,
+                                MicrovoxelProtocol.ACTION_CONVERT, 0, 0, 0, 0, 0,
+                                Vec3.ZERO, Vec3.ZERO);
                         return 1;
                     })
                 )
@@ -562,6 +672,23 @@ public class RPChat implements DedicatedServerModInitializer {
                 .then(Commands.literal("status")
                     .executes(context -> {
                         context.getSource().sendSuccess(() -> Component.literal(microvoxelManager.status()), false);
+                        return 1;
+                    }))
+                .then(Commands.literal("protect")
+                    .executes(context -> microvoxelCommandProtect(context, true)))
+                .then(Commands.literal("unprotect")
+                    .executes(context -> microvoxelCommandProtect(context, false)))
+                .then(Commands.literal("backup")
+                    .requires(source -> RPChat.hasPermission(source, "rpchat.admin", 4))
+                    .executes(context -> {
+                        try {
+                            String location = microvoxelManager.backupVolumes();
+                            context.getSource().sendSuccess(
+                                    () -> Component.literal("Мікровокселі збережено в бекап: " + location), true);
+                        } catch (Exception error) {
+                            context.getSource().sendFailure(
+                                    Component.literal("Бекап не вдався: " + error.getMessage()));
+                        }
                         return 1;
                     }))
             );
@@ -654,8 +781,9 @@ public class RPChat implements DedicatedServerModInitializer {
         if (authWebServer != null) {
             authWebServer.stop();
         }
-        if (heavyHammerManager != null) heavyHammerManager.shutdown();
         if (microvoxelManager != null) microvoxelManager.shutdown();
+        if (bloodFootprintService != null) bloodFootprintService.shutdown();
+        if (bloodSurfaceFilmService != null) bloodSurfaceFilmService.shutdown();
         if (authDatabase != null) {
             authDatabase.disconnect();
         }
@@ -681,6 +809,90 @@ public class RPChat implements DedicatedServerModInitializer {
             this.activeStyle = style;
             if (config != null) config.setInt("active-style", style);
         }
+    }
+
+    /** Shared handler for /microvoxel protect and /microvoxel unprotect. */
+    private int microvoxelCommandProtect(
+            com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack> context,
+            boolean protect) {
+        try {
+            ServerPlayer player = context.getSource().getPlayerOrException();
+            return microvoxelManager.protectLookedAt(player, protect) ? 1 : 0;
+        } catch (Exception noPlayer) {
+            context.getSource().sendFailure(Component.literal("Команда доступна лише гравцю."));
+            return 0;
+        }
+    }
+
+    /**
+     * Dispensers participate in voxel fluids without breaking vanilla: facing a carved basin
+     * they fill it through the guarded path, otherwise the original water-bucket behavior
+     * runs untouched. Registered once at startup, after vanilla bootstrap populated the
+     * default behavior we delegate to. Lava buckets get the same treatment.
+     */
+    private void registerFluidDispenserBehavior() {
+        net.minecraft.core.dispenser.DispenseItemBehavior vanilla =
+                net.minecraft.world.level.block.DispenserBlock.DISPENSER_REGISTRY.get(
+                        net.minecraft.world.item.Items.WATER_BUCKET);
+        net.minecraft.core.dispenser.DispenseItemBehavior basinFilling =
+                new net.minecraft.core.dispenser.DefaultDispenseItemBehavior() {
+                    @Override
+                    protected net.minecraft.world.item.ItemStack execute(
+                            net.minecraft.core.dispenser.BlockSource pointer,
+                            net.minecraft.world.item.ItemStack stack) {
+                        net.minecraft.core.Direction facing = pointer.state().getValue(
+                                net.minecraft.world.level.block.DispenserBlock.FACING);
+                        net.minecraft.core.BlockPos target = pointer.pos().relative(facing);
+                        net.minecraft.server.level.ServerLevel level = pointer.level();
+                        if (microvoxelManager != null
+                                && microvoxelManager.fillFromDispenser(level, target)) {
+                            stack.shrink(1);
+                            return stack.isEmpty()
+                                    ? new net.minecraft.world.item.ItemStack(
+                                            net.minecraft.world.item.Items.BUCKET)
+                                    : consumeWithRemainder(pointer, stack,
+                                            new net.minecraft.world.item.ItemStack(
+                                                    net.minecraft.world.item.Items.BUCKET));
+                        }
+                        return vanilla != null
+                                ? vanilla.dispense(pointer, stack)
+                                : super.execute(pointer, stack);
+                    }
+                };
+        net.minecraft.world.level.block.DispenserBlock.registerBehavior(
+                net.minecraft.world.item.Items.WATER_BUCKET, basinFilling);
+        net.minecraft.core.dispenser.DispenseItemBehavior vanillaLava =
+                net.minecraft.world.level.block.DispenserBlock.DISPENSER_REGISTRY.get(
+                        net.minecraft.world.item.Items.LAVA_BUCKET);
+        net.minecraft.core.dispenser.DispenseItemBehavior lavaFilling =
+                new net.minecraft.core.dispenser.DefaultDispenseItemBehavior() {
+                    @Override
+                    protected net.minecraft.world.item.ItemStack execute(
+                            net.minecraft.core.dispenser.BlockSource pointer,
+                            net.minecraft.world.item.ItemStack stack) {
+                        net.minecraft.core.Direction facing = pointer.state().getValue(
+                                net.minecraft.world.level.block.DispenserBlock.FACING);
+                        net.minecraft.core.BlockPos target = pointer.pos().relative(facing);
+                        net.minecraft.server.level.ServerLevel level = pointer.level();
+                        if (microvoxelManager != null
+                                && microvoxelManager.fillFromDispenser(
+                                        level, target,
+                                        ua.rp.chat.microvoxel.FluidVolume.Kind.LAVA)) {
+                            stack.shrink(1);
+                            return stack.isEmpty()
+                                    ? new net.minecraft.world.item.ItemStack(
+                                            net.minecraft.world.item.Items.BUCKET)
+                                    : consumeWithRemainder(pointer, stack,
+                                            new net.minecraft.world.item.ItemStack(
+                                                    net.minecraft.world.item.Items.BUCKET));
+                        }
+                        return vanillaLava != null
+                                ? vanillaLava.dispense(pointer, stack)
+                                : super.execute(pointer, stack);
+                    }
+                };
+        net.minecraft.world.level.block.DispenserBlock.registerBehavior(
+                net.minecraft.world.item.Items.LAVA_BUCKET, lavaFilling);
     }
 
     private String reloadConfiguration() {
@@ -751,6 +963,10 @@ public class RPChat implements DedicatedServerModInitializer {
 
     public MicrovoxelManager getMicrovoxelManager() {
         return microvoxelManager;
+    }
+
+    public ua.rp.chat.carver.CarverManager getCarverManager() {
+        return carverManager;
     }
 
     private boolean isPendingAuth(ServerPlayer player) {

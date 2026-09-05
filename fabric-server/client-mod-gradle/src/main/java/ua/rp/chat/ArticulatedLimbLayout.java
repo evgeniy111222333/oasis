@@ -31,6 +31,28 @@ public final class ArticulatedLimbLayout {
     public static final float LEG_LOWER_BOUNDARY_Y = LEG_KNEE_Y + JOINT_HALF_BAND;
     public static final float OUTER_LAYER_GROW_XZ = 0.25f;
     public static final float OUTER_LAYER_GROW_Y = 0.0f;
+    /**
+     * Shoulder cover: the upper sleeve reaches this much above the shoulder pivot
+     * into the torso, so a raised arm (attack, work pose) never opens the butt
+     * joint into a gaping hole. Vanilla sleeves overlap the same way; the zero
+     * overlap elsewhere stays to avoid elbow/knee intersections.
+     */
+    public static final float SHOULDER_COVER = 0.5f;
+    /** Base arm cover stays buried inside the sleeve cover. */
+    public static final float BASE_SHOULDER_COVER = 0.25f;
+    /**
+     * Hip cover: thigh and pants tops reach above the hip pivot into the torso,
+     * so torso bobbing (breathing, work dips) never opens the butt joint.
+     */
+    public static final float HIP_COVER = 0.25f;
+    /**
+     * Cuff step at the wrist/ankle: the wearable ends this much short of the hand
+     * so its trim rows never wrap under the end plane. The elbow/knee keep the zero
+     * gap so bending never opens a seam.
+     */
+    public static final float WRIST_SHORTEN = 0.25f;
+    /** Sub-texel UV inset pulling cap samples off exact texel borders. */
+    public static final float CAP_UV_EPSILON = 0.0005f;
     public static final float PANTS_LAYER_GROW_X = 0.14f;
     public static final float PANTS_LAYER_GROW_Z = OUTER_LAYER_GROW_XZ;
 
@@ -39,8 +61,11 @@ public final class ArticulatedLimbLayout {
     public static final int SKIN_TEXTURE_HEIGHT = 64;
 
     public static final int ORIGINAL_CAP_V_SHIFT_PIXELS = -6;
-    public static final int HAND_TOP_CAP_V_SHIFT_PIXELS = 4;
-    public static final int HAND_BOTTOM_CAP_V_SHIFT_PIXELS = 6;
+    // A segmented cuboid starts six rows lower, but Minecraft still expects
+    // both end caps in the original cap strip. Sampling the side strip here
+    // produced the conspicuous wrong hand/foot pixels visible from below.
+    public static final int HAND_TOP_CAP_V_SHIFT_PIXELS = ORIGINAL_CAP_V_SHIFT_PIXELS;
+    public static final int HAND_BOTTOM_CAP_V_SHIFT_PIXELS = ORIGINAL_CAP_V_SHIFT_PIXELS;
 
     private ArticulatedLimbLayout() {
     }
@@ -106,6 +131,17 @@ public final class ArticulatedLimbLayout {
 
     public static float normalizedVShift(int pixels) {
         return (float) pixels / SKIN_TEXTURE_HEIGHT;
+    }
+
+    /**
+     * Pulls one UV coordinate a hair inside its quad span so bilinear filtering and
+     * mipmaps never sample the neighbouring row: the hand/foot end caps stop
+     * drinking the sleeve trim colour. Pure.
+     */
+    public static float insetUv(float u, float minU, float maxU) {
+        if (!(maxU > minU)) return u;
+        if (u <= (minU + maxU) * 0.5f) return Math.min(maxU, u + CAP_UV_EPSILON);
+        return Math.max(minU, u - CAP_UV_EPSILON);
     }
 
     public static float intervalOverlap(float firstMin, float firstMax, float secondMin, float secondMax) {

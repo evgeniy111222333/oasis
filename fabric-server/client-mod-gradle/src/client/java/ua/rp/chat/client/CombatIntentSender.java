@@ -52,7 +52,13 @@ public final class CombatIntentSender {
         double hitRatio = clamp((hit.y - box.minY) / height, 0.0, 1.0);
 
         Vec3 center = box.getCenter();
-        Vec3 right = new Vec3(-look.z, 0.0, look.x);
+        double targetYaw = Math.toRadians(target.getYRot());
+        if (target instanceof net.minecraft.world.entity.LivingEntity living) {
+            targetYaw = Math.toRadians(living.yBodyRot);
+        }
+        // Persist wound placement in victim-local UV space. Attacker-view space
+        // made an existing mark jump when either player turned.
+        Vec3 right = new Vec3(Math.cos(targetYaw), 0.0, Math.sin(targetYaw));
         if (right.lengthSqr() < 0.001) {
             right = new Vec3(1.0, 0.0, 0.0);
         } else {

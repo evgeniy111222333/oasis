@@ -22,6 +22,9 @@ import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
+import ua.rp.chat.client.carver.CarverActionPayload;
+import ua.rp.chat.client.carver.CarverClientState;
+import ua.rp.chat.client.carver.CarverSyncPayload;
 import ua.rp.chat.client.pickup.PickupClientState;
 import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
@@ -70,7 +73,18 @@ public class EclipseClientMod implements ClientModInitializer {
         EclipseHudOverlay.register();
         PickupClientState.register();
         MicrovoxelClientRenderer.register();
+        // Unconditional world-space hooks: the hologram copy and its chalk must
+        // draw every frame while drafting, independent of the crosshair hit that
+        // gates the vanilla outline (the hidden socket scores no block hit).
+        ua.rp.chat.client.carver.CarverDustStorm.register();
+        net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.END_MAIN.register(
+                context -> {
+                    ua.rp.chat.client.carver.CarverHologramRenderer.render(context);
+                    ua.rp.chat.client.carver.CarverChalkOverlay.render();
+                });
         MicrovoxelInteractionController.register();
+        ua.rp.chat.client.carver.CarverKeybinds.register();
+        ua.rp.chat.client.carver.CarverBagRenderLayer.register();
         BloodFxClientState.register();
         if (BloodFxClientState.EMBEDDED_PROJECTILE_VISUALS_ENABLED) {
             EmbeddedArrowRenderLayer.register();
@@ -93,6 +107,8 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelBatchPayload.TYPE, MicrovoxelBatchPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(CarverSyncPayload.TYPE, CarverSyncPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(CarverActionPayload.TYPE, CarverActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(BloodFootprintPayload.TYPE, BloodFootprintPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(BloodSurfacePayload.TYPE, BloodSurfacePayload.CODEC);
@@ -116,6 +132,8 @@ public class EclipseClientMod implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(CarverSyncPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> CarverClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> RpChatFeedClientState.accept(payload)));
         ClientPlayNetworking.registerGlobalReceiver(AppearanceRefreshPayload.TYPE, (payload, context) ->
@@ -133,12 +151,15 @@ public class EclipseClientMod implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(BloodSurfacePayload.TYPE, (payload, context) ->
                 context.client().execute(() -> BloodFxClientState.handleSurface(payload)));
 
+        ClientTickEvents.START_CLIENT_TICK.register(
+                ua.rp.chat.client.carver.CarverAutoWalk::tickStart);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             VitalsClientState.clientTick(client);
             SmartCameraManager.getInstance().clientTick(client);
             AcquaintanceClientState.clientTick(client);
             MicrovoxelClientState.clientTick(client);
             MicrovoxelInteractionController.tick(client);
+            CarverClientState.clientTick(client);
             PickupClientState.clientTick(client);
             GroundedLootRenderer.clientTick(client);
             BloodFxClientState.clientTick(client);

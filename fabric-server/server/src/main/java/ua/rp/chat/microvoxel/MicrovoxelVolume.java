@@ -155,34 +155,216 @@ public final class MicrovoxelVolume {
         return true;
     }
 
+    /**
+     * Marks every palette index referenced by at least one cell. Reads the live array without
+     * copying: marker-state derivation and palette compaction run in hot edit paths where a
+     * 4096-byte copy per call is pure waste. The caller must hold no lock expectations; the
+     * result is a point-in-time view of a server-thread-owned volume.
+     */
+    public void collectUsedMaterials(boolean[] used) {
+        for (byte cell : cells) {
+            int index = Byte.toUnsignedInt(cell);
+            if (index < used.length) used[index] = true;
+        }
+    }
+
+    /** Face bits for {@link #sealedOpaqueFaces}: -X, +X, -Y, +Y, -Z, +Z. */
+    public static final int FACE_WEST = 1;
+    public static final int FACE_EAST = 2;
+    public static final int FACE_DOWN = 4;
+    public static final int FACE_UP = 8;
+    public static final int FACE_NORTH = 16;
+    public static final int FACE_SOUTH = 32;
+    /** Mask value meaning every boundary face is fully covered by opaque cells. */
+    public static final int ALL_FACES_SEALED = 63;
+    /**
+     * Dense-volume fallback for light sealing. The light engine only understands whole-block
+     * opacity, so a wall with a carved detail can never occlude per-face; volumes this dense
+     * (vanilla slabs and stairs block skylight the same way) report as light-sealed instead
+     * of flipping the entire block transparent over one missing voxel.
+     */
+    public static final double LIGHT_SEAL_MIN_OPAQUE_FRACTION = 0.5;
+    /**
+     * Minimum contiguous opaque run (in cells) for the axial rule below. A 4-cell plate reads
+     * as a wall; thinner detail stays transparent. Deliberately below the 8-cell vanilla slab
+     * precedent so common 4-6 voxel decorative walls seal.
+     */
+    public static final int LIGHT_SEAL_MIN_AXIAL_RUN = 4;
+
+    /**
+     * Whether the light engine should treat this position as the parent material: all six
+     * faces sealed opaque, or at least half the cells opaque, or a solid plate across any
+     * axis (thin walls that span the block). Sparse lattices stay transparent. Pure and
+     * unit-tested; the block-granularity approximation is documented, not hidden.
+     */
+    public boolean isLightSealed(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return sealedFaces(opaquePalette) == ALL_FACES_SEALED
+                || opaqueFraction(opaquePalette) >= LIGHT_SEAL_MIN_OPAQUE_FRACTION
+                || axialRunCovered(opaquePalette, LIGHT_SEAL_MIN_AXIAL_RUN);
+    }
+
+    /**
+     * Fraction of cells occupied by opaque materials, 0.0 when empty. One linear scan, no
+     * allocation; opacity is resolved per palette entry, not per cell.
+     */
+    public double opaqueFraction(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return opaqueFraction(opaquePalette);
+    }
+
+    private double opaqueFraction(boolean[] opaquePalette) {
+        int opaqueCells = 0;
+        for (byte cell : cells) {
+            if (opaquePalette[Byte.toUnsignedInt(cell)]) opaqueCells++;
+        }
+        return opaqueCells / (double) CELL_COUNT;
+    }
+
+    /**
+     * Axial plate rule: true when every 16x16 column along ANY axis contains a contiguous
+     * opaque run of at least {@code minRun} cells. Coverage requires ALL columns of the
+     * axis (a single empty column fails it), so hollow structures stay transparent: their
+     * empty columns break every axis, while a thin solid wall spanning the block seals its
+     * normal axis. One pass per axis, early exit, no allocation.
+     */
+    public boolean axialRunCovered(boolean[] opaquePalette, int minRun) {
+        return axisRunCovered(opaquePalette, minRun, 0)
+                || axisRunCovered(opaquePalette, minRun, 1)
+                || axisRunCovered(opaquePalette, minRun, 2);
+    }
+
+    private int sealedFaces(boolean[] opaquePalette) {
+        int sealed = 0;
+        if (isFaceSealed(0, opaquePalette)) sealed |= FACE_WEST;
+        if (isFaceSealed(1, opaquePalette)) sealed |= FACE_EAST;
+        if (isFaceSealed(2, opaquePalette)) sealed |= FACE_DOWN;
+        if (isFaceSealed(3, opaquePalette)) sealed |= FACE_UP;
+        if (isFaceSealed(4, opaquePalette)) sealed |= FACE_NORTH;
+        if (isFaceSealed(5, opaquePalette)) sealed |= FACE_SOUTH;
+        return sealed;
+    }
+
+    private boolean axisRunCovered(boolean[] opaquePalette, int minRun, int axis) {
+        for (int a = 0; a < RESOLUTION; a++) {
+            for (int b = 0; b < RESOLUTION; b++) {
+                int run = 0;
+                for (int c = 0; c < RESOLUTION; c++) {
+                    // Axis 0 walks X columns (y=a, z=b); axis 1 walks Y (x=a, z=b);
+                    // axis 2 walks Z (x=a, y=b).
+                    int x = axis == 0 ? c : a;
+                    int y = axis == 1 ? c : axis == 0 ? a : b;
+                    int z = axis == 2 ? c : b;
+                    if (opaquePalette[Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)])]) {
+                        if (++run >= minRun) break;
+                    } else {
+                        run = 0;
+                    }
+                }
+                if (run < minRun) return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isFaceSealed(int face, boolean[] opaquePalette) {
+        for (int a = 0; a < RESOLUTION; a++) {
+            for (int b = 0; b < RESOLUTION; b++) {
+                int x = face == 0 ? 0 : face == 1 ? RESOLUTION - 1 : a;
+                int y = face == 2 ? 0 : face == 3 ? RESOLUTION - 1 : face < 2 ? a : b;
+                int z = face == 4 ? 0 : face == 5 ? RESOLUTION - 1 : face < 2 ? b : a;
+                int materialIndex = Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)]);
+                if (materialIndex == 0 || !opaquePalette[materialIndex]) return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * Exposed emissive cells needed for full glow. A 4x4 emissive patch reads as a full
+     * light source; a lone cell glows dimly (see {@link #emissionLevel}).
+     */
+    public static final int FULL_GLOW_EXPOSED_CELLS = 16;
+
+    /**
+     * Bitmask of boundary faces whose every cell is occupied by an opaque material. The
+     * opacity predicate receives palette strings (never parsed here), keeping this pure and
+     * unit-testable; callers pass real blockstate checks. A fully sealed volume ({@code 63})
+     * blocks skylight and block light exactly like its solid vanilla counterpart.
+     */
+    public int sealedOpaqueFaces(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return sealedFaces(opaquePalette);
+    }
+
+    /**
+     * Counts emissive cells that can actually shine: occupied, with a positive emission value,
+     * and exposed to air through an empty 6-neighbour or the volume boundary. A torch bricked
+     * inside solid stone contributes nothing, fixing the "one torch lights the whole block"
+     * artifact at its root.
+     */
+    public int exposedEmissiveCount(java.util.function.ToIntFunction<String> emissionOf) {
+        int exposed = 0;
+        for (int cell = 0; cell < CELL_COUNT; cell++) {
+            int materialIndex = Byte.toUnsignedInt(cells[cell]);
+            if (materialIndex == 0) continue;
+            if (emissionOf.applyAsInt(palette.get(materialIndex)) <= 0) continue;
+            int x = cell & 15;
+            int y = (cell >>> 8) & 15;
+            int z = (cell >>> 4) & 15;
+            // Empty in-bounds neighbours first (occupied() is false outside bounds, hence
+            // the explicit inside() guard), then the volume boundary facing outside air.
+            boolean openNeighbour = (!occupied(x - 1, y, z) && inside(x - 1, y, z))
+                    || (!occupied(x + 1, y, z) && inside(x + 1, y, z))
+                    || (!occupied(x, y - 1, z) && inside(x, y - 1, z))
+                    || (!occupied(x, y + 1, z) && inside(x, y + 1, z))
+                    || (!occupied(x, y, z - 1) && inside(x, y, z - 1))
+                    || (!occupied(x, y, z + 1) && inside(x, y, z + 1));
+            boolean onBoundary = x == 0 || x == RESOLUTION - 1
+                    || y == 0 || y == RESOLUTION - 1
+                    || z == 0 || z == RESOLUTION - 1;
+            if (openNeighbour || onBoundary) {
+                exposed++;
+            }
+        }
+        return exposed;
+    }
+
+    /**
+     * Fractional block-light level for the whole 1x1x1 position. Scales the strongest exposed
+     * emission by coverage: a lone torch cell glows dimly, a 4x4 patch reads as a full source,
+     * buried sources stay dark. Returns 0 when nothing exposed shines.
+     */
+    public int emissionLevel(java.util.function.ToIntFunction<String> emissionOf) {
+        int strongest = 0;
+        for (int index = 1; index < palette.size(); index++) {
+            strongest = Math.max(strongest, emissionOf.applyAsInt(palette.get(index)));
+        }
+        if (strongest <= 0) return 0;
+        int exposed = exposedEmissiveCount(emissionOf);
+        if (exposed <= 0) return 0;
+        double coverage = Math.min(1.0, exposed / (double) FULL_GLOW_EXPOSED_CELLS);
+        return Math.max(1, (int) Math.round(strongest * (0.25 + 0.75 * coverage)));
+    }
+
+    /**
+     * Counts occupied cells. Used by harvest rules, empty-volume dematerialization
+     * and snapshot budgeting; linear scan is fine at 4096 cells.
+     */
     public int occupiedCount() {
         int count = 0;
         for (byte cell : cells) {
             if (cell != 0) count++;
         }
         return count;
-    }
-
-    public boolean hasOccupiedNeighbour(int cell) {
-        int x = x(cell);
-        int y = y(cell);
-        int z = z(cell);
-        return occupied(x - 1, y, z) || occupied(x + 1, y, z)
-                || occupied(x, y - 1, z) || occupied(x, y + 1, z)
-                || occupied(x, y, z - 1) || occupied(x, y, z + 1);
-    }
-
-    public boolean isUniformFull() {
-        int material = Byte.toUnsignedInt(cells[0]);
-        if (material == 0) return false;
-        for (byte cell : cells) {
-            if (Byte.toUnsignedInt(cell) != material) return false;
-        }
-        return true;
-    }
-
-    public String uniformMaterial() {
-        return isUniformFull() ? palette.get(Byte.toUnsignedInt(cells[0])) : null;
     }
 
     public List<Cuboid> collisionCuboids() {
@@ -278,7 +460,7 @@ public final class MicrovoxelVolume {
     }
 
     private void changed() {
-        revision = revision == Integer.MAX_VALUE ? 1 : revision + 1;
+        revision = MicrovoxelRevision.next(revision);
         collisionCuboids = null;
         collisionPlan = null;
     }

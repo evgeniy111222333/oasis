@@ -2,8 +2,16 @@ package ua.rp.chat.microvoxel;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.UUID;
 
-final class ServerMicrovoxelRaycaster {
+/**
+ * Authoritative micro-cell DDA raycaster. Mirrors the client traversal cell for cell (slab
+ * entry, up to 52 micro-steps, empty cavities stepped through, walk ends at unit-block exit),
+ * so every client-predicted cavity shot revalidates to the same cell on the server.
+ * Multi-block traversal is owned by {@link #castIndexed}, which walks whole blocks and keeps
+ * the nearest in-range volume hit.
+ */
+public final class ServerMicrovoxelRaycaster {
     private static final double EPSILON = 1.0E-7;
 
     private ServerMicrovoxelRaycaster() {
@@ -17,6 +25,62 @@ final class ServerMicrovoxelRaycaster {
             if (hit != null && (nearest == null || hit.distance < nearest.distance)) nearest = hit;
         }
         return nearest;
+    }
+
+    public static Hit castIndexed(UUID worldId, double ox, double oy, double oz,
+                           double dx, double dy, double dz, double maxDistance,
+                           VolumeLookup lookup) {
+        int blockX = (int) Math.floor(ox);
+        int blockY = (int) Math.floor(oy);
+        int blockZ = (int) Math.floor(oz);
+        int stepX = sign(dx);
+        int stepY = sign(dy);
+        int stepZ = sign(dz);
+        double tMaxX = firstBoundary(ox, dx, blockX, stepX);
+        double tMaxY = firstBoundary(oy, dy, blockY, stepY);
+        double tMaxZ = firstBoundary(oz, dz, blockZ, stepZ);
+        double tDeltaX = delta(dx);
+        double tDeltaY = delta(dy);
+        double tDeltaZ = delta(dz);
+
+        for (int steps = 0; steps < 64; steps++) {
+            MicrovoxelVolume volume = lookup.get(blockX, blockY, blockZ);
+            if (volume != null) {
+                MicrovoxelKey key = new MicrovoxelKey(worldId, blockX, blockY, blockZ);
+                Hit hit = castVolume(ox, oy, oz, dx, dy, dz, maxDistance, key, volume);
+                double nextBoundary = Math.min(tMaxX, Math.min(tMaxY, tMaxZ));
+                if (hit != null && hit.distance <= nextBoundary + EPSILON) return hit;
+            }
+            double next = Math.min(tMaxX, Math.min(tMaxY, tMaxZ));
+            if (next > maxDistance) break;
+            if (tMaxX <= next + EPSILON) {
+                blockX += stepX;
+                tMaxX += tDeltaX;
+            }
+            if (tMaxY <= next + EPSILON) {
+                blockY += stepY;
+                tMaxY += tDeltaY;
+            }
+            if (tMaxZ <= next + EPSILON) {
+                blockZ += stepZ;
+                tMaxZ += tDeltaZ;
+            }
+        }
+        return null;
+    }
+
+    private static int sign(double value) {
+        return value > EPSILON ? 1 : value < -EPSILON ? -1 : 0;
+    }
+
+    private static double delta(double direction) {
+        return Math.abs(direction) < EPSILON ? Double.POSITIVE_INFINITY : Math.abs(1.0 / direction);
+    }
+
+    private static double firstBoundary(double origin, double direction, int block, int step) {
+        if (step == 0) return Double.POSITIVE_INFINITY;
+        double boundary = step > 0 ? block + 1.0 : block;
+        return Math.max(0.0, (boundary - origin) / direction);
     }
 
     private static Hit castVolume(double ox, double oy, double oz, double dx, double dy, double dz,
@@ -52,7 +116,10 @@ final class ServerMicrovoxelRaycaster {
                 z += dz > 0 ? 1 : -1;
                 enteredFace = dz > 0 ? Face.NORTH : Face.SOUTH;
             }
-            if (!MicrovoxelVolume.inside(x, y, z)) break;
+            // Leaving the 16^3 lattice means leaving the unit block itself (straight ray
+            // through a convex box cannot re-enter). Empty cavities inside were already
+            // stepped through above; the block-level walk in castIndexed moves on next.
+            if (!MicrovoxelVolume.inside(x, y, z)) return null;
         }
         return null;
     }
@@ -100,7 +167,7 @@ final class ServerMicrovoxelRaycaster {
         return Math.max(0, Math.min(MicrovoxelVolume.RESOLUTION - 1, cell));
     }
 
-    enum Face {
+    public enum Face {
         DOWN(0, -1, 0), UP(0, 1, 0), NORTH(0, 0, -1), SOUTH(0, 0, 1), WEST(-1, 0, 0), EAST(1, 0, 0);
 
         private final int dx;
@@ -114,15 +181,15 @@ final class ServerMicrovoxelRaycaster {
         }
     }
 
-    record Hit(MicrovoxelKey key, int cell, Face face, double distance) {
-        int adjacentCell() {
+    public record Hit(MicrovoxelKey key, int cell, Face face, double distance) {
+        public int adjacentCell() {
             int x = MicrovoxelVolume.x(cell) + face.dx;
             int y = MicrovoxelVolume.y(cell) + face.dy;
             int z = MicrovoxelVolume.z(cell) + face.dz;
             return MicrovoxelVolume.inside(x, y, z) ? MicrovoxelVolume.index(x, y, z) : -1;
         }
 
-        AdjacentTarget adjacentTarget() {
+        public AdjacentTarget adjacentTarget() {
             int localX = MicrovoxelVolume.x(cell) + face.dx;
             int localY = MicrovoxelVolume.y(cell) + face.dy;
             int localZ = MicrovoxelVolume.z(cell) + face.dz;
@@ -138,7 +205,12 @@ final class ServerMicrovoxelRaycaster {
         }
     }
 
-    record AdjacentTarget(MicrovoxelKey key, int cell) {
+    public record AdjacentTarget(MicrovoxelKey key, int cell) {
+    }
+
+    @FunctionalInterface
+    public interface VolumeLookup {
+        MicrovoxelVolume get(int x, int y, int z);
     }
 
     private record Slab(double enter, double exit, Face face) {

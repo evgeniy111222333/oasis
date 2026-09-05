@@ -8,6 +8,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
@@ -20,6 +21,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import ua.rp.chat.projectile.ArrowImpactPhysics;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class CombatManager {
@@ -77,7 +79,9 @@ public class CombatManager {
         cooldowns.put(attacker.getUUID(), now + weapon.cooldownMs());
 
         CombatResult result = resolve(attacker, victim, weapon, zone, intent);
-        playResult(result);
+        ArrowImpactPhysics.Result projectileImpact =
+                plugin.getStaminaManager().resolveProjectileImpact(victim, source, zone.ordinal());
+        playResult(result, source.getDirectEntity(), projectileImpact);
         return true;
     }
 
@@ -118,7 +122,8 @@ public class CombatManager {
                 healthDamage, medicalDamage, hitRatio, lateral, meLine, doLine);
     }
 
-    private void playResult(CombatResult result) {
+    private void playResult(CombatResult result, Entity directDamager,
+                            ArrowImpactPhysics.Result projectileImpact) {
         if (isDebugViewer(result.attacker())) {
             plugin.getRpChatService().sendSystemLocal(
                     result.attacker(),
@@ -140,16 +145,21 @@ public class CombatManager {
         }
 
         plugin.getRpChatService().sendDescription(result.victim(), result.doLine());
+        Vec3 incoming = directDamager instanceof AbstractArrow arrow
+                && arrow.getDeltaMovement().lengthSqr() > 1.0e-6
+                ? arrow.getDeltaMovement().normalize()
+                : result.victim().getBoundingBox().getCenter()
+                .subtract(result.attacker().getBoundingBox().getCenter()).normalize();
         plugin.getStaminaManager().applyCombatInjury(
                 result.victim(),
                 result.zone(),
                 result.medicalDamage(),
                 result.healthDamage(),
                 result.weapon().damageProfile(),
-                result.victim().getBoundingBox().getCenter()
-                        .subtract(result.attacker().getBoundingBox().getCenter()).normalize(),
+                incoming,
                 result.hitRatio(),
-                result.lateral()
+                result.lateral(),
+                projectileImpact
         );
     }
 

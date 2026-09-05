@@ -230,6 +230,7 @@ public class AuthManager {
                 RPChat.teleport(player, original.level(), original.x(), original.y(), original.z(), original.yaw(), original.pitch());
             }
 
+            plugin.getMicrovoxelManager().onAuthenticationComplete(player);
             sendWelcomeTitle(player);
         });
     }

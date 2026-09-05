@@ -21,6 +21,53 @@ combat:
   enabled: true
 
 # ==========================================
+#           Microvoxel Mining
+# ==========================================
+microvoxels:
+  mining:
+    # Time multiplier for per-cell mining (1.0 = vanilla formula).
+    multiplier: 1.0
+    # true = wrong tool stops mining entirely; false = honest vanilla (slow + no refund).
+    wrong-tool-blocks: false
+  fluid:
+    # Voxel fluid budgets, live-reloaded every minute (/rpreload applies immediately).
+    max-volumes-per-tick: 24
+    max-outflow-placements: 8
+    max-particles: 8
+    equalize-budget: 512
+    inflow-topup: 64
+    drain-per-cell: 4
+    seep-budget: 64
+    sync-throttle-ticks: 20
+    lateral-budget: 512
+
+
+# ==========================================
+#           Carver Drafting
+# ==========================================
+carver:
+  # Block reach for scroll targeting.
+  reach: 6.25
+  # Design session TTL in seconds before the draft dissolves.
+  design-timeout-seconds: 300
+  # Cells accepted in one stroke packet.
+  max-stroke-cells: 512
+  # Cells accepted in one box-select packet (the whole volume).
+  max-box-cells: 4096
+  # Moving farther cancels work; leaving the design radius cancels design.
+  work-leash-blocks: 1.5
+  design-leash-blocks: 6.0
+  # Dust/sound heartbeat during simulated work, in ticks.
+  work-fx-interval-ticks: 10
+  # Arm-swing animation heartbeat during work, in ticks.
+  work-swing-interval-ticks: 20
+  # Master loudness of work sounds (0.0-1.0).
+  work-sound-volume: 0.8
+  # Instrumental overlay layer (shears on wool, axe on wood).
+  work-sound-snip-layer: true
+
+
+# ==========================================
 #             Web Auth Settings
 # ==========================================
 web:

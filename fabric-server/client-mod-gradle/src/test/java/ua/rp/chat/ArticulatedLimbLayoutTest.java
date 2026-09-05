@@ -63,11 +63,30 @@ public final class ArticulatedLimbLayoutTest {
                 ArticulatedLimbLayout.forearmYForTwoHandedGrip(-0.64f));
 
         assertClose("wearable Y growth", 0.0f, ArticulatedLimbLayout.OUTER_LAYER_GROW_Y);
+        assertClose("shoulder cover buries the raised joint", 0.5f,
+                ArticulatedLimbLayout.SHOULDER_COVER);
+        assertClose("base cover stays inside the sleeve cover", 0.25f,
+                ArticulatedLimbLayout.BASE_SHOULDER_COVER);
+        assertTrue("sleeve cover exceeds base cover",
+                ArticulatedLimbLayout.SHOULDER_COVER > ArticulatedLimbLayout.BASE_SHOULDER_COVER);
+        assertClose("hip cover buries the thigh tops", 0.25f,
+                ArticulatedLimbLayout.HIP_COVER);
+        assertClose("cuff step pulls trim off the end plane", 0.25f,
+                ArticulatedLimbLayout.WRIST_SHORTEN);
+        assertClose("sleeve ends short of the hand",
+                ArticulatedLimbLayout.armLowerHeight() - ArticulatedLimbLayout.WRIST_SHORTEN,
+                5.5f);
+        assertClose("uv inset pulls inside the texel", 0.75f - 0.0005f,
+                ArticulatedLimbLayout.insetUv(0.75f, 0.0f, 1.0f));
+        assertClose("uv inset pulls down from the top edge", 1.0f - 0.0005f,
+                ArticulatedLimbLayout.insetUv(1.0f, 0.0f, 1.0f));
+        assertClose("uv inset is identity on degenerate spans", 0.3f,
+                ArticulatedLimbLayout.insetUv(0.3f, 0.5f, 0.5f));
         assertClose("original end-cap V shift", -6.0f / 64.0f,
                 ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.ORIGINAL_CAP_V_SHIFT_PIXELS));
-        assertClose("hand top cap samples upper forearm side", 4.0f / 64.0f,
+        assertClose("hand top cap returns to canonical cap strip", -6.0f / 64.0f,
                 ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.HAND_TOP_CAP_V_SHIFT_PIXELS));
-        assertClose("hand bottom cap samples lower hand side", 6.0f / 64.0f,
+        assertClose("hand bottom cap returns to canonical cap strip", -6.0f / 64.0f,
                 ArticulatedLimbLayout.normalizedVShift(ArticulatedLimbLayout.HAND_BOTTOM_CAP_V_SHIFT_PIXELS));
         assertTrue("right arm end cap returns to its original texture row",
                 ArticulatedLimbLayout.correctedLowerEndCapRow(16 + 6) == 16);

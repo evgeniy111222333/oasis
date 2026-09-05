@@ -4,7 +4,9 @@ import net.fabricmc.fabric.api.client.particle.v1.FabricSpriteSet;
 import net.fabricmc.fabric.api.client.particle.v1.ParticleProviderRegistry;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.RandomSource;
+import ua.rp.chat.blood.BloodFxRules;
 import ua.rp.chat.blood.BloodParticleTypes;
+import ua.rp.chat.blood.FootprintRules;
 
 final class BloodParticleSprites {
     private static volatile FabricSpriteSet drops;
@@ -38,11 +40,20 @@ final class BloodParticleSprites {
     }
 
     static TextureAtlasSprite drop(long seed) {
-        return pick(drops, seed, 0);
+        return pick(drops, seed, -1);
     }
 
-    static TextureAtlasSprite decal(long seed, int preferred) {
-        return pick(decals, seed, preferred);
+    static TextureAtlasSprite decal(long seed, int family, int stage) {
+        int safeFamily = Math.floorMod(family, BloodFxRules.DECAL_FAMILY_COUNT);
+        int safeStage = Math.max(0, Math.min(BloodFxRules.DECAL_STAGE_COUNT - 1, stage));
+        return pick(decals, seed, safeFamily * BloodFxRules.DECAL_STAGE_COUNT + safeStage);
+    }
+
+    static TextureAtlasSprite footprint(int family, int stage) {
+        int safeFamily = Math.floorMod(family, 2 * FootprintRules.VARIANTS_PER_FOOT);
+        int safeStage = Math.max(0, Math.min(FootprintRules.STAGES - 1, stage));
+        return pick(decals, 0L, BloodFxRules.DECAL_SPRITE_COUNT
+                + safeFamily * FootprintRules.STAGES + safeStage);
     }
 
     static TextureAtlasSprite wound(long seed, int preferred) {

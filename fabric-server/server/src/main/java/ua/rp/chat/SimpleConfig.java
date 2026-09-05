@@ -94,6 +94,16 @@ public class SimpleConfig {
         }
     }
 
+    public double getDouble(String path, double def) {
+        String val = values.get(path);
+        if (val == null) return def;
+        try {
+            return Double.parseDouble(val);
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
     public boolean getBoolean(String path, boolean def) {
         String val = values.get(path);
         if (val == null) return def;
