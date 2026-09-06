@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "channel": "production",
+  "brand": "Eclipse RolePlay",
+  "generatedAt": "2026-09-06T20:33:04.102288Z",
+  "release": {
+    "id": "20260906-203259",
+    "published": true,
+    "publishedAt": "2026-09-06T20:32:59.339992Z",
+    "title": "Карвер: зеркальная стойка и мертвый курсор (Contract)",
+    "summary": "Окно контракта 0.5 блока / 25 градусов, стойка зеркалится под бок удара, колени читают пол, курсор мертв с пробела до конца работы, поза видна всегда.",
+    "notes": [
+      "Контракт автопилот-стойка: окно апрува полблока и 25 градусов, торс 34 градуса всегда перекрывает остаток — крутиться нечему",
+      "Zero-tick fast path: уже стоишь в окне — работа начинается мгновенно без ходьбы",
+      "Зеркальная стойка: контакт слева — левая впереди, справа — правая, центр до 15 градусов симметрично; руки не трогаем",
+      "Пол под ногами: точная высота по коллизии (плиты, ступени, тропинки), колено uphill гнется, таз оседает; семпл один раз на старте",
+      "Курсор мертв с пробела: снап взгляда на контакт, блок мыши до конца процесса, тангаж тоже ведется",
+      "Поза всегда: падение взгляда строго вниз больше не гасит руки, голову и стойку; наблюдатели видят то же",
+      "Глушение прыжка при закрытии чертежа и на старте работы"
+    ],
+    "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
+    "successMessage": "Обновление загружено и установлено."
+  },
+  "launcher": {
+    "name": "Eclipse-RolePlay-Launcher-Setup-1.0.22.exe",
+    "path": "launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.22.exe",
+    "url": "https://dist.eclipse-roleplay.online/launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.22.exe",
+    "size": 80290470,
+    "sha1": "1d118970f94ce9f15a9cde41679ab7af9faaac09",
+    "sha256": "a1030e716d346486af8cd34117d0da12d9ae7a889701b6531dec270bfa9bac57",
+    "version": "1.0.22",
+    "productName": "Eclipse RolePlay Launcher"
+  },
+  "client": {
+    "gameVersion": "26.1.2",
+    "baseUrl": "https://dist.eclipse-roleplay.online/client",
+    "profile": {
+      "name": "26.1.2.json",
+      "path": "versions/26.1.2/26.1.2.json",
+      "url": "https://dist.eclipse-roleplay.online/client/versions/26.1.2/26.1.2.json?sha256=f40b3fa02b803a2904dc3c6f310b81973d3697b5215dbaab8198140dd26c71ba",
+      "size": 133548,
+      "sha1": "b4b02d8cba35c5a38da59b654d9cdc8f83970ab3",
+      "sha256": "f40b3fa02b803a2904dc3c6f310b81973d3697b5215dbaab8198140dd26c71ba"
+    },
+    "mods": [
+      {
+        "name": "eclipse-client-1.5.23.jar",
+        "path": "mods/eclipse-client-1.5.23.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.23.jar?sha256=7a2ba92e28b9c1871ed676aaa92a285ba9463bad614c1005c037542c990b5106",
+        "size": 2961672,
+        "sha1": "a8e423fd447762d61d1d093f5790ee21fab2d3f2",
+        "sha256": "7a2ba92e28b9c1871ed676aaa92a285ba9463bad614c1005c037542c990b5106"
+      },
+      {
+        "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "path": "mods/mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar?sha256=566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964",
+        "size": 453664,
+        "sha1": "3168366b5cfce5302a53635674dcee443bb7eeca",
+        "sha256": "566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964"
+      },
+      {
+        "name": "fabric-api-0.153.0+26.1.2.jar",
+        "path": "mods/fabric-api-0.153.0+26.1.2.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/fabric-api-0.153.0+26.1.2.jar?sha256=2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c",
+        "size": 2504357,
+        "sha1": "5d984764e54f1f1db397d3f76429a0f15e591845",
+        "sha256": "2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c"
+      },
+      {
+        "name": "fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "path": "mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar?sha256=36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832",
+        "size": 8076848,
+        "sha1": "2bc17bb4275cc70a12e4ac35d139a71a30845720",
+        "sha256": "36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832"
+      },
+      {
+        "name": "yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "path": "mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar?sha256=836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41",
+        "size": 1121083,
+        "sha1": "dd0b7f266eced755bb48d5213df309f07d71de5b",
+        "sha256": "836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41"
+      },
+      {
+        "name": "sodium-fabric-0.8.12+mc26.1.2.jar",
+        "path": "mods/sodium-fabric-0.8.12+mc26.1.2.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/sodium-fabric-0.8.12+mc26.1.2.jar?sha256=e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df",
+        "size": 1844226,
+        "sha1": "cd6c6236f0dcff03c7148414db220de32c934b5a",
+        "sha256": "e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df"
+      },
+      {
+        "name": "iris-fabric-1.10.9+mc26.1.1.jar",
+        "path": "mods/iris-fabric-1.10.9+mc26.1.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/iris-fabric-1.10.9+mc26.1.1.jar?sha256=aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07",
+        "size": 2803860,
+        "sha1": "c30e04509a1b284372cb9037b07714d4223ae91a",
+        "sha256": "aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07"
+      },
+      {
+        "name": "zoomify-2.16.1+26.1.jar",
+        "path": "mods/zoomify-2.16.1+26.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/zoomify-2.16.1+26.1.jar?sha256=944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a",
+        "size": 561967,
+        "sha1": "c180ae8cf90da1abd67c26b5c5e7bf5d795c3b1d",
+        "sha256": "944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a"
+      },
+      {
+        "name": "entity_texture_features_26.1-fabric-7.1.jar",
+        "path": "mods/entity_texture_features_26.1-fabric-7.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/entity_texture_features_26.1-fabric-7.1.jar?sha256=7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4",
+        "size": 740706,
+        "sha1": "ff6284b53ad23e06bc082d1e05e8828e47455126",
+        "sha256": "7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4"
+      },
+      {
+        "name": "entity_model_features-3.2.4-26.1-fabric.jar",
+        "path": "mods/entity_model_features-3.2.4-26.1-fabric.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/entity_model_features-3.2.4-26.1-fabric.jar?sha256=07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8",
+        "size": 577617,
+        "sha1": "7a43e5c92b87e360bfa0156870f2097549e3732d",
+        "sha256": "07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8"
+      },
+      {
+        "name": "Axiom-5.4.2-for-MC26.1.jar",
+        "path": "mods/Axiom-5.4.2-for-MC26.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/Axiom-5.4.2-for-MC26.1.jar?sha256=e49aefae000aeb9393f25e7b668479c30d75bdbc6aab00f0e2c9754adcf4f116",
+        "size": 46821470,
+        "sha1": "5d89bb35ca5f73f40dd7dfc9ef6764916b89689f",
+        "sha256": "e49aefae000aeb9393f25e7b668479c30d75bdbc6aab00f0e2c9754adcf4f116",
+        "optional": true,
+        "preferenceKey": "axiom",
+        "modId": "axiom",
+        "displayName": "Axiom",
+        "version": "5.4.2",
+        "category": "Строительство",
+        "description": "Профессиональные инструменты редактирования и строительства мира.",
+        "icon": "fa-wand-magic-sparkles",
+        "defaultEnabled": false
+      }
+    ]
+  }
+}
