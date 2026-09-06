@@ -478,6 +478,19 @@ public class CarverDesignScreen extends Screen {
 
     private final DraftMask latched = new DraftMask();
 
+    /**
+     * Live preview of the unflushed input: the current stroke plus latched cells.
+     * Read-only snapshot for the overlay; the authoritative draft stays untouched
+     * until flush.
+     */
+    public static DraftMask livePreviewMask() {
+        Minecraft live = Minecraft.getInstance();
+        if (!(live.screen instanceof CarverDesignScreen screen)) return new DraftMask();
+        DraftMask preview = screen.stroke.copy();
+        preview.orIn(screen.latched);
+        return preview;
+    }
+
     private void paintLatched() {
         if (stroke.isEmpty()) return;
         latched.orIn(stroke);

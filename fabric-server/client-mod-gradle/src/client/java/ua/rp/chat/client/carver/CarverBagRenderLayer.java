@@ -73,6 +73,39 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
         return -1.0;
     }
 
+    private static double strikeCycle(Player player, Minecraft client, double workTicks) {
+        try {
+            int total;
+            if (player == client.player) {
+                total = Math.max(1, CarverClientState.workTotalTicks());
+            } else {
+                CarverClientState.ObservedWork observed =
+                        CarverClientState.observedWork(player.getUUID());
+                if (observed == null) return 0.0;
+                total = Math.max(1, observed.totalTicks());
+            }
+            return ua.rp.chat.carver.CarverWorkStroke.cycleOf(workTicks, total);
+        } catch (RuntimeException unreadable) {
+            return 0.0;
+        }
+    }
+
+    private static double strikeLift(Player player, Minecraft client, double workTicks) {
+        try {
+            return ua.rp.chat.carver.CarverWorkStroke.lift(strikeCycle(player, client, workTicks));
+        } catch (RuntimeException unreadable) {
+            return 0.0;
+        }
+    }
+
+    private static double strikeContact(Player player, Minecraft client, double workTicks) {
+        try {
+            return ua.rp.chat.carver.CarverWorkStroke.contact(strikeCycle(player, client, workTicks));
+        } catch (RuntimeException unreadable) {
+            return 0.0;
+        }
+    }
+
     @Override
     public void submit(PoseStack stack, SubmitNodeCollector collector, int light,
                        AvatarRenderState state, float yRot, float xRot) {
@@ -136,10 +169,12 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
             if (leftToolRender != null && !leftToolRender.isEmpty()) {
                 stack.pushPose();
                 try {
+                    double contact = strikeContact(player, client, workTicks);
                     getParentModel().translateToHand(state, HumanoidArm.LEFT, stack);
-                    stack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(-90.0f));
+                    stack.mulPose(com.mojang.math.Axis.XP.rotationDegrees((float) (-90.0f + contact * 8.0f)));
                     stack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180.0f));
-                    stack.translate(-1.0f / 16.0f, 2.0f / 16.0f, -10.0f / 16.0f);
+                    stack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(180.0f));
+                    stack.translate(-1.3f / 16.0f, 2.0f / 16.0f, -10.0f / 16.0f);
                     leftToolRender.submit(stack, collector, light, 0, state.outlineColor);
                 } catch (RuntimeException unreadable) {
                 } finally {
@@ -161,10 +196,13 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
             if (rightToolRender != null && !rightToolRender.isEmpty()) {
                 stack.pushPose();
                 try {
+                    double lift = strikeLift(player, client, workTicks);
+                    double contact = strikeContact(player, client, workTicks);
                     getParentModel().translateToHand(state, HumanoidArm.RIGHT, stack);
-                    stack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(-90.0f));
+                    stack.mulPose(com.mojang.math.Axis.XP.rotationDegrees((float) (-90.0f - lift * 55.0f + contact * 14.0f)));
                     stack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180.0f));
-                    stack.translate(1.0f / 16.0f, 2.0f / 16.0f, -10.0f / 16.0f);
+                    stack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(180.0f));
+                    stack.translate(1.3f / 16.0f, (float) (2.0f / 16.0f + lift * 4.0f / 16.0f), -10.0f / 16.0f);
                     rightToolRender.submit(stack, collector, light, 0, state.outlineColor);
                 } catch (RuntimeException unreadable) {
                 } finally {

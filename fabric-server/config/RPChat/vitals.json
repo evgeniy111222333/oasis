@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1784818121783,
+  "savedAt": 1788725856915,
   "players": {
     "85307a7e-3cf5-39fe-98e5-639b63a71759": {
       "stamina": 100.0,
@@ -36,7 +36,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "chest": {
           "condition": 100.0,
@@ -62,7 +63,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "leftArm": {
           "condition": 100.0,
@@ -88,7 +90,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "rightArm": {
           "condition": 100.0,
@@ -114,7 +117,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "leftLeg": {
           "condition": 53.2,
@@ -140,7 +144,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "rightLeg": {
           "condition": 100.0,
@@ -166,7 +171,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         }
       }
     },
@@ -175,9 +181,9 @@
       "breathDebt": 0.0,
       "fatigue": 0.0,
       "blood": 100.0,
-      "lastDamage": 1.5831590665786556E-39,
-      "lastDamageCause": "fall",
-      "ticks": 18085,
+      "lastDamage": 0.0,
+      "lastDamageCause": "",
+      "ticks": 375332,
       "unconsciousTicks": 0,
       "parts": {
         "head": {
@@ -204,10 +210,11 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "chest": {
-          "condition": 92.575,
+          "condition": 100.0,
           "bleeding": 0.0,
           "pain": 0.0,
           "burn": 0.0,
@@ -224,13 +231,14 @@
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Ушиб",
-          "lastCause": "blunt",
+          "injury": "Немає",
+          "lastCause": "",
           "woundSide": 0.0,
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "leftArm": {
           "condition": 100.0,
@@ -256,7 +264,8 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "rightArm": {
           "condition": 100.0,
@@ -282,10 +291,11 @@
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "leftLeg": {
-          "condition": 76.6,
+          "condition": 100.0,
           "bleeding": 0.0,
           "pain": 0.0,
           "burn": 0.0,
@@ -302,16 +312,17 @@
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Падение",
-          "lastCause": "fall",
+          "injury": "Немає",
+          "lastCause": "",
           "woundSide": 0.0,
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         },
         "rightLeg": {
-          "condition": 53.2,
+          "condition": 100.0,
           "bleeding": 0.0,
           "pain": 0.0,
           "burn": 0.0,
@@ -328,13 +339,14 @@
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Падение",
-          "lastCause": "fall",
+          "injury": "Немає",
+          "lastCause": "",
           "woundSide": 0.0,
           "woundHeight": 0.5,
           "woundIntensity": 0.0,
           "woundSeed": 0,
-          "woundProfile": -1
+          "woundProfile": -1,
+          "wounds": []
         }
       }
     }

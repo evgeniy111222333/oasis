@@ -25,6 +25,16 @@ public final class CarverPerfLog {
     private static long mergeCount;
     private static long mergeTotalNanos;
     private static long mergeMaxNanos;
+    private static long poseCount;
+    private static long poseTotalNanos;
+    private static long poseMaxNanos;
+    /** Strike-alignment session stats, printed as one row when work ends. */
+    private static long sasSettleTicks;
+    private static double sasSettleYawErr;
+    private static double sasSettlePosErr;
+    private static long sasImpacts;
+    private static double sasMissMaxCm;
+    private static double sasMissTotalCm;
 
     /** Logs the first chalk frame of the session: the overlay hook is alive. */
     public static void chalkAlive() {
@@ -44,6 +54,10 @@ public final class CarverPerfLog {
         mergeCount = 0;
         mergeTotalNanos = 0;
         mergeMaxNanos = 0;
+        poseCount = 0;
+        poseTotalNanos = 0;
+        poseMaxNanos = 0;
+        resetSas();
     }
 
     /** Logs one entry stage with its own cost and the running total. */
@@ -108,6 +122,68 @@ public final class CarverPerfLog {
         mergeCount = 0;
         mergeTotalNanos = 0;
         mergeMaxNanos = 0;
+        poseCount = 0;
+        poseTotalNanos = 0;
+        poseMaxNanos = 0;
+        resetSas();
+    }
+
+    /** Accumulates one pose-solve sample (tick-rate cache misses only). */
+    public static void pose(long nanos) {
+        if (!CarverClientState.inSession()) return;
+        poseCount++;
+        poseTotalNanos += nanos;
+        if (nanos > poseMaxNanos) poseMaxNanos = nanos;
+    }
+
+    /** Records the settle outcome of one autowalk approach. */
+    public static void sasSettle(int ticks, double yawErrDeg, double posErr) {
+        sasSettleTicks = ticks;
+        sasSettleYawErr = yawErrDeg;
+        sasSettlePosErr = posErr;
+    }
+
+    /** Records one hammer-to-contact miss measurement in centimeters. */
+    public static void sasMiss(double missCm) {
+        if (!(missCm >= 0.0)) return;
+        sasImpacts++;
+        sasMissTotalCm += missCm;
+        if (missCm > sasMissMaxCm) sasMissMaxCm = missCm;
+    }
+
+    /** Counts an impact that carried no measurable butt (far LOD, fallback pose). */
+    public static void noteImpact() {
+        sasImpacts++;
+    }
+
+    /**
+     * Prints the strike-alignment summary row when work ends: settle cost, impact
+     * count and butt-to-contact miss. Read it after one carving: a growing miss
+     * pins a stance/trajectory regression, a growing settle pins the walk.
+     */
+    public static void endWorkSession() {
+        if (sasImpacts == 0 && sasSettleTicks == 0 && poseCount == 0) return;
+        double poseAvgUs = poseCount == 0 ? 0.0 : poseTotalNanos / 1000.0 / poseCount;
+        double poseMaxUs = poseMaxNanos / 1000.0;
+        double missAvg = sasImpacts == 0 ? 0.0 : sasMissTotalCm / sasImpacts;
+        log(String.format(java.util.Locale.ROOT,
+                "sas settle=%d ticks yawErr=%.1f deg posErr=%.2f | impacts=%d missAvg=%.2fcm missMax=%.2fcm | pose x%d avg=%.1fus max=%.1fus",
+                sasSettleTicks, sasSettleYawErr, sasSettlePosErr,
+                sasImpacts, missAvg, sasMissMaxCm,
+                poseCount, poseAvgUs, poseMaxUs));
+        resetSas();
+        poseCount = 0;
+        poseTotalNanos = 0;
+        poseMaxNanos = 0;
+    }
+
+    private static void resetSas() {
+        sasSettleTicks = 0;
+        sasSettleYawErr = 0.0;
+        sasSettlePosErr = 0.0;
+        sasImpacts = 0;
+        sasMissMaxCm = 0.0;
+        sasMissTotalCm = 0.0;
     }
 
     private static void log(String message) {

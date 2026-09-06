@@ -220,7 +220,14 @@ public class PlayerModelMixin {
         if (focus == null) {
             return;
         }
-        eclipse$poseWorkHands(model, player, focus, smooth, totalTicks, local);
+        double breathPhase;
+        try {
+            breathPhase = ua.rp.chat.client.render.BreathingPoseState.sample(state)
+                    .respiration().phase();
+        } catch (RuntimeException unavailable) {
+            breathPhase = (smooth * 0.05 / 2.5) % 1.0;
+        }
+        eclipse$poseWorkHands(model, player, focus, smooth, totalTicks, local, breathPhase);
     }
 
     /**
@@ -233,11 +240,25 @@ public class PlayerModelMixin {
     @Unique
     private void eclipse$poseWorkHands(PlayerModel model, Player player,
                                        net.minecraft.core.BlockPos focus,
-                                       double smoothTicks, int totalTicks, boolean local) {
+                                       double smoothTicks, int totalTicks, boolean local,
+                                       double breathPhase) {
         net.minecraft.world.phys.Vec3 eye = player.getEyePosition();
-        double dx = focus.getX() + 0.5 - eye.x;
-        double dy = focus.getY() + 0.6 - eye.y;
-        double dz = focus.getZ() + 0.5 - eye.z;
+        double[] strikePoint = null;
+        ua.rp.chat.carver.CarverStrikeAlign.StrikePlan strikePlan = null;
+        if (local) {
+            try {
+                strikePlan = ua.rp.chat.client.carver.CarverClientState.cachedStrikePlan();
+                if (strikePlan != null) {
+                    strikePoint = new double[]{strikePlan.contactX(), strikePlan.contactY(), strikePlan.contactZ()};
+                }
+            } catch (RuntimeException unavailable) {
+                strikePoint = null;
+                strikePlan = null;
+            }
+        }
+        double dx = (strikePoint == null ? focus.getX() + 0.5 : strikePoint[0]) - eye.x;
+        double dy = (strikePoint == null ? focus.getY() + 0.6 : strikePoint[1]) - eye.y;
+        double dz = (strikePoint == null ? focus.getZ() + 0.5 : strikePoint[2]) - eye.z;
         double horizontal = Math.sqrt(dx * dx + dz * dz);
         if (!(horizontal > 1.0e-6)) {
             return;
@@ -246,8 +267,42 @@ public class PlayerModelMixin {
         double lift = ua.rp.chat.carver.CarverWorkStroke.lift(cycle);
         double contact = ua.rp.chat.carver.CarverWorkStroke.contact(cycle);
         int strikeIndex = ua.rp.chat.carver.CarverWorkStroke.strikeIndex(smoothTicks, totalTicks);
+        ua.rp.chat.client.carver.CarverWorkPoseCache.Pose ik = null;
+        float partial = 1.0f;
+        try {
+            partial = ua.rp.chat.client.carver.CarverClientState.tickPartial();
+        } catch (RuntimeException unavailable) {
+            partial = 1.0f;
+        }
+        if (smoothTicks >= 30.0) {
+            try {
+                if (local) {
+                    if (strikePlan != null) {
+                        ik = ua.rp.chat.client.carver.CarverWorkPoseCache.renderPlan(
+                                player, focus, strikePlan, smoothTicks, totalTicks, partial);
+                    }
+                } else {
+                    ua.rp.chat.client.carver.CarverClientState.ObservedWork observed =
+                            ua.rp.chat.client.carver.CarverClientState.observedWork(player.getUUID());
+                    if (observed != null) {
+                        double distSq = distSqToLocal(eye);
+                        ik = ua.rp.chat.client.carver.CarverWorkPoseCache.renderObserved(
+                                player, focus, observed.contact(), smoothTicks, totalTicks,
+                                partial, distSq);
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                ik = null;
+            }
+        }
         if (local && smoothTicks >= 28.0) {
-            eclipse$fireWorkAccent(player, focus, strikeIndex);
+            net.minecraft.world.phys.Vec3 at = strikePoint == null
+                    ? new net.minecraft.world.phys.Vec3(
+                            focus.getX() + 0.5, focus.getY() + 0.9, focus.getZ() + 0.5)
+                    : new net.minecraft.world.phys.Vec3(strikePoint[0], strikePoint[1], strikePoint[2]);
+            float topness = strikePlan == null ? 1.0f : (float) strikePlan.normalY();
+            ua.rp.chat.client.carver.CarverImpactFx.tickFire(player, focus, at,
+                    ik == null ? null : ik.butt(), strikeIndex, contact, topness);
         }
 
         // Aim angles for planted shoulders at workpiece
@@ -280,13 +335,23 @@ public class PlayerModelMixin {
             if (forearmLeft != null) {
                 forearmLeft.xRot = (float) (-0.45 + s * (-0.95f - (-0.45)));
             }
+        } else if (ik != null) {
+            model.leftArm.xRot = ik.leftPitch();
+            model.leftArm.yRot = 0.18f + ik.leftYaw();
+            model.leftArm.zRot = 0.1f;
+            if (forearmLeft != null) {
+                float shiver = (float) (Math.sin(smoothTicks * 3.1) * 0.035 * (0.3 + 0.7 * contact)
+                        + Math.sin(smoothTicks * 7.3) * 0.012 * contact);
+                forearmLeft.xRot = -ik.leftElbow() + shiver - (float) (contact * 0.12);
+            }
         } else {
             model.leftArm.xRot = targetAim;
             model.leftArm.yRot = 0.18f;
             model.leftArm.zRot = 0.1f;
             if (forearmLeft != null) {
-                float shiver = (float) (Math.sin(smoothTicks * 3.1) * 0.03 * (0.3 + 0.7 * contact));
-                forearmLeft.xRot = -0.95f + shiver;
+                float shiver = (float) (Math.sin(smoothTicks * 3.1) * 0.035 * (0.3 + 0.7 * contact)
+                        + Math.sin(smoothTicks * 7.3) * 0.012 * contact);
+                forearmLeft.xRot = -0.95f + shiver - (float) (contact * 0.12);
             }
         }
 
@@ -321,14 +386,25 @@ public class PlayerModelMixin {
             if (forearmRight != null) {
                 forearmRight.xRot = (float) (-0.45 + s * (-0.55f - (-0.45)));
             }
+        } else if (ik != null) {
+            float snap = (float) (contact * 0.28);
+            model.rightArm.xRot = ik.rightPitch() - (float) (lift * 0.35) + snap;
+            model.rightArm.yRot = -0.18f + ik.rightYaw();
+            model.rightArm.zRot = -0.1f;
+            if (forearmRight != null) {
+                forearmRight.xRot = (float) (-ik.rightElbow() - lift * 0.9 + contact * 0.3);
+            } else {
+                model.rightArm.xRot = ik.rightPitch() - (float) (lift * 0.7) + snap;
+            }
         } else {
-            model.rightArm.xRot = targetAim - 0.15f;
+            float snap = (float) (contact * 0.28);
+            model.rightArm.xRot = targetAim - 0.15f - (float) (lift * 0.55) + snap;
             model.rightArm.yRot = -0.18f;
             model.rightArm.zRot = -0.1f;
             if (forearmRight != null) {
-                forearmRight.xRot = (float) (-0.55 - lift * 0.85);
+                forearmRight.xRot = (float) (-0.35 - lift * 1.4 + contact * 0.3);
             } else {
-                model.rightArm.xRot = targetAim - 0.15f - (float) (lift * 0.9);
+                model.rightArm.xRot = targetAim - 0.15f - (float) (lift * 1.1) + snap;
             }
         }
 
@@ -340,44 +416,179 @@ public class PlayerModelMixin {
         model.leftArm.y -= dip;
         model.rightArm.y -= dip;
 
-        // Head tracks the contact point.
-        float targetYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        float headYaw = targetYaw - player.getYRot();
-        while (headYaw > 180.0f) headYaw -= 360.0f;
-        while (headYaw < -180.0f) headYaw += 360.0f;
-        model.head.yRot = headYaw * (float) (Math.PI / 180.0) * 0.8f;
-        model.head.xRot = Math.max(-0.5f, Math.min(0.7f,
-                (float) Math.atan2(eye.y - (focus.getY() + 0.6), horizontal)));
+        // Working stance: without this the torso and legs keep vanilla (entity yaw
+        // plus idle legs) while arms and head aim at the contact in world space, so
+        // any entity-yaw error reads as "body stands elsewhere". Turn the chest
+        // toward the strike and plant the feet; limbs are siblings of the body part,
+        // never children, so this cannot drag hands or gaze off target. Skipped for
+        // the local first-person dummy body, which has its own pose upstream.
+        boolean skipStance = false;
+        try {
+            Minecraft stanceClient = Minecraft.getInstance();
+            skipStance = local && stanceClient != null && stanceClient.options != null
+                    && stanceClient.options.getCameraType().isFirstPerson();
+        } catch (RuntimeException unavailable) {
+            skipStance = false;
+        }
+        if (!skipStance && horizontal > 1.0e-6) {
+            double worldYaw = Math.toDegrees(Math.atan2(-dx, dz));
+            double turn = ua.rp.chat.carver.CarverWorkStance.bodyTurn(worldYaw, player.getYRot());
+            double entry = ua.rp.chat.carver.CarverGazeMath.entryBlend(smoothTicks);
+            model.body.yRot += (float) (turn * entry);
+            ua.rp.chat.carver.CarverWorkStance.LegStance stance =
+                    ua.rp.chat.carver.CarverWorkStance.blended(entry);
+            model.leftLeg.xRot = stance.leftPitch();
+            model.rightLeg.xRot = stance.rightPitch();
+            model.leftLeg.yRot = stance.leftYaw();
+            model.rightLeg.yRot = stance.rightYaw();
+        }
+
+        eclipse$applyWorkGaze(model, player, eye, focus, strikePoint, smoothTicks,
+                totalTicks, cycle, strikeIndex, local, breathPhase);
     }
 
-    /** Impact accent at most once per strike: dust puff plus hammer tick. */
     @Unique
-    private final java.util.Map<java.util.UUID, Integer> eclipse$lastWorkStrike =
+    private final java.util.Map<java.util.UUID, double[]> eclipse$gaze =
             new java.util.WeakHashMap<>();
 
     @Unique
-    private void eclipse$fireWorkAccent(Player player, net.minecraft.core.BlockPos focus,
-                                        int strikeIndex) {
-        Integer previous = eclipse$lastWorkStrike.get(player.getUUID());
-        if (previous != null && previous == strikeIndex) {
-            return;
+    private void eclipse$applyWorkGaze(PlayerModel model, Player player,
+                                       net.minecraft.world.phys.Vec3 eye,
+                                       net.minecraft.core.BlockPos focus,
+                                       double[] strikePoint,
+                                       double smoothTicks, int totalTicks,
+                                       double cycle, int strikeIndex, boolean local,
+                                       double breathPhase) {
+        double contactX = focus.getX() + 0.5;
+        double contactY = focus.getY() + 0.6;
+        double contactZ = focus.getZ() + 0.5;
+        double[] observedContact = null;
+        if (strikePoint != null) {
+            contactX = strikePoint[0];
+            contactY = strikePoint[1];
+            contactZ = strikePoint[2];
+        } else if (!local) {
+            try {
+                ua.rp.chat.client.carver.CarverClientState.ObservedWork observed =
+                        ua.rp.chat.client.carver.CarverClientState.observedWork(player.getUUID());
+                if (observed != null && observed.contact() != null) {
+                    observedContact = observed.contact();
+                    contactX = observedContact[0];
+                    contactY = observedContact[1];
+                    contactZ = observedContact[2];
+                }
+            } catch (RuntimeException ignored) {
+            }
         }
-        eclipse$lastWorkStrike.put(player.getUUID(), strikeIndex);
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.level == null) {
-            return;
+        double cdx = contactX - eye.x;
+        double cdz = contactZ - eye.z;
+        double choriz = Math.sqrt(cdx * cdx + cdz * cdz);
+        if (!(choriz > 1.0e-6)) return;
+        double fullYaw = ua.rp.chat.carver.CarverGazeMath.wrapDelta(
+                Math.atan2(-cdx, cdz) - Math.toRadians(player.getYRot()));
+        double fullPitch = Math.atan2(eye.y - contactY, choriz);
+        double entry = ua.rp.chat.carver.CarverGazeMath.entryBlend(smoothTicks);
+        java.util.UUID id = player.getUUID();
+        double[] prev = eclipse$gaze.get(id);
+        double initYaw = model.head.yRot;
+        double initPitch = model.head.xRot;
+        double lastSmooth;
+        double yaw;
+        double pitch;
+        if (prev == null || smoothTicks < prev[2] - 1.0) {
+            yaw = initYaw + ua.rp.chat.carver.CarverGazeMath.wrapDelta(fullYaw - initYaw) * entry;
+            pitch = initPitch + (fullPitch - initPitch) * entry;
+            lastSmooth = smoothTicks;
+        } else {
+            initYaw = prev[3];
+            initPitch = prev[4];
+            lastSmooth = prev[2];
+            double baseYawTarget = initYaw
+                    + ua.rp.chat.carver.CarverGazeMath.wrapDelta(fullYaw - initYaw) * entry;
+            double basePitchTarget = initPitch + (fullPitch - initPitch) * entry;
+            double dTicks = Math.max(0.0, Math.min(3.0, smoothTicks - lastSmooth));
+            double aYaw = ua.rp.chat.carver.CarverGazeMath.tickAlpha(
+                    dTicks, ua.rp.chat.carver.CarverGazeMath.TAU_YAW);
+            double aPitch = ua.rp.chat.carver.CarverGazeMath.tickAlpha(
+                    dTicks, ua.rp.chat.carver.CarverGazeMath.TAU_PITCH);
+            yaw = prev[0] + ua.rp.chat.carver.CarverGazeMath.wrapDelta(baseYawTarget - prev[0]) * aYaw;
+            pitch = prev[1] + (basePitchTarget - prev[1]) * aPitch;
+            lastSmooth = smoothTicks;
         }
+        double peekYaw = 0.0;
+        double peekPitch = 0.0;
+        double peekW = 0.0;
+        // FAR observers skip the mask-scanning peek: invisible past 32 blocks.
+        boolean peekAllowed = local || distSqToLocal(eye) <= 1024.0;
+        if (peekAllowed && smoothTicks >= 28.0) {
+            try {
+                long uuidLow = player.getUUID().getLeastSignificantBits();
+                if (ua.rp.chat.carver.CarverGazeMath.isPeekStrike(strikeIndex, uuidLow)) {
+                    double w = ua.rp.chat.carver.CarverGazeMath.peekWeight(cycle);
+                    if (w > 0.0) {
+                        double[] contactCells = new double[]{
+                                (contactX - focus.getX()) * 16.0,
+                                (contactY - focus.getY()) * 16.0,
+                                (contactZ - focus.getZ()) * 16.0};
+                        double[] peek;
+                        if (local) {
+                            ua.rp.chat.carver.DraftMask draft =
+                                    ua.rp.chat.client.carver.CarverClientState.draft();
+                            int axis = ua.rp.chat.carver.CarverWorkAim.faceNormalAxis(draft);
+                            peek = ua.rp.chat.carver.CarverGazeMath.peekWorld(
+                                    focus.getX(), focus.getY(), focus.getZ(),
+                                    contactCells, draft, axis, strikeIndex);
+                        } else {
+                            peek = ua.rp.chat.carver.CarverGazeMath.peekWorld(
+                                    focus.getX(), focus.getY(), focus.getZ(),
+                                    contactCells, null, -1, strikeIndex);
+                        }
+                        double pdx = peek[0] - eye.x;
+                        double pdz = peek[2] - eye.z;
+                        double phoriz = Math.sqrt(pdx * pdx + pdz * pdz);
+                        if (phoriz > 1.0e-6) {
+                            double peekYawFull = ua.rp.chat.carver.CarverGazeMath.wrapDelta(
+                                    Math.atan2(-pdx, pdz) - Math.toRadians(player.getYRot()));
+                            double peekPitchFull = Math.atan2(eye.y - peek[1], phoriz);
+                            peekYaw = ua.rp.chat.carver.CarverGazeMath.wrapDelta(peekYawFull - yaw);
+                            peekPitch = peekPitchFull - pitch;
+                            peekW = w;
+                        }
+                    }
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        double baseYaw = yaw;
+        double basePitch = pitch;
+        yaw = baseYaw + peekYaw * peekW;
+        pitch = basePitch + peekPitch * peekW;
+        eclipse$gaze.put(id, new double[]{baseYaw, basePitch, lastSmooth, initYaw, initPitch});
+        double swayGate = ua.rp.chat.carver.CarverGazeMath.entryBlend(smoothTicks);
+        yaw += ua.rp.chat.carver.CarverGazeMath.swayYawRadians(breathPhase) * swayGate;
+        pitch += ua.rp.chat.carver.CarverGazeMath.swayPitchRadians(breathPhase) * swayGate;
+        model.head.yRot = (float) yaw;
+        double nod = (smoothTicks >= 28.0)
+                ? ua.rp.chat.carver.CarverGazeMath.nodRadians(cycle) : 0.0;
+        model.head.xRot = Math.max(-0.5f, Math.min(1.15f, (float) (pitch + nod)));
+    }
+
+    /**
+     * Squared distance from an observed artisan to the local camera. Used for the
+     * observer LOD bands; -1 when the local player is unavailable (treat as NEAR).
+     */
+    @Unique
+    private double distSqToLocal(net.minecraft.world.phys.Vec3 eye) {
         try {
-            net.minecraft.world.phys.Vec3 at = new net.minecraft.world.phys.Vec3(
-                    focus.getX() + 0.5, focus.getY() + 0.9, focus.getZ() + 0.5);
-            net.minecraft.world.level.block.state.BlockState state =
-                    client.level.getBlockState(focus);
-            int tint = ua.rp.chat.client.carver.CarverDustStorm.tintFor(client, focus, state);
-            ua.rp.chat.client.carver.CarverDustStorm.accent(client, at, tint);
-            client.level.playLocalSound(at.x, at.y, at.z,
-                    state.getSoundType().getHitSound(),
-                    net.minecraft.sounds.SoundSource.BLOCKS, 0.45f, 1.1f, false);
-        } catch (RuntimeException ignored) {
+            Minecraft client = Minecraft.getInstance();
+            if (client == null || client.player == null || eye == null) return -1.0;
+            net.minecraft.world.phys.Vec3 mine = client.player.getEyePosition();
+            double dx = eye.x - mine.x;
+            double dy = eye.y - mine.y;
+            double dz = eye.z - mine.z;
+            return dx * dx + dy * dy + dz * dz;
+        } catch (RuntimeException unavailable) {
+            return -1.0;
         }
     }
 

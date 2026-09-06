@@ -9,7 +9,10 @@ import tempfile
 import hashlib
 from pathlib import Path
 
-SSH_KEY = "E:\\eclipse-stock.pem"
+SSH_KEY = os.environ.get(
+    "ECLIPSE_VPS_SSH_KEY",
+    str(Path(__file__).resolve().parent.parent / "secrets" / "eclipse-stock.pem"),
+)
 VPS_HOST = "13.51.232.191"
 VPS_USER = "ubuntu"
 VPS_DEST_DIR = "/var/eclipse-dist"

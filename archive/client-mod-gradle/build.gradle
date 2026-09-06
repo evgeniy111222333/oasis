@@ -122,6 +122,14 @@ tasks.register("verifyMicrovoxelCore", JavaExec) {
 	mainClass = "ua.rp.chat.MicrovoxelCoreTest"
 }
 
+tasks.register("verifyStonemasonMirror", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client stonemason mirrors: template masks, mask codec and workload pricing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.StonemasonMirrorTest"
+}
+
 tasks.register("verifyPickupPrompt", JavaExec) {
 	dependsOn tasks.named("testClasses")
 	group = "verification"
@@ -143,6 +151,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyBreathingTorsoRenderer")
 	dependsOn tasks.named("verifyBreathingShoulderLayout")
 	dependsOn tasks.named("verifyMicrovoxelCore")
+	dependsOn tasks.named("verifyStonemasonMirror")
 }
 
 java {

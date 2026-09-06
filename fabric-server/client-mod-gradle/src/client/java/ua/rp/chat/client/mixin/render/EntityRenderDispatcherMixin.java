@@ -16,6 +16,14 @@ public class EntityRenderDispatcherMixin {
     private <T extends Entity> void eclipse$shouldRender(T entity, Frustum frustum, double x, double y, double z, CallbackInfoReturnable<Boolean> cir) {
         if (entity == Minecraft.getInstance().player && SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
             cir.setReturnValue(true);
+            return;
+        }
+        try {
+            if (entity == Minecraft.getInstance().player
+                    && ua.rp.chat.client.carver.CarverClientState.working()) {
+                cir.setReturnValue(true);
+            }
+        } catch (RuntimeException ignored) {
         }
     }
 }

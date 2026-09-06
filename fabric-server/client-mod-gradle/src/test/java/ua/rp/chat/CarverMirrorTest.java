@@ -26,8 +26,8 @@ public final class CarverMirrorTest {
         mask.set(DraftMask.index(3, 4, 5));
         require(DraftMask.decode(mask.encode()).equals(mask),
                 "Client mask codec must round-trip");
-        require(DraftEstimate.workTicks(640, 1.0, 6, 1.0) == 708
-                        && Math.abs(DraftEstimate.staminaCost(640, 1.0, 6, 1.0) - 41.5625) < 1.0e-9,
+        require(DraftEstimate.workTicks(640, 1.0, 6, 1.0, 0) == 708
+                        && Math.abs(DraftEstimate.staminaCost(640, 1.0, 6, 1.0, 0) - 41.5625) < 1.0e-9,
                 "Client estimate must price the reference job at 708 ticks / 41.5625% stamina");
         verifyCameraMath();
         verifyFaceSlicer();

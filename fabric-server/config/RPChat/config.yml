@@ -27,7 +27,7 @@ web:
   # Port for the embedded HTTP server (Must be open on firewall)
   port: 25580
   # Base URL sent to client auth overlay. Use the LAN/public address players can reach.
-  url: "https://api.eclipse-roleplay.online"
+  url: "http://localhost:25580"
 
 # ==========================================
 #             Auth Session Settings

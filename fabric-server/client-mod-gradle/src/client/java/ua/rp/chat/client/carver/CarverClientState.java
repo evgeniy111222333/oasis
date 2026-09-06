@@ -36,6 +36,14 @@ public final class CarverClientState {
     private static long clientTickCounter;
     private static long workStartClientTick;
     private static long lastClientTickNanos;
+    private static final ObservedDraftBoard OBSERVED_DRAFTS = new ObservedDraftBoard();
+    private static final long OBSERVED_DRAFT_TTL_TICKS = 200L;
+    /**
+     * Tick-fresh strike plan for the local artisan, solved once per client tick so
+     * the render thread never pays the centroid scan. Null outside sessions.
+     */
+    private static ua.rp.chat.carver.CarverStrikeAlign.StrikePlan cachedPlan;
+    private static int cachedPlanCells = -1;
     /**
      * Look locked at work start: the work camera frames the bench, so the artisan
      * must not turn away under it with the mouse. Enforced every client tick
@@ -82,10 +90,14 @@ public final class CarverClientState {
      * never promises what the chisel cannot cut.
      */
     public static boolean isPaintable(int cell) {
-        if (focus == null) return false;
+        return isPaintable(focus, cell);
+    }
+
+    public static boolean isPaintable(BlockPos at, int cell) {
+        if (at == null) return false;
         try {
             ua.rp.chat.client.microvoxel.MicrovoxelClientState.CachedVolume cached =
-                    ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(focus);
+                    ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(at);
             if (cached == null || cached.volume == null) return true;
             if (cell < 0 || cell >= ua.rp.chat.microvoxel.MicrovoxelVolume.CELL_COUNT) {
                 return false;
@@ -94,6 +106,22 @@ public final class CarverClientState {
         } catch (RuntimeException unreadable) {
             return true;
         }
+    }
+
+    public static void putObservedDraft(BlockPos pos, DraftMask mask) {
+        if (mask == null || mask.isEmpty()) {
+            OBSERVED_DRAFTS.remove(pos);
+            return;
+        }
+        OBSERVED_DRAFTS.put(pos, mask, clientTickCounter);
+    }
+
+    public static void removeObservedDraft(BlockPos pos) {
+        OBSERVED_DRAFTS.remove(pos);
+    }
+
+    public static java.util.List<ObservedDraftBoard.Entry> observedDrafts() {
+        return OBSERVED_DRAFTS.snapshot();
     }
 
     public static int estimateCells() {
@@ -229,11 +257,17 @@ public final class CarverClientState {
     }
 
     private static void onDraft(BlockPos pos, byte[] data) {
-        if (!designing || !pos.equals(focus)) return;
+        if (designing && pos.equals(focus)) {
+            try {
+                DraftMask server = DraftMask.decode(data);
+                draft.clearAll();
+                draft.orIn(server);
+            } catch (IllegalArgumentException ignored) {
+            }
+            return;
+        }
         try {
-            DraftMask server = DraftMask.decode(data);
-            draft.clearAll();
-            draft.orIn(server);
+            putObservedDraft(pos, DraftMask.decode(data));
         } catch (IllegalArgumentException ignored) {
         }
     }
@@ -268,7 +302,9 @@ public final class CarverClientState {
         if (minecraft.screen instanceof CarverDesignScreen) {
             minecraft.setScreen(null);
         }
-        trace("work started, total=" + workTotalTicks);
+        int plane = ua.rp.chat.carver.CarverWorkAim.faceNormalAxis(draft);
+        trace("work started, total=" + workTotalTicks
+                + " plane=" + (plane < 0 ? "-" : "XYZ".charAt(plane)));
         CarverCameraRig.beginWork(pos);
         CarverHologram.beginFall();
         CarverHologram.setImpactArmed(true);
@@ -305,7 +341,12 @@ public final class CarverClientState {
         CarverWorkFx.finish(focus);
         CarverCameraRig.end();
         CarverHologram.clear();
+        CarverPerfLog.endWorkSession();
         CarverPerfLog.endSession();
+        CarverWorkPoseCache.clear();
+        CarverImpactFx.clear();
+        cachedPlan = null;
+        cachedPlanCells = -1;
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.flushWorkFocus();
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(null);
         focus = null;
@@ -313,6 +354,10 @@ public final class CarverClientState {
     }
 
     private static void onClose(BlockPos pos, byte[] data) {
+        if (!inSession() || !pos.equals(focus)) {
+            removeObservedDraft(pos);
+            return;
+        }
         designing = false;
         working = false;
         mirrorAxes = 0;
@@ -328,6 +373,10 @@ public final class CarverClientState {
         CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
+        CarverWorkPoseCache.clear();
+        CarverImpactFx.clear();
+        cachedPlan = null;
+        cachedPlanCells = -1;
         int reason = data != null && data.length > 0 ? data[0] & 0xFF : 0;
         if (reason != 0) {
             overlay(minecraft, "Чертёж закрыт.");
@@ -430,11 +479,23 @@ public final class CarverClientState {
     }
 
     /** One observed artisan at their bench, expiring past the announced duration. */
-    public record ObservedWork(BlockPos focus, int totalTicks, long startClientTick) {
+    public record ObservedWork(BlockPos focus, int totalTicks, long startClientTick, double[] contact,
+                               float standYaw, int axis) {
+        public ObservedWork(BlockPos focus, int totalTicks, long startClientTick) {
+            this(focus, totalTicks, startClientTick, null, 0.0f, -1);
+        }
+
+        public ObservedWork(BlockPos focus, int totalTicks, long startClientTick, double[] contact) {
+            this(focus, totalTicks, startClientTick, contact, 0.0f, -1);
+        }
     }
 
     private static final java.util.Map<java.util.UUID, ObservedWork> OBSERVED =
             new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static java.util.List<ObservedWork> observedWorks() {
+        return java.util.List.copyOf(OBSERVED.values());
+    }
 
     /** Observed work for pose rendering, null for anyone idle. */
     public static ObservedWork observedWork(java.util.UUID playerId) {
@@ -454,12 +515,31 @@ public final class CarverClientState {
             BlockPos focus = new BlockPos(input.readInt(), input.readInt(), input.readInt());
             int total = input.readInt();
             if (total <= 0) return;
+            double[] contact = null;
+            float standYaw = 0.0f;
+            int axis = -1;
+            try {
+                if (input.available() >= 12) {
+                    float cx = input.readFloat();
+                    float cy = input.readFloat();
+                    float cz = input.readFloat();
+                    contact = new double[]{focus.getX() + cx / 16.0, focus.getY() + cy / 16.0, focus.getZ() + cz / 16.0};
+                }
+                // Optional strike-plan tail: stand yaw + face axis. Old servers omit it.
+                if (input.available() >= 5) {
+                    standYaw = input.readFloat();
+                    axis = input.readByte();
+                }
+            } catch (IOException ignored) {
+            }
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft != null && minecraft.player != null
                     && playerId.equals(minecraft.player.getUUID())) {
                 return;
             }
-            OBSERVED.put(playerId, new ObservedWork(focus.immutable(), total, clientTickCounter));
+            OBSERVED.put(playerId, new ObservedWork(focus.immutable(), total, clientTickCounter, contact,
+                    standYaw, axis));
+            removeObservedDraft(focus);
         } catch (IOException | RuntimeException ignored) {
         }
     }
@@ -486,6 +566,10 @@ public final class CarverClientState {
         CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
+        CarverWorkPoseCache.clear();
+        CarverImpactFx.clear();
+        cachedPlan = null;
+        cachedPlanCells = -1;
     }
 
     private static void send(int action, BlockPos pos, byte[] data) {
@@ -518,6 +602,40 @@ public final class CarverClientState {
         return smoothSince(workStartClientTick);
     }
 
+    /** Tick-fresh strike plan for the render thread. Null outside sessions. */
+    public static ua.rp.chat.carver.CarverStrikeAlign.StrikePlan cachedStrikePlan() {
+        return cachedPlan;
+    }
+
+    /** Current render partial for pose interpolation between tick snapshots. */
+    public static float tickPartial() {
+        return (float) ua.rp.chat.carver.CarverHologramMotion.renderPartial(lastClientTickNanos);
+    }
+
+    /**
+     * Refreshes the cached strike plan once per tick while a session lives. The
+     * render thread reads the cached value, so the draft centroid scan never runs
+     * at frame rate. Re-solves only when the draft cell count changed.
+     */
+    private static void refreshStrikePlan(Minecraft minecraft) {
+        if (!inSession() || focus == null || minecraft == null || minecraft.player == null) {
+            cachedPlan = null;
+            cachedPlanCells = -1;
+            return;
+        }
+        int cells = draft.count();
+        if (cachedPlan != null && cells == cachedPlanCells) return;
+        try {
+            cachedPlan = ua.rp.chat.carver.CarverStrikeAlign.solve(
+                    focus.getX(), focus.getY(), focus.getZ(), draft.cells(),
+                    minecraft.player.getX(), minecraft.player.getY(), minecraft.player.getZ());
+            cachedPlanCells = cells;
+        } catch (RuntimeException unreadable) {
+            cachedPlan = null;
+            cachedPlanCells = -1;
+        }
+    }
+
     /** Smooth ticks elapsed since a client-tick stamp, for local and observed clocks. */
     public static double smoothSince(long startClientTick) {
         double partial = ua.rp.chat.carver.CarverHologramMotion.renderPartial(lastClientTickNanos);
@@ -527,12 +645,23 @@ public final class CarverClientState {
     public static void clientTick(Minecraft minecraft) {
         clientTickCounter++;
         lastClientTickNanos = System.nanoTime();
+        OBSERVED_DRAFTS.expire(clientTickCounter, OBSERVED_DRAFT_TTL_TICKS);
         if (minecraft.player != null && working) {
             // Hands on the workpiece means eyes on it too: plain mouse-look is
             // reverted every tick (camera orbit via right-drag keeps working),
             // otherwise the artisan turns away under the fixed work camera.
             minecraft.player.setYRot(lockYaw);
             minecraft.player.setXRot(lockPitch);
+            try {
+                if (minecraft.player.isShiftKeyDown()) {
+                    minecraft.player.setShiftKeyDown(false);
+                }
+                if (minecraft.options != null && minecraft.options.keyShift != null
+                        && minecraft.options.keyShift.isDown()) {
+                    minecraft.options.keyShift.setDown(false);
+                }
+            } catch (RuntimeException ignored) {
+            }
         }
         if (minecraft.player == null || minecraft.level == null) {
             if (inSession()) {
@@ -545,6 +674,10 @@ public final class CarverClientState {
                 CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
+        CarverWorkPoseCache.clear();
+        CarverImpactFx.clear();
+        cachedPlan = null;
+        cachedPlanCells = -1;
             }
             return;
         }
@@ -552,6 +685,7 @@ public final class CarverClientState {
         CarverCameraRig.tick(minecraft);
         CarverHologram.tick(minecraft);
         CarverWorkFx.tick(minecraft);
+        refreshStrikePlan(minecraft);
         CarverPerfLog.tick(System.nanoTime() - tickStart);
     }
 }

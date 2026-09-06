@@ -77,16 +77,15 @@ public final class CarverDustStorm {
         double cy = pos.getY() + 0.5;
         double cz = pos.getZ() + 0.5;
 
-        // 1. Swirling billows closely on the block (radius 0.20 - 0.45)
-        for (int i = 0; i < 14; i++) {
+        for (int i = 0; i < 6; i++) {
             TextureAtlasSprite sprite = set.get(0, 8);
             double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.20 + random.nextDouble() * 0.25;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.06 + random.nextDouble() * 0.05);
-            double targetY = 0.15 + random.nextDouble() * 0.40;
-            float size = 0.50f + random.nextFloat() * 0.35f;
-            int life = 35 + random.nextInt(20);
-            int tone = randomCloudTone(random);
+            double radius = 0.18 + random.nextDouble() * 0.18;
+            double speed = (random.nextBoolean() ? 1 : -1) * (0.05 + random.nextDouble() * 0.04);
+            double targetY = 0.10 + random.nextDouble() * 0.28;
+            float size = 0.30f + random.nextFloat() * 0.16f;
+            int life = 22 + random.nextInt(10);
+            int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
 
             CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
                     radius, angle, speed, targetY, size, life, tone, sprite, set);
@@ -94,16 +93,15 @@ public final class CarverDustStorm {
             activeSwirls.add(new WeakReference<>(p));
         }
 
-        // 2. Swirling cloud aura hugging around the block (radius 0.55 - 0.90)
-        for (int i = 0; i < 22; i++) {
+        for (int i = 0; i < 8; i++) {
             TextureAtlasSprite sprite = set.get(0, 8);
             double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.55 + random.nextDouble() * 0.35;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.07 + random.nextDouble() * 0.06);
-            double targetY = -0.10 + random.nextDouble() * 0.55;
-            float size = 0.58f + random.nextFloat() * 0.42f;
-            int life = 40 + random.nextInt(25);
-            int tone = randomCloudTone(random);
+            double radius = 0.42 + random.nextDouble() * 0.22;
+            double speed = (random.nextBoolean() ? 1 : -1) * (0.06 + random.nextDouble() * 0.05);
+            double targetY = -0.05 + random.nextDouble() * 0.35;
+            float size = 0.32f + random.nextFloat() * 0.16f;
+            int life = 24 + random.nextInt(10);
+            int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
 
             CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
                     radius, angle, speed, targetY, size, life, tone, sprite, set);
@@ -123,16 +121,17 @@ public final class CarverDustStorm {
         if (set == null || set.getSprites().isEmpty()) return;
         RandomSource random = RandomSource.create(
                 Double.doubleToLongBits(at.x * 13.0 + at.y * 7.0 + at.z * 5.0));
+        int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
         for (int i = 0; i < 3; i++) {
             TextureAtlasSprite sprite = set.get(0, 8);
             double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.05 + random.nextDouble() * 0.08;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.10 + random.nextDouble() * 0.08);
-            float size = 0.28f + random.nextFloat() * 0.14f;
-            int life = 18 + random.nextInt(8);
+            double radius = 0.04 + random.nextDouble() * 0.06;
+            double speed = (random.nextBoolean() ? 1 : -1) * (0.08 + random.nextDouble() * 0.06);
+            float size = 0.26f + random.nextFloat() * 0.12f;
+            int life = 12 + random.nextInt(6);
             CarverDustParticle p = new CarverDustParticle(level, at.x, at.y, at.z,
-                    radius, angle, speed, 0.1 + random.nextDouble() * 0.15,
-                    size, life, randomCloudTone(random), sprite, set);
+                    radius, angle, speed, 0.06 + random.nextDouble() * 0.10,
+                    size, life, tone, sprite, set);
             minecraft.particleEngine.add(p);
         }
     }
@@ -154,39 +153,19 @@ public final class CarverDustStorm {
         double cy = pos.getY() + 0.5;
         double cz = pos.getZ() + 0.5;
 
-        // Puff on top face of the block
-        for (int i = 0; i < 2; i++) {
-            TextureAtlasSprite sprite = set.get(0, 8);
-            double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.22 + random.nextDouble() * 0.25;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.07 + random.nextDouble() * 0.05);
-            double targetY = 0.20 + random.nextDouble() * 0.35;
-            float size = 0.45f + random.nextFloat() * 0.30f;
-            int life = 32 + random.nextInt(18);
-            int tone = randomCloudTone(random);
+        TextureAtlasSprite sprite = set.get(0, 8);
+        double angle = random.nextDouble() * Math.PI * 2.0;
+        double radius = 0.20 + random.nextDouble() * 0.18;
+        double speed = (random.nextBoolean() ? 1 : -1) * (0.06 + random.nextDouble() * 0.04);
+        double targetY = 0.12 + random.nextDouble() * 0.25;
+        float size = 0.30f + random.nextFloat() * 0.14f;
+        int life = 22 + random.nextInt(8);
+        int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
 
-            CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
-                    radius, angle, speed, targetY, size, life, tone, sprite, set);
-            minecraft.particleEngine.add(p);
-            activeSwirls.add(new WeakReference<>(p));
-        }
-
-        // Puff circling around the side perimeter
-        for (int i = 0; i < 2; i++) {
-            TextureAtlasSprite sprite = set.get(0, 8);
-            double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.60 + random.nextDouble() * 0.30;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.08 + random.nextDouble() * 0.06);
-            double targetY = -0.05 + random.nextDouble() * 0.50;
-            float size = 0.48f + random.nextFloat() * 0.32f;
-            int life = 30 + random.nextInt(18);
-            int tone = randomCloudTone(random);
-
-            CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
-                    radius, angle, speed, targetY, size, life, tone, sprite, set);
-            minecraft.particleEngine.add(p);
-            activeSwirls.add(new WeakReference<>(p));
-        }
+        CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
+                radius, angle, speed, targetY, size, life, tone, sprite, set);
+        minecraft.particleEngine.add(p);
+        activeSwirls.add(new WeakReference<>(p));
     }
 
     /**
@@ -241,9 +220,21 @@ public final class CarverDustStorm {
         }
     }
 
-    /** Cloud tint: always pure white cloud base, immune to biome grass/foliage green. */
     public static int tintFor(Minecraft minecraft, BlockPos pos,
                               net.minecraft.world.level.block.state.BlockState state) {
+        try {
+            if (minecraft != null && minecraft.level != null && state != null && pos != null) {
+                int map = state.getMapColor(minecraft.level, pos).col;
+                int r = (map >> 16) & 0xFF;
+                int g = (map >> 8) & 0xFF;
+                int b = map & 0xFF;
+                r = 205 + (r - 205) / 3;
+                g = 205 + (g - 205) / 3;
+                b = 205 + (b - 205) / 3;
+                return (r << 16) | (g << 8) | b;
+            }
+        } catch (RuntimeException ignored) {
+        }
         return 0xFFFFFF;
     }
 

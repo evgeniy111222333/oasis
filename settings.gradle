@@ -11,8 +11,8 @@ pluginManagement {
 
 rootProject.name = 'eclipse-parent'
 
-include 'client'
-project(':client').projectDir = file('client-mod-gradle')
+// NOTE: the stale root client-mod-gradle tree was archived to archive/client-mod-gradle.
+// The live client lives in fabric-server/client-mod-gradle (see fabric-server/settings.gradle).
 
 include 'server'
 project(':server').projectDir = file('fabric-server/server')

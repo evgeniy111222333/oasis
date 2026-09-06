@@ -148,24 +148,32 @@
             </div>
             <div class="update-body">
                 <p id="updateSummary">Подготовлено новое обновление клиента.</p>
-                <div class="update-files-list" id="updateNotes"></div>
-                
-                <div class="modal-progress-container" id="modalProgressContainer" style="display: none;">
-                    <div class="modal-progress-info">
-                        <span id="modalProgressMessage">Загрузка файлов...</span>
-                        <span id="modalProgressPercent">0%</span>
-                    </div>
-                    <div class="modal-progress-bar-bg">
-                        <div class="modal-progress-bar-fill" id="modalProgressBarFill"></div>
-                    </div>
+                <div class="update-notes-shell">
+                    <div class="update-files-list"
+                         id="updateNotes"
+                         role="region"
+                         aria-label="Список изменений"
+                         tabindex="0"></div>
                 </div>
 
-                <button class="update-action-btn" id="btnStartUpdate">
-                    <i class="fa-solid fa-download"></i> ОБНОВИТЬ КЛИЕНТ
-                </button>
-                <button class="update-mirror-btn" id="btnGoogleDriveMirror" type="button" hidden>
-                    <i class="fa-brands fa-google-drive"></i> СКАЧАТЬ С GOOGLE DRIVE
-                </button>
+                <div class="update-footer">
+                    <div class="modal-progress-container" id="modalProgressContainer" style="display: none;">
+                        <div class="modal-progress-info">
+                            <span id="modalProgressMessage">Загрузка файлов...</span>
+                            <span id="modalProgressPercent">0%</span>
+                        </div>
+                        <div class="modal-progress-bar-bg">
+                            <div class="modal-progress-bar-fill" id="modalProgressBarFill"></div>
+                        </div>
+                    </div>
+
+                    <button class="update-action-btn" id="btnStartUpdate">
+                        <i class="fa-solid fa-download"></i> ОБНОВИТЬ КЛИЕНТ
+                    </button>
+                    <button class="update-mirror-btn" id="btnGoogleDriveMirror" type="button" hidden>
+                        <i class="fa-brands fa-google-drive"></i> СКАЧАТЬ С GOOGLE DRIVE
+                    </button>
+                </div>
             </div>
         </div>
     </div>

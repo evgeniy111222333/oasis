@@ -2,5 +2,20 @@
   "key.eclipseclient.microvoxel_mode": "Microvoxel editing mode",
   "key.eclipseclient.microvoxel_convert": "Convert block to microvoxels",
   "key.eclipseclient.body_status": "Character status",
-  "item.eclipseclient.microvoxel_carved_prefix": "Carved "
+  "item.eclipseclient.microvoxel_carved_prefix": "Carved ",
+  "item.eclipseserver.stonemason_bag": "Stonemason's Bag",
+  "item.eclipseserver.architect_scroll": "Architect's Scroll",
+  "screen.eclipse.stonemason_design": "Drafting Table",
+  "screen.eclipse.stonemason_layer_down": "Layer -",
+  "screen.eclipse.stonemason_layer_up": "Layer +",
+  "screen.eclipse.stonemason_layer": "Layer: %s",
+  "screen.eclipse.stonemason_tool": "Tool",
+  "screen.eclipse.stonemason_pencil": "Pencil",
+  "screen.eclipse.stonemason_eraser": "Eraser",
+  "screen.eclipse.stonemason_clear": "Clear",
+  "screen.eclipse.stonemason_hint": "SPACE - begin work, ESC - cancel",
+  "screen.eclipse.stonemason_material": "Stone: %s",
+  "template.eclipse.bath": "Bathtub",
+  "template.eclipse.basin": "Water bowl",
+  "template.eclipse.column": "Carved column"
 }

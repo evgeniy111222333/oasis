@@ -40,34 +40,50 @@ public final class DraftEstimate {
     private DraftEstimate() {
     }
 
+    /** Off-hand tool: 0 none, 1 flat chisel, 2 point chisel. */
+    public static final int TOOL_NONE = 0;
+    public static final int TOOL_FLAT = 1;
+    public static final int TOOL_POINT = 2;
     /**
-     * Full work time: setup plus volume paced by material, detail and depth.
-     * Every factor is 1.0 for the reference job (solid mass, one layer, stone
-     * pace), so the baseline stays readable while real jobs spread out.
+     * Flat chisels drive through solid masses (up to 25% faster at full fill);
+     * the point chisel instead relieves 60% of the scattered-detail penalty.
+     */
+    public static final double FLAT_FILL_BONUS = 0.25;
+    public static final double POINT_DETAIL_RELIEF = 0.6;
+
+    /**
+     * Full work time: setup plus volume paced by material, detail, depth and the
+     * held chisel. Every factor is 1.0 for the reference job (solid mass, one
+     * layer, stone pace, no tool), so the baseline stays readable.
      */
     public static double workSeconds(int cells, double fillRatio, int depthSpan,
-                                     double materialMult) {
+                                     double materialMult, int tool) {
         if (cells <= 0) return 0.0;
-        double detail = 1.0 + DETAIL_WEIGHT * (1.0 - clamp01(fillRatio));
+        double relief = tool == TOOL_POINT ? POINT_DETAIL_RELIEF : 0.0;
+        double detail = 1.0 + DETAIL_WEIGHT * (1.0 - clamp01(fillRatio)) * (1.0 - relief);
         double depth = 1.0 + DEPTH_WEIGHT * (Math.max(1, Math.min(16, depthSpan)) / 16.0);
+        double pace = 1.0 - (tool == TOOL_FLAT ? FLAT_FILL_BONUS * clamp01(fillRatio) : 0.0);
         double seconds = SETUP_SECONDS
-                + (cells / CELLS_PER_SECOND) * materialMult * detail * depth;
+                + (cells / CELLS_PER_SECOND) * materialMult * detail * depth * pace;
         return Math.min(MAX_WORK_SECONDS, Math.max(MIN_WORK_SECONDS, seconds));
     }
 
     public static int workTicks(int cells, double fillRatio, int depthSpan,
-                                double materialMult) {
-        return (int) Math.round(workSeconds(cells, fillRatio, depthSpan, materialMult)
-                * TICKS_PER_SECOND);
+                                double materialMult, int tool) {
+        return (int) Math.round(
+                workSeconds(cells, fillRatio, depthSpan, materialMult, tool) * TICKS_PER_SECOND);
     }
 
     /** Stamina follows the same effort without the flat setup. */
     public static double staminaCost(int cells, double fillRatio, int depthSpan,
-                                     double materialMult) {
+                                     double materialMult, int tool) {
         if (cells <= 0) return 0.0;
-        double detail = 1.0 + DETAIL_WEIGHT * (1.0 - clamp01(fillRatio));
+        double relief = tool == TOOL_POINT ? POINT_DETAIL_RELIEF : 0.0;
+        double detail = 1.0 + DETAIL_WEIGHT * (1.0 - clamp01(fillRatio)) * (1.0 - relief);
         double depth = 1.0 + DEPTH_WEIGHT * (Math.max(1, Math.min(16, depthSpan)) / 16.0);
-        return Math.min(MAX_STAMINA_COST, cells * STAMINA_PER_CELL * materialMult * detail * depth);
+        double pace = 1.0 - (tool == TOOL_FLAT ? FLAT_FILL_BONUS * clamp01(fillRatio) : 0.0);
+        return Math.min(MAX_STAMINA_COST,
+                cells * STAMINA_PER_CELL * materialMult * detail * depth * pace);
     }
 
     /** Share of the draft bounding box actually marked, 0..1. Pure. */

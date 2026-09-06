@@ -59,3 +59,20 @@ launcher/dist/
 /secrets/
 /deployment/google_drive.local.json
 /deployment/google_drive_release.json
+
+# Python and bytecode
+__pycache__/
+*.py[cod]
+
+# Logs, runtime dumps, and local backups
+*.log
+*.log.gz
+/fabric-server/server/logs/
+/fabric-server/client-mod-gradle/logs/
+/fabric-server/server/run/
+/fabric-server/STDOUT
+/fabric-server/config/RPChat/*.dat
+/fabric-server/config/RPChat/*.dat.bak
+/backups/
+/model/
+/fabric-server/steve.png

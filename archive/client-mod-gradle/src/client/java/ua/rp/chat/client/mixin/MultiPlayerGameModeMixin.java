@@ -24,6 +24,15 @@ public class MultiPlayerGameModeMixin {
     }
 
     @Inject(method = "startDestroyBlock", at = @At("HEAD"), cancellable = true)
+    private void eclipse$stonemasonGuardDestroyBlock(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
+        // Never break the mason's canvas mid-session; the commit path owns it.
+        if (ua.rp.chat.client.stonemason.StonemasonClientState.inSession()
+                && pos.equals(ua.rp.chat.client.stonemason.StonemasonClientState.focus())) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "startDestroyBlock", at = @At("HEAD"), cancellable = true)
     private void eclipse$microvoxelStartDestroyBlock(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
         // Never let vanilla break the invisible marker block; microvoxel
         // editing is handled entirely through the plugin channel.

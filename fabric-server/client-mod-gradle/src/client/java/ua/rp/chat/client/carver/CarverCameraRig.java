@@ -225,7 +225,7 @@ public final class CarverCameraRig {
             posePosition = orbitAnchor();
         }
         posePosition = resolveCollision(minecraft, posePosition);
-        Vec3 target = mode == Mode.WORK ? socketCenter() : center();
+        Vec3 target = mode == Mode.WORK ? workTarget() : center();
         double[] look = CarverCameraMath.lookAt(posePosition.x, posePosition.y, posePosition.z,
                 target.x, target.y, target.z);
         poseYaw = (float) look[0];
@@ -250,6 +250,18 @@ public final class CarverCameraRig {
     /** Bare socket center: the work framing target once the hologram has landed. */
     private static Vec3 socketCenter() {
         return new Vec3(focus.getX() + 0.5, focus.getY() + 0.5, focus.getZ() + 0.5);
+    }
+
+    /** Strike contact of the frozen draft, falling back to the socket center. */
+    private static Vec3 workTarget() {
+        if (focus == null) return Vec3.ZERO;
+        try {
+            double[] contact = ua.rp.chat.carver.CarverWorkAim.contactWorld(
+                    focus, CarverClientState.draft());
+            if (contact != null) return new Vec3(contact[0], contact[1], contact[2]);
+        } catch (RuntimeException unavailable) {
+        }
+        return socketCenter();
     }
 
     /** Work framing anchor: socket center plus the wider, lower work orbit offset. */

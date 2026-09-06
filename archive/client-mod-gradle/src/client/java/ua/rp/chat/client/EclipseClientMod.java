@@ -21,6 +21,9 @@ import ua.rp.chat.client.microvoxel.MicrovoxelClientRenderer;
 import ua.rp.chat.client.microvoxel.MicrovoxelClientState;
 import ua.rp.chat.client.microvoxel.MicrovoxelInteractionController;
 import ua.rp.chat.client.microvoxel.MicrovoxelSyncPayload;
+import ua.rp.chat.client.stonemason.StonemasonActionPayload;
+import ua.rp.chat.client.stonemason.StonemasonClientState;
+import ua.rp.chat.client.stonemason.StonemasonSyncPayload;
 import ua.rp.chat.client.pickup.PickupClientState;
 import ua.rp.chat.client.pickup.ItemPickupPayload;
 import ua.rp.chat.client.pickup.GroundedLootRenderer;
@@ -72,6 +75,8 @@ public class EclipseClientMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(AcquaintanceActionPayload.TYPE, AcquaintanceActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(MicrovoxelSyncPayload.TYPE, MicrovoxelSyncPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MicrovoxelActionPayload.TYPE, MicrovoxelActionPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(StonemasonSyncPayload.TYPE, StonemasonSyncPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(StonemasonActionPayload.TYPE, StonemasonActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ItemPickupPayload.TYPE, ItemPickupPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(RpChatFeedPayload.TYPE, RpChatFeedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AppearanceRefreshPayload.TYPE, AppearanceRefreshPayload.CODEC);
@@ -92,6 +97,8 @@ public class EclipseClientMod implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(MicrovoxelSyncPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> MicrovoxelClientState.handle(payload)));
+        ClientPlayNetworking.registerGlobalReceiver(StonemasonSyncPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> StonemasonClientState.handle(payload)));
         ClientPlayNetworking.registerGlobalReceiver(RpChatFeedPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> RpChatFeedClientState.accept(payload)));
         ClientPlayNetworking.registerGlobalReceiver(AppearanceRefreshPayload.TYPE, (payload, context) ->
@@ -111,6 +118,7 @@ public class EclipseClientMod implements ClientModInitializer {
             AcquaintanceClientState.clientTick(client);
             MicrovoxelClientState.clientTick(client);
             MicrovoxelInteractionController.tick(client);
+            StonemasonClientState.clientTick(client);
             PickupClientState.clientTick(client);
             GroundedLootRenderer.clientTick(client);
             ua.rp.chat.client.crawling.CrawlingClientState.clientTick(client);

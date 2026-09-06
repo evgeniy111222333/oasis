@@ -19,6 +19,7 @@ public final class CarverTest {
         verifyBlueprint();
         verifyProtocol();
         verifyDominantMaterial();
+        verifyStrikeAlign();
         System.out.println("CarverTest passed");
     }
 
@@ -123,19 +124,19 @@ public final class CarverTest {
 
     private static void verifyEstimate() {
         // Reference job: 640 solid cells, 6 layers deep, stone pace.
-        require(Math.abs(DraftEstimate.workSeconds(640, 1.0, 6, 1.0) - 35.4) < 1.0e-9,
+        require(Math.abs(DraftEstimate.workSeconds(640, 1.0, 6, 1.0, 0) - 35.4) < 1.0e-9,
                 "Reference job must price at 35.4 seconds");
-        require(Math.abs(DraftEstimate.staminaCost(640, 1.0, 6, 1.0) - 41.5625) < 1.0e-9,
+        require(Math.abs(DraftEstimate.staminaCost(640, 1.0, 6, 1.0, 0) - 41.5625) < 1.0e-9,
                 "Reference job must cost 41.5625% stamina");
-        require(DraftEstimate.workTicks(640, 1.0, 6, 1.0) == 708,
+        require(DraftEstimate.workTicks(640, 1.0, 6, 1.0, 0) == 708,
                 "Reference job must simulate 708 ticks");
-        require(DraftEstimate.workSeconds(0, 1.0, 1, 1.0) == 0.0
-                        && DraftEstimate.staminaCost(0, 1.0, 1, 1.0) == 0.0,
+        require(DraftEstimate.workSeconds(0, 1.0, 1, 1.0, 0) == 0.0
+                        && DraftEstimate.staminaCost(0, 1.0, 1, 1.0, 0) == 0.0,
                 "Empty drafts must be free");
-        require(DraftEstimate.workSeconds(1_000_000, 1.0, 16, 8.0)
+        require(DraftEstimate.workSeconds(1_000_000, 1.0, 16, 8.0, 0)
                         == DraftEstimate.MAX_WORK_SECONDS,
                 "Work time must clamp to the maximum");
-        require(DraftEstimate.staminaCost(1_000_000, 0.0, 16, 8.0)
+        require(DraftEstimate.staminaCost(1_000_000, 0.0, 16, 8.0, 0)
                         == DraftEstimate.MAX_STAMINA_COST,
                 "Stamina cost must clamp to the maximum");
         require(DraftEstimate.progress(150, 300) == 0.5
@@ -144,12 +145,12 @@ public final class CarverTest {
                         && DraftEstimate.progress(0, 0) == 1.0,
                 "Progress must clamp to 0..1 and complete empty work");
         // Scattered detail costs more per cell than a solid mass of equal size.
-        double solid = DraftEstimate.workSeconds(100, 1.0, 1, 1.0);
-        double scattered = DraftEstimate.workSeconds(100, 0.2, 1, 1.0);
+        double solid = DraftEstimate.workSeconds(100, 1.0, 1, 1.0, 0);
+        double scattered = DraftEstimate.workSeconds(100, 0.2, 1, 1.0, 0);
         require(scattered > solid, "Scattered detail must price above solid mass");
         // Full-depth carving costs more than a shallow relief of equal size.
-        double relief = DraftEstimate.workSeconds(256, 1.0, 1, 1.0);
-        double through = DraftEstimate.workSeconds(256, 1.0, 16, 1.0);
+        double relief = DraftEstimate.workSeconds(256, 1.0, 1, 1.0, 0);
+        double through = DraftEstimate.workSeconds(256, 1.0, 16, 1.0, 0);
         require(through > relief, "Through-carving must price above relief");
         // Geometry helpers: full-box fill, single-cell span, clamping.
         DraftMask single = new DraftMask();
@@ -161,6 +162,20 @@ public final class CarverTest {
                         && DraftEstimate.depthSpan(null) == 1,
                 "Empty inputs must degrade safely");
         System.out.println("CarverWorkTimeTest: factors, fill, span and clamps passed");
+        // Chisels: flat hurries solid masses, point relieves scattered detail.
+        double bare = DraftEstimate.workSeconds(400, 1.0, 8, 1.0, 0);
+        double flat = DraftEstimate.workSeconds(400, 1.0, 8, 1.0, 1);
+        require(flat < bare && flat >= bare * 0.7,
+                "Flat chisel must hurry solid masses, got " + flat + " vs " + bare);
+        double scatteredBare = DraftEstimate.workSeconds(100, 0.2, 1, 1.0, 0);
+        double scatteredPoint = DraftEstimate.workSeconds(100, 0.2, 1, 1.0, 2);
+        require(scatteredPoint < scatteredBare,
+                "Point chisel must relieve scattered detail");
+        double solidPoint = DraftEstimate.workSeconds(100, 1.0, 1, 1.0, 2);
+        double solidBare = DraftEstimate.workSeconds(100, 1.0, 1, 1.0, 0);
+        require(Math.abs(solidPoint - solidBare) < 1.0e-9,
+                "Point chisel must not help solid masses");
+        System.out.println("CarverChiselTest: tool factors passed");
     }
 
     private static void verifySession() {
@@ -373,7 +388,7 @@ public final class CarverTest {
         ua.rp.chat.microvoxel.MicrovoxelKey key = new ua.rp.chat.microvoxel.MicrovoxelKey(
                 new java.util.UUID(0L, 1L), 0, 64, 0);
         int totalTicks = DraftEstimate.workTicks(cells.size(),
-                DraftEstimate.fillRatio(cells), DraftEstimate.depthSpan(cells), 1.0);
+                DraftEstimate.fillRatio(cells), DraftEstimate.depthSpan(cells), 1.0, 0);
         long upsertTotal = 0L;
         long deltaTotal = 0L;
         int applied = 0;
@@ -586,6 +601,36 @@ public final class CarverTest {
             require(CarverProtocol.isEvent(event), "Event " + event + " must be known");
         }
         require(!CarverProtocol.isEvent(0), "Foreign events must be rejected");
+    }
+
+    /**
+     * Strike Alignment parity: server copy of the pure solver must agree with the
+     * mask algebra and keep the hammer trajectory on the contact normal.
+     */
+    private static void verifyStrikeAlign() {
+        java.util.List<Integer> slab = new java.util.ArrayList<>();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                slab.add(x | (z << 4) | (15 << 8));
+            }
+        }
+        CarverStrikeAlign.StrikePlan plan =
+                CarverStrikeAlign.solve(10, 64, 20, slab, 12.0, 64.0, 22.0);
+        require(Math.abs(plan.contactX() - 10.5) < 1.0e-9
+                        && Math.abs(plan.contactZ() - 20.5) < 1.0e-9,
+                "Slab contact must sit at the socket center");
+        require(plan.axis() == 1, "Slab must read as Y axis");
+        require(plan.normalY() > 0.9, "Slab normal must point up");
+        double[] impact = CarverTrajectory.impactPoint(
+                plan.contactX(), plan.contactY(), plan.contactZ(),
+                plan.normalX(), plan.normalY(), plan.normalZ());
+        double miss = CarverTrajectory.missDistance(impact,
+                new double[]{plan.contactX(), plan.contactY(), plan.contactZ()});
+        require(miss <= 0.021, "Impact butt must touch the contact, miss=" + miss);
+        double[] butt = CarverTrajectory.buttPoint(plan.contactX(), plan.contactY(), plan.contactZ(),
+                plan.normalX(), plan.normalY(), plan.normalZ(), 0.3, 0.0, 0.3, 1.0);
+        require(butt[1] > plan.contactY(), "Full windup must lift the butt");
+        System.out.println("CarverStrikeAlignTest: server parity passed");
     }
 
     private static void require(boolean condition, String message) {

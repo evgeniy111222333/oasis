@@ -5,7 +5,10 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
@@ -16,7 +19,9 @@ import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Draws the lifted hologram copy directly: exact socket-corner geometry, the real
@@ -38,9 +43,10 @@ public final class CarverHologramRenderer {
      * cells, so painted strokes vanish live while the mouse is still down. Rebuilt
      * only when the volume revision or the draft fingerprint moves.
      */
-    private record DisplayMesh(BlockPos focus, String sourceKey, long draftFp,
-                               List<MicrovoxelGreedyMesher.Face> faces,
-                               List<String> palette) {
+    record DisplayMesh(BlockPos focus, String sourceKey, long draftFp,
+                       List<MicrovoxelGreedyMesher.Face> faces,
+                       List<MicrovoxelGreedyMesher.Face> ghost,
+                       List<String> palette) {
     }
 
     private static volatile DisplayMesh displayCache;
@@ -49,11 +55,14 @@ public final class CarverHologramRenderer {
 
     private static long framesLogged;
     private static long facesLogged;
+    private static long filteredLogged;
 
     /** Resets the one-shot render diagnostics for the next session. */
     static void resetDiag() {
         framesLogged = 0L;
         facesLogged = 0L;
+        filteredLogged = 0L;
+        displayCache = null;
     }
 
     /** World-space END_MAIN hook: emits the lifted copy, nothing when parked. */
@@ -89,7 +98,7 @@ public final class CarverHologramRenderer {
             }
             return;
         }
-        if (display.faces().isEmpty()) {
+        if (display.faces().isEmpty() && display.ghost().isEmpty()) {
             if (facesLogged < 3L) {
                 facesLogged++;
                 ua.rp.chat.client.EclipseClientMod.LOGGER.info(
@@ -99,12 +108,20 @@ public final class CarverHologramRenderer {
         }
         if (facesLogged < 1L) {
             facesLogged++;
-            var first = display.faces().get(0);
+            var first = display.faces().isEmpty() ? display.ghost().get(0) : display.faces().get(0);
             ua.rp.chat.client.EclipseClientMod.LOGGER.info(
                     "[CARVER-HOLO] faces=" + display.faces().size()
+                            + " ghost=" + display.ghost().size()
                             + " first=" + first.direction() + " mat=" + first.material()
                             + " box=" + first.minX() + "," + first.minY() + "," + first.minZ()
                             + "-" + first.maxX() + "," + first.maxY() + "," + first.maxZ());
+        }
+        if (!display.ghost().isEmpty() && filteredLogged < 1L) {
+            filteredLogged++;
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CARVER-HOLO] draft hides " + display.ghost().size()
+                            + " of " + (display.faces().size() + display.ghost().size())
+                            + " faces for " + focus.toShortString());
         }
         Vec3 camera = minecraft.gameRenderer.getMainCamera().position();
         double baseX = CarverHologram.originX() - camera.x;
@@ -112,9 +129,20 @@ public final class CarverHologramRenderer {
         double baseZ = CarverHologram.originZ() - camera.z;
         int light = LevelRenderer.getLightCoords(minecraft.level, focus);
         PoseStack.Pose pose = context.poseStack().last();
-        VertexConsumer consumer = context.bufferSource().getBuffer(Sheets.cutoutBlockSheet());
         List<String> palette = display.palette();
-        for (MicrovoxelGreedyMesher.Face face : display.faces()) {
+        Set<RenderType> usedTypes = new LinkedHashSet<>();
+        emitFaceList(minecraft, focus, display.faces(), palette, pose,
+                context.bufferSource(), baseX, baseY, baseZ, light, usedTypes);
+        for (RenderType type : usedTypes) context.bufferSource().endBatch(type);
+    }
+
+    private static void emitFaceList(Minecraft minecraft, BlockPos focus,
+                                     List<MicrovoxelGreedyMesher.Face> faces,
+                                     List<String> palette, PoseStack.Pose pose,
+                                     MultiBufferSource.BufferSource bufferSource,
+                                     double baseX, double baseY, double baseZ,
+                                     int light, Set<RenderType> usedTypes) {
+        for (MicrovoxelGreedyMesher.Face face : faces) {
             int materialIndex = face.material();
             if (materialIndex <= 0 || materialIndex >= palette.size()) continue;
             String materialName = palette.get(materialIndex);
@@ -130,9 +158,13 @@ public final class CarverHologramRenderer {
             if (quads == null || quads.isEmpty()) continue;
             BlockState materialState = materialFaces.state();
             for (BakedQuad quad : quads) {
+                RenderType type = solidRenderType(quad);
+                VertexConsumer consumer = bufferSource.getBuffer(type);
+                usedTypes.add(type);
                 var patch = ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.UvPatch.from(quad);
                 int color = tinted(minecraft, materialState, quad, focus);
                 color = shade(color, direction);
+                int faceLight = light;
                 float[][] corners = faceCorners(face);
                 for (float[] corner : corners) {
                     var sample = patch.sample(face.direction(), corner[0], corner[1], corner[2]);
@@ -143,13 +175,24 @@ public final class CarverHologramRenderer {
                             .setColor(color)
                             .setUv(sample.u(), sample.v())
                             .setOverlay(OverlayTexture.NO_OVERLAY)
-                            .setLight(light)
+                            .setLight(faceLight)
                             .setNormal(pose, direction.getStepX(), direction.getStepY(),
                                     direction.getStepZ());
                 }
             }
         }
-        context.bufferSource().endBatch(Sheets.cutoutBlockSheet());
+    }
+
+    private static RenderType solidRenderType(BakedQuad quad) {
+        BakedQuad.MaterialInfo info = quad.materialInfo();
+        if ((info.flags() & BakedQuad.FLAG_TRANSLUCENT) != 0) {
+            return RenderTypes.translucentMovingBlock();
+        }
+        try {
+            return info.itemRenderType();
+        } catch (RuntimeException fallback) {
+            return Sheets.cutoutBlockSheet();
+        }
     }
 
     /**
@@ -184,22 +227,24 @@ public final class CarverHologramRenderer {
             return current;
         }
         List<MicrovoxelGreedyMesher.Face> mesh =
-                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(volume, (x, y, z) -> 0);
+                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(volume, volume::materialAt);
         List<MicrovoxelGreedyMesher.Face> visible = mesh;
+        List<MicrovoxelGreedyMesher.Face> ghost = List.of();
         if (draftFp != 0L) {
             visible = new ArrayList<>(mesh.size());
+            ghost = new ArrayList<>(mesh.size());
             for (MicrovoxelGreedyMesher.Face face : mesh) {
-                if (ua.rp.chat.carver.CarverChalkQuads.cellsCleared(
-                        face.minX(), face.minY(), face.minZ(),
-                        face.maxX() - 1, face.maxY() - 1, face.maxZ() - 1, draft)) {
+                if (ua.rp.chat.carver.CarverChalkQuads.cellsClearedFace(face, draft)) {
+                    ghost.add(face);
                     continue;
                 }
                 visible.add(face);
             }
             visible = List.copyOf(visible);
+            ghost = List.copyOf(ghost);
         }
         DisplayMesh built = new DisplayMesh(focus.immutable(), sourceKey, draftFp,
-                visible, volume.palette());
+                visible, ghost, volume.palette());
         displayCache = built;
         return built;
     }

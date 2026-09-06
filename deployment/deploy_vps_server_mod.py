@@ -10,7 +10,11 @@ import subprocess
 from pathlib import Path
 
 
-SSH_KEY = Path(os.environ.get("ECLIPSE_VPS_SSH_KEY", r"E:\eclipse-stock.pem"))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SSH_KEY = Path(os.environ.get(
+    "ECLIPSE_VPS_SSH_KEY",
+    str(REPO_ROOT / "secrets" / "eclipse-stock.pem"),
+))
 VPS_HOST = os.environ.get("ECLIPSE_VPS_HOST", "13.51.232.191")
 VPS_USER = os.environ.get("ECLIPSE_VPS_USER", "ubuntu")
 SERVER_ROOT = "/opt/eclipse-rp"
@@ -144,7 +148,15 @@ false
 
 def main() -> None:
     repo = Path(__file__).resolve().parents[1]
-    server_jar = repo / "fabric-server" / "mods" / "eclipseserver-1.4.5.jar"
+    properties = (repo / "fabric-server" / "gradle.properties").read_text(encoding="utf-8")
+    version = next(
+        (line.split("=", 1)[1].strip() for line in properties.splitlines()
+         if line.strip().startswith("mod_version=")),
+        None,
+    )
+    if not version:
+        raise RuntimeError("mod_version is missing from fabric-server/gradle.properties")
+    server_jar = repo / "fabric-server" / "mods" / f"eclipseserver-{version}.jar"
     if not server_jar.is_file():
         raise FileNotFoundError(f"Built Fabric server mod is missing: {server_jar}")
     if not SSH_KEY.is_file():
@@ -156,7 +168,7 @@ def main() -> None:
         print(f"SERVER_MOD_ALREADY_CURRENT sha256={expected}")
         return
 
-    remote_upload = f"/tmp/eclipseserver-1.4.5.{expected[:12]}.upload.jar"
+    remote_upload = f"/tmp/eclipseserver-{version}.{expected[:12]}.upload.jar"
     target = f"{VPS_USER}@{VPS_HOST}:{remote_upload}"
     print(f"Uploading Fabric server mod {current} -> {expected}...")
     try:

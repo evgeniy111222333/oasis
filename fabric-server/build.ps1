@@ -16,7 +16,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "Fabric build failed with exit code $LASTEXITCODE"
 }
 
-$serverMod = Join-Path $PSScriptRoot "mods\eclipseserver-1.4.5.jar"
+$properties = Get-Content -LiteralPath (Join-Path $workspace "gradle.properties")
+$versionLine = $properties | Where-Object { $_ -match '^\s*mod_version\s*=' } | Select-Object -First 1
+if ($null -eq $versionLine) {
+    throw "mod_version is missing from gradle.properties"
+}
+$modVersion = ($versionLine -split '=', 2)[1].Trim()
+$serverMod = Join-Path $PSScriptRoot "mods\eclipseserver-$modVersion.jar"
 if (!(Test-Path $serverMod)) {
     throw "Fabric server mod was not deployed: $serverMod"
 }

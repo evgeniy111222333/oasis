@@ -30,6 +30,15 @@ public abstract class CameraMixin {
 
     @Inject(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Camera;prepareCullFrustum(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4f;Lnet/minecraft/world/phys/Vec3;)V"))
     private void eclipse$afterUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
+        if (this.entity instanceof Player player) {
+            ua.rp.chat.client.stonemason.StonemasonCameraRig.Pose pose =
+                    ua.rp.chat.client.stonemason.StonemasonCameraRig.pose(player);
+            if (pose != null) {
+                this.setPosition(pose.position());
+                this.setRotation(pose.yaw(), pose.pitch());
+                return;
+            }
+        }
         if (this.entity instanceof Player player && SmartCameraManager.getInstance().isCameraMotionActiveFor(player) && !this.detached) {
             float partialTick = this.getCameraEntityPartialTicks(deltaTracker);
             SmartCameraManager manager = SmartCameraManager.getInstance();

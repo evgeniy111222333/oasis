@@ -19,13 +19,10 @@ public final class CarverWorkFx {
         if (minecraft.level == null || minecraft.player == null) return;
         tickCounter++;
         if (!CarverClientState.working() || CarverClientState.focus() == null) return;
-        if (tickCounter % 2 != 0) return;
+        if (tickCounter % 6 != 0) return;
         BlockPos focus = CarverClientState.focus();
         int tint = stormTint(minecraft, focus);
-        int density = 1 + (int) (CarverClientState.workProgress() * 2.0);
-        for (int puff = 0; puff < density; puff++) {
-            CarverDustStorm.trickle(minecraft, focus, tint);
-        }
+        CarverDustStorm.trickle(minecraft, focus, tint);
     }
 
     public static void burst(BlockPos focus) {

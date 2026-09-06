@@ -53,8 +53,21 @@ public final class CarverItems {
                             .setDispensable(false)
                             .build()));
     public static final Item SCROLL = new Item(new Item.Properties().setId(SCROLL_KEY).stacksTo(1));
-    public static final Item CHISEL_POINT = new Item(new Item.Properties().setId(CHISEL_POINT_KEY).stacksTo(1));
-    public static final Item CHISEL_FLAT = new Item(new Item.Properties().setId(CHISEL_FLAT_KEY).stacksTo(1));
+    /** Delicate point chisel: precision on scattered detail, wears fast. */
+    public static final int CHISEL_POINT_DURABILITY = 150;
+    /** Sturdy flat chisel: drives through solid masses, wears slow. */
+    public static final int CHISEL_FLAT_DURABILITY = 250;
+    public static final Item CHISEL_POINT = new Item(new Item.Properties().setId(CHISEL_POINT_KEY)
+            .stacksTo(1).durability(CHISEL_POINT_DURABILITY));
+    public static final Item CHISEL_FLAT = new Item(new Item.Properties().setId(CHISEL_FLAT_KEY)
+            .stacksTo(1).durability(CHISEL_FLAT_DURABILITY));
+
+    /** Chisel held in the off hand: 0 none, 1 flat, 2 point. */
+    public static int chiselOf(net.minecraft.world.item.ItemStack stack) {
+        if (stack != null && stack.is(CHISEL_FLAT)) return 1;
+        if (stack != null && stack.is(CHISEL_POINT)) return 2;
+        return 0;
+    }
     public static final Item BAG_NO_POINT = new Item(new Item.Properties().setId(BAG_NO_POINT_KEY).stacksTo(1));
     public static final Item BAG_EMPTY = new Item(new Item.Properties().setId(BAG_EMPTY_KEY).stacksTo(1));
 

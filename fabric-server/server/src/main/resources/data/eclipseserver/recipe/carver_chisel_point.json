@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " I ",
+    " S ",
+    " L "
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "S": "minecraft:stick",
+    "L": "minecraft:leather"
+  },
+  "result": {
+    "id": "eclipseserver:carver_chisel_point"
+  }
+}

@@ -86,6 +86,22 @@ public record CarverSyncPayload(int protocolVersion, int event,
 
     public static byte[] observedStartData(java.util.UUID playerId, int x, int y, int z,
                                            int totalTicks) {
+        return observedStartData(playerId, x, y, z, totalTicks, null);
+    }
+
+    public static byte[] observedStartData(java.util.UUID playerId, int x, int y, int z,
+                                           int totalTicks, double[] centroidCells) {
+        return observedStartData(playerId, x, y, z, totalTicks, centroidCells, null);
+    }
+
+    /**
+     * Extended observed-start: optional strike-plan tail (stand yaw + face axis).
+     * Appended after the legacy centroid floats, so old readers that stop at
+     * {@code available() < 12} keep working unchanged.
+     */
+    public static byte[] observedStartData(java.util.UUID playerId, int x, int y, int z,
+                                           int totalTicks, double[] centroidCells,
+                                           ua.rp.chat.carver.CarverStrikeAlign.StrikePlan plan) {
         return writeData(output -> {
             output.writeLong(playerId.getMostSignificantBits());
             output.writeLong(playerId.getLeastSignificantBits());
@@ -93,6 +109,15 @@ public record CarverSyncPayload(int protocolVersion, int event,
             output.writeInt(y);
             output.writeInt(z);
             output.writeInt(totalTicks);
+            if (centroidCells != null && centroidCells.length >= 3) {
+                output.writeFloat((float) centroidCells[0]);
+                output.writeFloat((float) centroidCells[1]);
+                output.writeFloat((float) centroidCells[2]);
+            }
+            if (plan != null) {
+                output.writeFloat(plan.standYaw());
+                output.writeByte(plan.axis());
+            }
         });
     }
 

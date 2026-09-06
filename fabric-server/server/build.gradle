@@ -42,6 +42,14 @@ tasks.register("verifyServerCore", JavaExec) {
     mainClass = "ua.rp.chat.microvoxel.MicrovoxelServerCoreTest"
 }
 
+tasks.register("verifyArrowImpactPhysics", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks deterministic arrow energy, armour, angle, lodging and through-flight invariants."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.projectile.ArrowImpactPhysicsTest"
+}
+
 tasks.register("verifyFabricParity", JavaExec) {
     dependsOn tasks.named("testClasses")
     group = "verification"
@@ -50,28 +58,170 @@ tasks.register("verifyFabricParity", JavaExec) {
     mainClass = "ua.rp.chat.FabricParityContractTest"
 }
 
+tasks.register("verifyMicrovoxelMining", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks per-cell mining math, crack stages, session continuation and targeting invariants."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.microvoxel.mining.MicrovoxelMiningTest"
+}
+
+tasks.register("verifyCarver", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks Carver draft masks, estimates, session lifecycle and protocol."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.carver.CarverTest"
+}
+
+tasks.register("verifyMicrovoxelParentage", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks the parent-block resolver: dominant material, parsing and empty-volume contracts."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.microvoxel.MicrovoxelParentageTest"
+}
+
 tasks.register("verifyChunkLoadMarkerSafety") {
     group = "verification"
     description = "Prevents synchronous world/chunk access from returning to the C2ME CHUNK_LOAD callback."
-    def source = layout.projectDirectory.file(
+    def managerSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
-    inputs.file(source)
+    def projectionSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProjection.java")
+    inputs.files(managerSource, projectionSource)
     doLast {
-        def text = source.asFile.getText("UTF-8")
+        def text = managerSource.asFile.getText("UTF-8")
         def start = text.indexOf("public void restoreMarkers(ServerLevel world, LevelChunk chunk)")
-        def end = text.indexOf("private void restoreMarkersInLoadedChunks()", start)
-        assert start >= 0 && end > start: "restoreMarkers chunk-load boundary is missing"
-        def callback = text.substring(start, end)
-        assert callback.contains("markerRestoreQueue.schedule"):
-                "CHUNK_LOAD must only enqueue marker restoration"
+        assert start >= 0: "restoreMarkers chunk-load boundary is missing"
+        assert !text.contains("private void restoreMarkersInLoadedChunks()"):
+                "legacy restoreMarkersInLoadedChunks must be removed"
+        // Scope the check to the restoreMarkers body itself (brace matching), so later
+        // methods in the file (spills, fills, reconciliation) cannot trip it.
+        def open = text.indexOf('{', start)
+        assert open > start: "restoreMarkers body is missing"
+        int depth = 0
+        int close = -1
+        for (int index = open; index < text.length(); index++) {
+            char c = text.charAt(index)
+            if (c == '{') depth++
+            else if (c == '}') {
+                depth--
+                if (depth == 0) {
+                    close = index
+                    break
+                }
+            }
+        }
+        assert close > open: "restoreMarkers body is unterminated"
+        def callback = text.substring(start, close + 1)
+        assert callback.contains("scheduleReconcile"):
+                "CHUNK_LOAD must only schedule whole-chunk reconciliation"
         assert !callback.contains("updateMarker("):
                 "CHUNK_LOAD must not update blocks synchronously"
         assert !callback.contains("getBlockState(") && !callback.contains("setBlock("):
                 "CHUNK_LOAD must not re-enter chunk access"
-        assert text.contains("getChunkSource().getChunkNow"):
-                "Deferred restoration must refuse to synchronously load an absent chunk"
-        assert text.contains("MAX_MARKER_RESTORES_PER_TICK"):
-                "Deferred restoration must remain bounded per tick"
+        def projection = projectionSource.asFile.getText("UTF-8")
+        assert projection.contains("MAX_RECONCILES_PER_TICK = 2"):
+                "Deferred reconciliation must remain bounded per tick"
+        assert projection.contains("reconcileQueue.poll"):
+                "Deferred reconciliation must be drained from a bounded queue"
+    }
+}
+
+tasks.register("verifyMicrovoxelNativeMarker") {
+    group = "verification"
+    description = "Checks the paired native marker registry and fail-closed delta resynchronization."
+    def managerSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def serverMarker = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def clientMarker = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def clientState = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    def clientRenderer = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientRenderer.java")
+    def sectionModel = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelSectionModel.java")
+    def interaction = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelInteractionController.java")
+    def gameModeMixin = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/mixin/microvoxel/MultiPlayerGameModeMixin.java")
+    def serverBlockStateMixin = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/mixin/microvoxel/BlockStateMicrovoxelMixin.java")
+    def protocolSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java")
+    def bootstrapSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/RPChat.java")
+    def authSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/auth/AuthManager.java")
+    inputs.files(managerSource, serverMarker, clientMarker, clientState, clientRenderer, sectionModel,
+            interaction, gameModeMixin, serverBlockStateMixin, protocolSource, bootstrapSource,
+            authSource)
+    doLast {
+        def manager = managerSource.asFile.getText("UTF-8")
+        def state = clientState.asFile.getText("UTF-8")
+        def renderer = clientRenderer.asFile.getText("UTF-8")
+        def section = sectionModel.asFile.getText("UTF-8")
+        assert serverMarker.asFile.getText("UTF-8") == clientMarker.asFile.getText("UTF-8"):
+                "Server/client native microvoxel marker registries diverged"
+        assert manager.contains("return MicrovoxelBlocks.markerState(")
+                && manager.contains("markerLightLevel(volume, kind)")
+                && serverMarker.asFile.getText("UTF-8").contains("SOUND_PROFILE")
+                && serverMarker.asFile.getText("UTF-8").contains("WATERLOGGED"):
+                "Microvoxel volumes still use a vanilla placeholder marker"
+        assert state.contains('requestVolumeResync(immutable, "delta without base volume')
+                && state.contains('MicrovoxelRevision.isImmediateNext'):
+                "Missing or out-of-order deltas must request an authoritative targeted volume"
+        assert renderer.contains("MicrovoxelBlocks.isMarker(state)"):
+                "The native marker is registered but rejected by the client renderer"
+        assert section.contains("ModelLoadingPlugin.register")
+                && section.contains("extends WrapperBlockStateModel")
+                && state.contains("setSectionDirty"):
+                "Microvoxel geometry must compile into bounded persistent terrain section buffers"
+        assert state.contains("oldCached.updateVolume(volume)")
+                && state.contains("currentCenter.mesh = mesh")
+                && !state.contains("oldCached == null ? null : oldCached.getShape()"):
+                "Continuous edits must coalesce shape work and publish intermediate meshes"
+        assert interaction.asFile.getText("UTF-8").contains(
+                "Always raycast the predicted"):
+                "Continuous attack must not resend the previous tick's stale target"
+        assert gameModeMixin.asFile.getText("UTF-8").contains(
+                "MicrovoxelInteractionController.editing() && MicrovoxelClientState.get(pos) != null"):
+                "Native survival mining must remain enabled outside microvoxel edit mode"
+        def miningMixin = serverBlockStateMixin.asFile.getText("UTF-8")
+        assert miningMixin.contains("eclipse\$microvoxelDestroyProgress")
+                && miningMixin.contains("parentBlockState"):
+                "Server mining speed must delegate to the parent material"
+        assert manager.contains("player.hasCorrectToolForDrops(parentState)")
+                && !manager.contains("getRequiredBreakTimeMs"):
+                "Microvoxel harvest rules must use vanilla parent-material tool semantics"
+        def protocol = protocolSource.asFile.getText("UTF-8")
+        assert protocol.contains("SNAPSHOT_BEGIN")
+                && protocol.contains("SNAPSHOT_END")
+                && protocol.contains("ACTION_SNAPSHOT_ACK")
+                && state.contains("snapshotConfirmed")
+                && state.contains("READY_RETRY_TICKS")
+                && manager.contains("retryUnacknowledgedSnapshots"):
+                "Login/restart snapshots must remain acknowledged and retryable"
+        assert section.contains("noteMissingVolume(pos)")
+                && state.contains("processMissingMarkers()")
+                && manager.contains("reconcileOrphanMarker"):
+                "A rendered marker without a volume must self-heal or be reconciled"
+        assert bootstrapSource.asFile.getText("UTF-8").contains(
+                "MicrovoxelProtocol.isSynchronizationAction(payload.action())")
+                && authSource.asFile.getText("UTF-8").contains(
+                "onAuthenticationComplete(player)"):
+                "RP authentication must not swallow microvoxel synchronization"
+        assert manager.contains('resolve("rpchat").resolve("microvoxels")')
+                && manager.contains("LEGACY_MIGRATION_COMPLETE")
+                && manager.contains("legacyStore.snapshot().entries()"):
+                "Microvoxel regions must live with the world and preserve legacy migration"
+        assert manager.contains("fillWithBucket")
+                && manager.contains("fluidStore")
+                && manager.contains("markerState(volume, fluidKind(key))"):
+                "Fluid volumes must be fillable, persisted and projected with their flag"
     }
 }
 
@@ -86,7 +236,28 @@ tasks.register("verifyBloodFxIntegration") {
             "src/main/java/ua/rp/chat/client/blood/BloodFxPayload.java")
     def clientPayload = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/blood/BloodFxPayload.java")
-    inputs.files(staminaSource, bootstrapSource, serverPayload, clientPayload)
+    def serverFootprintPayload = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/client/blood/BloodFootprintPayload.java")
+    def clientFootprintPayload = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/blood/BloodFootprintPayload.java")
+    def footprintService = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/vitals/BloodFootprintService.java")
+    def surfaceService = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/vitals/BloodSurfaceFilmService.java")
+    def serverSurfacePayload = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/client/blood/BloodSurfacePayload.java")
+    def clientSurfacePayload = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/main/java/ua/rp/chat/client/blood/BloodSurfacePayload.java")
+    def clientDecal = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/blood/BloodDecalParticle.java")
+    def serverVolumeRules = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/blood/BloodVolumeRules.java")
+    def clientVolumeRules = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/main/java/ua/rp/chat/blood/BloodVolumeRules.java")
+    inputs.files(staminaSource, bootstrapSource, serverPayload, clientPayload,
+            serverFootprintPayload, clientFootprintPayload, footprintService,
+            surfaceService, serverSurfacePayload, clientSurfacePayload, clientDecal,
+            serverVolumeRules, clientVolumeRules)
     doLast {
         def stamina = staminaSource.asFile.getText("UTF-8")
         def bootstrap = bootstrapSource.asFile.getText("UTF-8")
@@ -105,6 +276,238 @@ tasks.register("verifyBloodFxIntegration") {
                 "Blood FX payload must be registered before play connections"
         assert serverPayload.asFile.getText("UTF-8") == clientPayload.asFile.getText("UTF-8"):
                 "Server and client Blood FX payload definitions diverged"
+        assert serverPayload.asFile.getText("UTF-8").contains("PROTOCOL_VERSION = 4")
+                && serverPayload.asFile.getText("UTF-8").contains("penetrationDepth"):
+                "Projectile penetration depth is missing from the authoritative wound protocol"
+        assert stamina.contains("resolveProjectileImpact")
+                && stamina.contains("projectileImpact.damageScale()")
+                && !stamina.contains("ThreadLocalRandom.current().nextDouble() < 0.72"):
+                "Arrow injury reverted to the old flat random embedding chance"
+        assert serverVolumeRules.asFile.getText("UTF-8") == clientVolumeRules.asFile.getText("UTF-8"):
+                "Server and client blood-volume conservation rules diverged"
+        assert stamina.contains("remainingBloodMl") && stamina.contains("partFlowMlPerSecond")
+                && stamina.contains("internalDamage.contains"):
+                "Blood FX lost its authoritative volume budget or internal-damage guard"
+        assert serverFootprintPayload.asFile.getText("UTF-8") == clientFootprintPayload.asFile.getText("UTF-8"):
+                "Server and client footprint payload definitions diverged"
+        assert bootstrap.contains("BloodFootprintPayload.TYPE") && bootstrap.contains("BloodFootprintPayload.CODEC"):
+                "Footprint payload must be registered in both directions"
+        def footprints = footprintService.asFile.getText("UTF-8")
+        assert footprints.contains("MAX_RECORDS = 4_096")
+                && footprints.contains("REQUEST_DISTANCE_SQ")
+                && footprints.contains("ticks % 600")
+                && footprints.contains("ATOMIC_MOVE"):
+                "Persistent footprints lost their validation, hard budget or atomic persistence"
+        assert footprints.contains("getChunkNow") && !footprints.contains("getChunk("):
+                "Weather maintenance must never synchronously load footprint chunks"
+        def surface = surfaceService.asFile.getText("UTF-8")
+        def serverSurface = serverSurfacePayload.asFile.getText("UTF-8")
+        def clientSurface = clientSurfacePayload.asFile.getText("UTF-8")
+        assert bootstrap.contains("BloodSurfacePayload.TYPE")
+                && bootstrap.contains("bloodSurfaceFilmService.tick()"):
+                "Persisted surface-film protocol and lifecycle must be fully registered"
+        assert serverSurface.contains("PROTOCOL_VERSION = 1")
+                && clientSurface.contains("PROTOCOL_VERSION = 1")
+                && serverSurface.contains('Identifier.fromNamespaceAndPath("rpchat", "blood_surface")')
+                && clientSurface.contains('Identifier.fromNamespaceAndPath("rpchat", "blood_surface")'):
+                "Server/client surface-film wire identities diverged"
+        assert surface.contains("MAX_RECORDS = 16_384")
+                && surface.contains("MAX_MAINTENANCE_PER_SECOND")
+                && surface.contains("seenSeeds")
+                && surface.contains("ATOMIC_MOVE"):
+                "Persisted surface film lost its budget, observer deduplication or atomic storage"
+        assert !clientDecal.asFile.getText("UTF-8").contains("tickSurfaceFlow();"):
+                "Wall flow must run once on the server, not independently per observer"
+    }
+}
+
+tasks.register("verifyMixinConfigSync") {
+    group = "verification"
+    description = "Checks every mixin JSON entry resolves to a @Mixin source and vice versa."
+    def mixinJson = layout.projectDirectory.file("src/main/resources/eclipseserver.mixins.json")
+    def mixinRoot = layout.projectDirectory.dir("src/main/java/ua/rp/chat/mixin")
+    inputs.file(mixinJson)
+    inputs.dir(mixinRoot)
+    doLast {
+        def parsed = new groovy.json.JsonSlurper().parse(mixinJson.asFile)
+        def listed = (parsed.mixins as List).collect { it.toString() } as Set
+        assert !listed.isEmpty(): "Server mixin configuration lists no mixins"
+        listed.each { name ->
+            def source = mixinRoot.file(
+                    name.replace(".", File.separator) + ".java").asFile
+            assert source.isFile(): "Mixin JSON lists missing source ${name}"
+            assert source.getText("UTF-8").contains("@Mixin("):
+                    "${name} is listed as a mixin but carries no @Mixin annotation"
+        }
+        mixinRoot.asFile.eachFileRecurse { file ->
+            if (file.name.endsWith(".java")) {
+                def relative = mixinRoot.asFile.toPath().relativize(file.toPath()).toString()
+                        .replace(File.separator, ".").replace(".java", "")
+                assert listed.contains(relative):
+                        "${relative} is a mixin source but is not listed in the JSON"
+            }
+        }
+        // The deprecated hurtOrSimulate bridge must never be *called* (redirect target
+        // strings like "Entity;hurtOrSimulate(" are fine and required); damage goes
+        // through hurtServer/hurtClient directly.
+        mixinRoot.asFile.eachFileRecurse { file ->
+            if (file.name.endsWith(".java")) {
+                assert !(file.getText("UTF-8") =~ /\.hurtOrSimulate\(/):
+                        "${file.name} calls the deprecated hurtOrSimulate bridge"
+            }
+        }
+        println "Mixin config sync: ${listed.size()} server mixins listed and present"
+    }
+}
+
+tasks.register("verifyMicrovoxelProtocolParity") {
+    group = "verification"
+    description = "Checks server/client microvoxel wire parity: versions, payload mirrors and batch registration."
+    def protocolSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java")
+    def clientState = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    def serverAction = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelActionPayload.java")
+    def clientAction = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelActionPayload.java")
+    def serverBatch = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
+    def clientBatch = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
+    def bootstrapSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/RPChat.java")
+    def clientBootstrap = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/EclipseClientMod.java")
+    inputs.files(protocolSource, clientState, serverAction, clientAction,
+            serverBatch, clientBatch, bootstrapSource, clientBootstrap)
+    doLast {
+        def protocol = protocolSource.asFile.getText("UTF-8")
+        def state = clientState.asFile.getText("UTF-8")
+        assert protocol.contains("VERSION = 6") && state.contains("PROTOCOL_VERSION = 6"):
+                "Server/client microvoxel protocol versions diverged"
+        assert serverAction.asFile.getText("UTF-8") == clientAction.asFile.getText("UTF-8"):
+                "Server/client action payload definitions diverged"
+        assert serverBatch.asFile.getText("UTF-8") == clientBatch.asFile.getText("UTF-8"):
+                "Server/client batch payload definitions diverged"
+        assert serverBatch.asFile.getText("UTF-8").contains("MAX_ENTRIES = 16"):
+                "Batch packet cap is missing"
+        def bootstrap = bootstrapSource.asFile.getText("UTF-8")
+        assert bootstrap.contains("MicrovoxelBatchPayload.TYPE")
+                && bootstrap.contains("MicrovoxelBatchPayload.CODEC"):
+                "Batch payload must be registered on the server"
+        def clientInit = clientBootstrap.asFile.getText("UTF-8")
+        assert clientInit.contains("MicrovoxelBatchPayload.TYPE")
+                && clientInit.contains("MicrovoxelBatchPayload.CODEC"):
+                "Batch payload must be registered on the client"
+    }
+}
+
+tasks.register("verifyMicrovoxelFluidWiring") {
+    group = "verification"
+    description = "Checks voxel fluid plumbing: marker waterlogging, fill path, sim reconciliation."
+    def serverMarker = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def clientMarker = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def managerSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def simSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/fluid/FluidSim.java")
+    def blockStateMixin = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/mixin/microvoxel/BlockStateMicrovoxelMixin.java")
+    def bootstrapSource = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/RPChat.java")
+    def entityMixin = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/mixin/fluid/EntityFluidRefineMixin.java")
+    def clientEntityMixin = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/mixin/fluid/EntityFluidRefineMixin.java")
+    def cameraMixin = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/mixin/fluid/CameraFluidRefineMixin.java")
+    def fluidRendererMixin = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/mixin/fluid/FluidRendererMicrovoxelMixin.java")
+    def sectionModel = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelSectionModel.java")
+    def clientState = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    inputs.files(serverMarker, clientMarker, managerSource, simSource, bootstrapSource,
+            entityMixin, clientEntityMixin, cameraMixin, fluidRendererMixin, sectionModel,
+            clientState, blockStateMixin)
+    doLast {
+        def marker = serverMarker.asFile.getText("UTF-8")
+        assert marker == clientMarker.asFile.getText("UTF-8"):
+                "Server/client marker registries diverged"
+        assert marker.contains("WATERLOGGED") && marker.contains("SimpleWaterloggedBlock")
+                && marker.contains("getFluidState") && marker.contains("canPlaceLiquid"):
+                "Marker must expose vanilla waterlogging with explicit-fill-only semantics"
+        def manager = managerSource.asFile.getText("UTF-8")
+        def bootstrap = bootstrapSource.asFile.getText("UTF-8")
+        assert manager.contains("fillWithBucket") && manager.contains("WATER_EVAPORATES")
+                && bootstrap.contains("WATER_BUCKET") && bootstrap.contains("Items.BUCKET"):
+                "Bucket fills must go through the guarded basin path with nether evaporation"
+        assert manager.contains("fillWithLavaBucket") && manager.contains("scoopLavaBucket")
+                && manager.contains("quenchSurface") && manager.contains("LAVA_BUCKET")
+                && bootstrap.contains("LAVA_BUCKET") && bootstrap.contains("DISPENSER_REGISTRY"):
+                "Lava buckets, quenching and dispensers must share the guarded paths"
+        def sim = simSource.asFile.getText("UTF-8")
+        assert sim.contains("crustMaterial") && sim.contains("crustWithNeighbors")
+                && sim.contains("voxelLavaHeight") && manager.contains("markerLightLevel"):
+                "Thermodynamics and lava physics must stay wired to volume data"
+        assert manager.contains("fluidSim.dropFluid") && manager.contains("LAVA.defaultBlockState"):
+                "Scoops and restores must converge through sim cleanup with kind spills"
+        assert sim.contains("equalizeWith") && sim.contains("adoptOrphanWaterlogged")
+                && sim.contains("drainDownwardOpenings") && sim.contains("tuning.maxVolumesPerTick")
+                && sim.contains("chunkLoaded(level,") && sim.contains("isProtected(key)"):
+                "Fluid sim must equalize, adopt orphans and drain within budgets without loading chunks"
+        assert bootstrap.contains("Items.BUCKET"):
+                "Empty-bucket clicks must pass through to the vanilla scoop"
+        // Precise fluid surfaces and dry-corner physics: levels ride FLUID_UPSERT/REMOVE,
+        // vanilla full-cube water is suppressed for known volumes, entities and the camera
+        // refine against exact 1/16 cells.
+        def protocol = layout.projectDirectory.file(
+                "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java").asFile.getText("UTF-8")
+        def state = clientState.asFile.getText("UTF-8")
+        assert protocol.contains("FLUID_UPSERT") && protocol.contains("FLUID_REMOVE")
+                && protocol.contains("encodeLevels") && protocol.contains("decodeLevels")
+                && protocol.contains("kindCode") && state.contains("kindCode"):
+                "Fluid levels must travel in revision-guarded RLE packets with kind"
+        assert sim.contains("syncFluid") && sim.contains("nearbyPlayers")
+                && sim.contains("shouldIgnoreWater"):
+                "Sim must throttle level sync and refine entity water reads"
+        assert sim.contains("lateralFlow") && sim.contains("catchRain")
+                && sim.contains("updateComparatorOutput") && sim.contains("comparatorSignal"):
+                "Sim must relax surfaces laterally, catch rain and drive redstone tanks"
+        assert entityMixin.asFile.getText("UTF-8").contains("isInWater")
+                && entityMixin.asFile.getText("UTF-8").contains("getFluidHeight")
+                && entityMixin.asFile.getText("UTF-8").contains("doWaterSplashEffect")
+                && entityMixin.asFile.getText("UTF-8").contains("isInLava")
+                && clientEntityMixin.asFile.getText("UTF-8").contains("isEyeInFluid")
+                && clientEntityMixin.asFile.getText("UTF-8").contains("doWaterSplashEffect"):
+                "Entity water reads and entry splashes must refine together, never partially"
+        assert cameraMixin.asFile.getText("UTF-8").contains("FogType.NONE"):
+                "Camera fog must lift on dry voxel cells"
+        assert fluidRendererMixin.asFile.getText("UTF-8").contains("ci.cancel()")
+                && sectionModel.asFile.getText("UTF-8").contains("emitFluidSurface")
+                && sectionModel.asFile.getText("UTF-8").contains("SODIUM_PRESENT")
+                && sectionModel.asFile.getText("UTF-8").contains("sodiumPreciseFluid")
+                && sectionModel.asFile.getText("UTF-8").contains("tintSource"):
+                "Vanilla full-cube water must yield to the precise biome-tinted surface mesh"
+        assert state.contains("predictFluidUse") && state.contains("reconcileFluidPrediction")
+                && state.contains("isDowsedMaterial") && manager.contains("isDowsedMaterial")
+                && state.contains("predictLavaFill") && state.contains("abandonFluidPrediction"):
+                "Fill previews must dowse torches exactly like the server confirmation"
+        assert state.contains("fluid.lava()")
+                && sectionModel.asFile.getText("UTF-8").contains("fluid.lava()"):
+                "Lava must glow through light sealing and render outside the Sodium gate"
+        assert blockStateMixin.asFile.getText("UTF-8").contains("getAnalogOutputSignal"):
+                "Redstone tanks need the comparator hook on marker states"
+        assert sim.contains("freezeSurface") && sim.contains("catchRain")
+                && sim.contains("lateralFlow") && sim.contains("comparatorSignal"):
+                "Sim must settle laterally, catch rain, frost crusts and drive comparators"
+        assert bootstrap.contains("registerFluidDispenserBehavior")
+                && bootstrap.contains("DISPENSER_REGISTRY")
+                && manager.contains("stockWithBucket") && manager.contains("TROPICAL_FISH"):
+                "Dispensers and mob buckets must stock basins through guarded paths"
     }
 }
 
@@ -112,11 +515,69 @@ tasks.named("test") {
     failOnNoDiscoveredTests = false
 }
 
+tasks.register("verifyCarverParity") {
+    group = "verification"
+    description = "Fails when server/client Carver mirrors diverge (masks, estimates, payloads, items)."
+    def pairs = [
+            ["server/src/main/java/ua/rp/chat/carver/DraftMask.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftMask.java"],
+
+            ["server/src/main/java/ua/rp/chat/carver/DraftEstimate.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftEstimate.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverProtocol.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverProtocol.java"],
+            ["server/src/main/java/ua/rp/chat/client/carver/CarverActionPayload.java",
+             "client-mod-gradle/src/client/java/ua/rp/chat/client/carver/CarverActionPayload.java"],
+            ["server/src/main/java/ua/rp/chat/client/carver/CarverSyncPayload.java",
+             "client-mod-gradle/src/client/java/ua/rp/chat/client/carver/CarverSyncPayload.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverItems.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverItems.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverStrikeAlign.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverStrikeAlign.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverTrajectory.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverTrajectory.java"],
+    ]
+    pairs.each { pair ->
+        inputs.file(rootProject.layout.projectDirectory.file(pair[0]))
+        inputs.file(rootProject.layout.projectDirectory.file(pair[1]))
+    }
+    doLast {
+        pairs.each { pair ->
+            def left = rootProject.layout.projectDirectory.file(pair[0]).asFile
+            def right = rootProject.layout.projectDirectory.file(pair[1]).asFile
+            assert left.isFile(): "Missing server mirror file: ${pair[0]}"
+            assert right.isFile(): "Missing client mirror file: ${pair[1]}"
+            assert java.util.Arrays.equals(left.readBytes(), right.readBytes()):
+                    "Carver mirror divergence: ${pair[0]} != ${pair[1]}"
+        }
+    }
+}
+
 tasks.named("check") {
+    dependsOn tasks.named("verifyCarverParity")
     dependsOn tasks.named("verifyServerCore")
+    dependsOn tasks.named("verifyArrowImpactPhysics")
     dependsOn tasks.named("verifyFabricParity")
     dependsOn tasks.named("verifyChunkLoadMarkerSafety")
+    dependsOn tasks.named("verifyMicrovoxelNativeMarker")
+    dependsOn tasks.named("verifyMixinConfigSync")
+    dependsOn tasks.named("verifyMicrovoxelProtocolParity")
+    dependsOn tasks.named("verifyMicrovoxelFluidWiring")
     dependsOn tasks.named("verifyBloodFxIntegration")
+    dependsOn tasks.named("verifyMicrovoxelMining")
+    dependsOn tasks.named("verifyCarver")
+    dependsOn tasks.named("verifyMicrovoxelParentage")
+}
+
+// Fast local loop: pure unit invariants only (no asset or file-contract checks).
+// Full PR gate stays on check.
+tasks.register("quickCheck") {
+    group = "verification"
+    description = "Fast microvoxel unit loop: core, mining and parity invariants only."
+    dependsOn tasks.named("verifyServerCore")
+    dependsOn tasks.named("verifyMicrovoxelMining")
+    dependsOn tasks.named("verifyFabricParity")
+    dependsOn tasks.named("verifyCarver")
 }
 
 tasks.register("syncServerDistribution", Copy) {
@@ -126,6 +587,17 @@ tasks.register("syncServerDistribution", Copy) {
     from(tasks.named("jar").flatMap { it.archiveFile })
     into(rootProject.layout.projectDirectory.dir("mods"))
     rename { "eclipseserver-${project.version}.jar" }
+    doFirst {
+        def targetName = "eclipseserver-${project.version}.jar"
+        rootProject.layout.projectDirectory.dir("mods").asFile.listFiles()?.findAll {
+            it.name.startsWith("eclipseserver-") && it.name.endsWith(".jar")
+                    && it.name != targetName
+        }?.each { obsolete ->
+            if (!obsolete.delete()) {
+                throw new GradleException("Unable to remove obsolete server artifact ${obsolete}")
+            }
+        }
+    }
 }
 
 tasks.named("build") {

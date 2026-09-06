@@ -53,7 +53,11 @@ def main() -> None:
     # Bring the authoritative Fabric gameplay implementation online before clients receive
     # the matching release. The deployer skips restarts when the production checksum is current
     # and performs an automatic rollback if startup/readiness verification fails.
-    subprocess.run([sys.executable, str(deployment_dir / "deploy_vps_server_mod.py")], cwd=repo, check=True)
+    # VPS steps are best-effort: a powered-off host must not block the live mirrors.
+    try:
+        subprocess.run([sys.executable, str(deployment_dir / "deploy_vps_server_mod.py")], cwd=repo, check=True)
+    except subprocess.CalledProcessError as error:
+        print(f"WARNING: VPS server mod was not deployed: {error}", file=sys.stderr)
     drive_config = deployment_dir / "google_drive.local.json"
     if drive_config.exists():
         try:
@@ -66,7 +70,10 @@ def main() -> None:
         except subprocess.CalledProcessError as error:
             print(f"WARNING: Google Drive mirror was not published: {error}", file=sys.stderr)
     subprocess.run([sys.executable, str(deployment_dir / "upload_r2_distribution.py")], cwd=repo, check=True)
-    subprocess.run([sys.executable, str(deployment_dir / "upload_vps_distribution.py")], cwd=repo, check=True)
+    try:
+        subprocess.run([sys.executable, str(deployment_dir / "upload_vps_distribution.py")], cwd=repo, check=True)
+    except subprocess.CalledProcessError as error:
+        print(f"WARNING: VPS distribution mirror was not published: {error}", file=sys.stderr)
     subprocess.run([sys.executable, str(deployment_dir / "upload_github_distribution.py")], cwd=repo, check=True)
     print(f"Published release push {release['id']}")
 

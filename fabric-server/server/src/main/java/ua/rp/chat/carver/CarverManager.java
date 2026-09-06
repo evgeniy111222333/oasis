@@ -170,6 +170,7 @@ public final class CarverManager {
                 CarverSyncPayload.openData(displayMaterial, tuning.designTimeoutSeconds * 20));
         if (blueprint != null) {
             sendDraft(player, session);
+            broadcastDraft(player, session);
             player.sendSystemMessage(Component.literal("Чертёж из свитка загружен: "
                     + blueprint.cells() + " вокселей."), true);
         }
@@ -257,14 +258,65 @@ public final class CarverManager {
         dropSession(player.getUUID());
     }
 
-    /** Drops every per-player session record without notifying anyone. */
+    /**
+     * Drops every per-player session record. The artisan notification stays with
+     * the explicit close path; observers always get a silent close so their chalk
+     * never pins a stale outline.
+     */
     private void dropSession(UUID playerId) {
+        DraftSession session = sessions.get(playerId);
         sessions.remove(playerId);
         anchors.remove(playerId);
         plans.remove(playerId);
         kits.remove(playerId);
         dust.remove(playerId);
         lastDraftOpAt.remove(playerId);
+        if (session != null && (session.state() == DraftSession.State.DESIGN
+                || session.state() == DraftSession.State.WORK)) {
+            broadcastSessionClose(playerId, session);
+        }
+    }
+
+    /**
+     * Mirrors the live draft to nearby players without sessions of their own, so
+     * watchers see the chalk outline. Players mid-draft are skipped: their client
+     * owns the channel for its own focus, and old builds would misread a foreign
+     * close as their own.
+     */
+    private void broadcastDraft(ServerPlayer artisan, DraftSession session) {
+        if (!(artisan.level() instanceof ServerLevel level)) return;
+        BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
+        byte[] data = session.mask().encode();
+        for (ServerPlayer observer : level.players()) {
+            if (observer == null || observer.getUUID().equals(artisan.getUUID())) continue;
+            if (sessions.containsKey(observer.getUUID())) continue;
+            try {
+                ServerPlayNetworking.send(observer, new CarverSyncPayload(
+                        CarverProtocol.VERSION, CarverProtocol.EVENT_DRAFT_STATE,
+                        pos.getX(), pos.getY(), pos.getZ(), data));
+            } catch (RuntimeException broadcastFailed) {
+                MicrovoxelMetrics.inc("carver.observed.broadcast.failed");
+            }
+        }
+    }
+
+    /** Silent observer close: reason zero keeps foreign clients quiet. */
+    private void broadcastSessionClose(UUID playerId, DraftSession session) {
+        ServerPlayer artisan = playerById(playerId);
+        if (artisan == null || !(artisan.level() instanceof ServerLevel level)) return;
+        BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
+        byte[] data = CarverSyncPayload.closeData(DraftSession.CancelReason.PLAYER_REQUEST.ordinal());
+        for (ServerPlayer observer : level.players()) {
+            if (observer == null || observer.getUUID().equals(playerId)) continue;
+            if (sessions.containsKey(observer.getUUID())) continue;
+            try {
+                ServerPlayNetworking.send(observer, new CarverSyncPayload(
+                        CarverProtocol.VERSION, CarverProtocol.EVENT_SESSION_CLOSE,
+                        pos.getX(), pos.getY(), pos.getZ(), data));
+            } catch (RuntimeException broadcastFailed) {
+                MicrovoxelMetrics.inc("carver.observed.broadcast.failed");
+            }
+        }
     }
 
     public void giveKit(ServerPlayer player) {
@@ -274,25 +326,42 @@ public final class CarverManager {
                 && !player.getInventory().contains(CarverItems.scrollStack())) {
             player.getInventory().add(CarverItems.scrollStack());
         }
+        net.minecraft.world.item.ItemStack flat = new net.minecraft.world.item.ItemStack(
+                CarverItems.CHISEL_FLAT);
+        net.minecraft.world.item.ItemStack point = new net.minecraft.world.item.ItemStack(
+                CarverItems.CHISEL_POINT);
+        if (!player.getInventory().contains(flat)) player.getInventory().add(flat);
+        if (!player.getInventory().contains(point)) player.getInventory().add(point);
         player.sendSystemMessage(Component.literal(
-                "Набор резчика выдан: сумка — в нагрудный слот, свиток — в главную руку."), true);
+                "Набор резчика выдан: сумка — в нагрудный слот, свиток — в главную руку, "
+                        + "долота — во вторую руку (плоское для массы, точечное для деталей)."), true);
     }
 
     private void applyStroke(ServerPlayer player, int x, int y, int z, byte[] data, boolean add) {
         DraftSession session = sessions.get(player.getUUID());
         if (session == null || session.state() != DraftSession.State.DESIGN
-                || !session.targets(x, y, z)) return;
+                || !session.targets(x, y, z)) {
+            MicrovoxelMetrics.inc("carver.drop.target");
+            return;
+        }
         long now = System.currentTimeMillis();
         Long previous = lastDraftOpAt.get(player.getUUID());
-        if (previous != null && now - previous < STROKE_THROTTLE_MS) return;
+        if (previous != null && now - previous < STROKE_THROTTLE_MS) {
+            MicrovoxelMetrics.inc("carver.drop.throttle");
+            return;
+        }
         lastDraftOpAt.put(player.getUUID(), now);
         DraftMask stroke;
         try {
             stroke = DraftMask.decode(data);
         } catch (IllegalArgumentException invalid) {
+            MicrovoxelMetrics.inc("carver.drop.codec");
             return;
         }
-        if (stroke.count() == 0 || stroke.count() > tuning.maxStrokeCells) return;
+        if (stroke.count() == 0 || stroke.count() > tuning.maxStrokeCells) {
+            MicrovoxelMetrics.inc("carver.drop.cap");
+            return;
+        }
         session.pushHistory();
         if (add) {
             session.mask().orIn(stroke);
@@ -303,6 +372,7 @@ public final class CarverManager {
             session.mask().andNot(erase);
         }
         sendDraft(player, session);
+        broadcastDraft(player, session);
         sendEstimate(player, session);
         MicrovoxelMetrics.add(add ? "carver.stroke.add" : "carver.stroke.erase", stroke.count());
     }
@@ -315,18 +385,28 @@ public final class CarverManager {
     private void applyBox(ServerPlayer player, int x, int y, int z, byte[] data, boolean add) {
         DraftSession session = sessions.get(player.getUUID());
         if (session == null || session.state() != DraftSession.State.DESIGN
-                || !session.targets(x, y, z)) return;
+                || !session.targets(x, y, z)) {
+            MicrovoxelMetrics.inc("carver.drop.target");
+            return;
+        }
         long now = System.currentTimeMillis();
         Long previous = lastDraftOpAt.get(player.getUUID());
-        if (previous != null && now - previous < STROKE_THROTTLE_MS) return;
+        if (previous != null && now - previous < STROKE_THROTTLE_MS) {
+            MicrovoxelMetrics.inc("carver.drop.throttle");
+            return;
+        }
         lastDraftOpAt.put(player.getUUID(), now);
         DraftMask box;
         try {
             box = DraftMask.decode(data);
         } catch (IllegalArgumentException invalid) {
+            MicrovoxelMetrics.inc("carver.drop.codec");
             return;
         }
-        if (box.count() == 0 || box.count() > tuning.maxBoxCells) return;
+        if (box.count() == 0 || box.count() > tuning.maxBoxCells) {
+            MicrovoxelMetrics.inc("carver.drop.cap");
+            return;
+        }
         session.pushHistory();
         if (add) {
             session.mask().orIn(box);
@@ -337,6 +417,7 @@ public final class CarverManager {
             session.mask().andNot(erase);
         }
         sendDraft(player, session);
+        broadcastDraft(player, session);
         sendEstimate(player, session);
         MicrovoxelMetrics.add(add ? "carver.box.add" : "carver.box.erase", box.count());
     }
@@ -349,6 +430,7 @@ public final class CarverManager {
         session.pushHistory();
         session.mask().clearAll();
         sendDraft(player, session);
+        broadcastDraft(player, session);
         sendEstimate(player, session);
     }
 
@@ -360,6 +442,7 @@ public final class CarverManager {
         boolean moved = undo ? session.undo() : session.redo();
         if (!moved) return;
         sendDraft(player, session);
+        broadcastDraft(player, session);
         sendEstimate(player, session);
         MicrovoxelMetrics.inc(undo ? "carver.undo" : "carver.redo");
     }
@@ -452,9 +535,10 @@ public final class CarverManager {
         double multiplier = session.materialMultiplier();
         double fill = DraftEstimate.fillRatio(cells);
         int span = DraftEstimate.depthSpan(cells);
+        int tool = CarverItems.chiselOf(player.getOffhandItem());
         int workTicks = Math.max(1, DraftEstimate.workTicks(
-                cells.size(), fill, span, multiplier));
-        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier);
+                cells.size(), fill, span, multiplier, tool));
+        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
         if (stamina.escapeStamina(player) < cost) {
             player.sendSystemMessage(Component.literal("Нехватка сил: нужно "
                     + Math.round(cost) + "% стамины, отдохните."), true);
@@ -478,15 +562,60 @@ public final class CarverManager {
                 SoundSource.BLOCKS, 0.9f, 1.0f);
         sendEvent(player, CarverProtocol.EVENT_WORK_START, pos,
                 CarverSyncPayload.workStartData(workTicks));
+        double[] centroid = null;
+        try {
+            if (cells != null && !cells.isEmpty()) {
+                double cx = 0.0;
+                double cy = 0.0;
+                double cz = 0.0;
+                for (int cell : cells) {
+                    cx += DraftMask.x(cell) + 0.5;
+                    cy += DraftMask.y(cell) + 0.5;
+                    cz += DraftMask.z(cell) + 0.5;
+                }
+                centroid = new double[]{cx / cells.size(), cy / cells.size(), cz / cells.size()};
+            }
+        } catch (RuntimeException ignored) {
+        }
+        CarverStrikeAlign.StrikePlan plan = null;
+        try {
+            plan = CarverStrikeAlign.solve(pos.getX(), pos.getY(), pos.getZ(), cells,
+                    player.getX(), player.getY(), player.getZ());
+        } catch (RuntimeException ignored) {
+        }
         broadcastObserved(level, player, CarverProtocol.EVENT_WORK_OBSERVED_START, pos,
                 CarverSyncPayload.observedStartData(
-                        player.getUUID(), pos.getX(), pos.getY(), pos.getZ(), workTicks));
+                        player.getUUID(), pos.getX(), pos.getY(), pos.getZ(), workTicks, centroid, plan));
         player.sendSystemMessage(Component.literal("Работа началась. Не двигайтесь, мастер."), true);
         MicrovoxelMetrics.inc("carver.work.start");
     }
 
+    /** One notch of wear on the off-hand chisel per strike; breakage just ends the bonus. */
+    private void wearChisel(ServerPlayer player, ServerLevel level) {
+        try {
+            net.minecraft.world.item.ItemStack held = player.getOffhandItem();
+            if (CarverItems.chiselOf(held) == 0 || !(held.getItem() instanceof net.minecraft.world.item.Item)) {
+                return;
+            }
+            held.hurtAndBreak(1, player, net.minecraft.world.entity.EquipmentSlot.OFFHAND);
+        } catch (RuntimeException worn) {
+            MicrovoxelMetrics.inc("carver.chisel.wear.failed");
+        }
+    }
+
     private void tickWork(ServerPlayer player, ServerLevel level, BlockPos focus, DraftSession session) {
+        try {
+            if (player.isShiftKeyDown()) {
+                player.setShiftKeyDown(false);
+            }
+        } catch (RuntimeException ignored) {
+        }
         int done = session.workDoneTicks();
+        // One strike, one notch of wear on the held chisel, paced with the work song.
+        if (done > 0 && done % CarverWorkRhythm.STRIKE_WEAR_EVERY_TICKS == 0
+                && player.level() instanceof ServerLevel workLevel) {
+            wearChisel(player, workLevel);
+        }
         double progress = session.workProgress();
         CarverSoundKit kit = kits.get(player.getUUID());
         if (kit == null) {
@@ -716,9 +845,10 @@ public final class CarverManager {
         double multiplier = session.materialMultiplier();
         double fill = DraftEstimate.fillRatio(cells);
         int span = DraftEstimate.depthSpan(cells);
-        double seconds = DraftEstimate.workSeconds(cells.size(), fill, span, multiplier);
+        int tool = CarverItems.chiselOf(player.getOffhandItem());
+        double seconds = DraftEstimate.workSeconds(cells.size(), fill, span, multiplier, tool);
         int ticks = Math.max(1, (int) Math.round(seconds * DraftEstimate.TICKS_PER_SECOND));
-        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier);
+        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
         sendEvent(player, CarverProtocol.EVENT_ESTIMATE, pos,
                 CarverSyncPayload.estimateData(cells.size(), (float) seconds, (float) cost, ticks));
         player.sendSystemMessage(Component.literal("Будет снято: " + cells.size() + " вокселей | Время: ~"

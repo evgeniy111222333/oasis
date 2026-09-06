@@ -18,6 +18,11 @@ public final class CarverWorkRhythm {
     public static final int SNIP_EVERY_SCRAPE = 3;
     /** Every Nth strike carries the strip overlay. */
     public static final int STRIP_EVERY_STRIKE = 4;
+    /**
+     * Chisel wear cadence in work ticks. Mirrors the client strike choreography
+     * (one accent per 25 ticks), so each visible hammer blow costs one notch.
+     */
+    public static final int STRIKE_WEAR_EVERY_TICKS = 25;
 
     private CarverWorkRhythm() {
     }

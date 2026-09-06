@@ -284,6 +284,7 @@ const btnGoogleDriveMirror = document.getElementById('btnGoogleDriveMirror');
 const updateTitle = document.getElementById('updateTitle');
 const updateSummary = document.getElementById('updateSummary');
 const updateNotes = document.getElementById('updateNotes');
+const updateNotesShell = updateNotes.closest('.update-notes-shell');
 const updateToast = document.getElementById('updateToast');
 const updateToastMessage = document.getElementById('updateToastMessage');
 const modalProgressContainer = document.getElementById('modalProgressContainer');
@@ -294,11 +295,27 @@ const modalProgressPercent = document.getElementById('modalProgressPercent');
 let isUpdating = false;
 let currentRelease = null;
 
+function syncUpdateNotesOverflow() {
+    if (!updateNotesShell || updateNotes.style.display === 'none') return;
+    const overflow = updateNotes.scrollHeight > updateNotes.clientHeight + 1;
+    updateNotesShell.classList.toggle('can-scroll-up', overflow && updateNotes.scrollTop > 1);
+    updateNotesShell.classList.toggle(
+        'can-scroll-down',
+        overflow && updateNotes.scrollTop + updateNotes.clientHeight < updateNotes.scrollHeight - 1
+    );
+}
+
+updateNotes.addEventListener('scroll', syncUpdateNotesOverflow, { passive: true });
+if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(syncUpdateNotesOverflow).observe(updateNotes);
+}
+
 function renderRelease(release) {
     currentRelease = release || null;
     updateTitle.innerText = release?.title || 'Доступно обновление';
     updateSummary.innerText = release?.summary || 'Подготовлено новое обновление клиента.';
     updateNotes.replaceChildren();
+    updateNotes.scrollTop = 0;
     const notes = Array.isArray(release?.notes) ? release.notes.filter(note => typeof note === 'string' && note.trim()) : [];
     updateNotes.style.display = notes.length > 0 ? '' : 'none';
     for (const note of notes) {
@@ -311,6 +328,7 @@ function renderRelease(release) {
         row.append(icon, text);
         updateNotes.appendChild(row);
     }
+    requestAnimationFrame(syncUpdateNotesOverflow);
     const buttonIcon = document.createElement('i');
     buttonIcon.className = 'fa-solid fa-download';
     btnStartUpdate.replaceChildren(buttonIcon, document.createTextNode(` ${release?.buttonLabel || 'ЗАГРУЗИТЬ ОБНОВЛЕНИЕ'}`));
@@ -335,6 +353,7 @@ ipcRenderer.on('update-status', (event, data) => {
             renderRelease(data.release);
         }
         updateModal.style.display = 'flex';
+        requestAnimationFrame(syncUpdateNotesOverflow);
         btnPlay.disabled = true;
         btnPlay.innerHTML = '<span class="btn-text"><i class="fa-solid fa-cloud-arrow-down"></i> ТРЕБУЕТСЯ ОБНОВЛЕНИЕ</span>';
         btnPlay.style.background = 'linear-gradient(135deg, #c49c72 0%, #a37c56 100%)';

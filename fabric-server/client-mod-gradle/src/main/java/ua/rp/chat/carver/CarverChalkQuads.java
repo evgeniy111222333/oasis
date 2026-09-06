@@ -1,5 +1,7 @@
 package ua.rp.chat.carver;
 
+import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,6 +77,25 @@ public final class CarverChalkQuads {
         return true;
     }
 
+    public static boolean cellsClearedFace(MicrovoxelGreedyMesher.Face face, DraftMask mask) {
+        if (mask == null || mask.isEmpty()) return false;
+        int x0 = face.minX();
+        int y0 = face.minY();
+        int z0 = face.minZ();
+        int x1 = face.maxX() - 1;
+        int y1 = face.maxY() - 1;
+        int z1 = face.maxZ() - 1;
+        switch (face.direction()) {
+            case UP -> y0 = y1;
+            case DOWN -> y1 = y0;
+            case SOUTH -> z0 = z1;
+            case NORTH -> z1 = z0;
+            case EAST -> x0 = x1;
+            case WEST -> x1 = x0;
+        }
+        return cellsCleared(x0, y0, z0, x1, y1, z1, mask);
+    }
+
     /**
      * Change fingerprint of a draft: one linear pass over set cells mixed into the
      * count. Counts alone miss same-size edits; a single read pass is still far
@@ -147,6 +168,60 @@ public final class CarverChalkQuads {
             }
         }
         return new int[]{x0, y0, z0, x1, y1, z1};
+    }
+
+    /**
+     * World-space bounds of one greedy mesh face in block units, already shifted by
+     * the hologram lift and sideways nudge. Flat axes keep zero thickness here; the
+     * caller pads both sides so the outline stays visible.
+     */
+    public static double[] surfaceFrameBounds(MicrovoxelGreedyMesher.Face face,
+                                              double lift, double offX, double offZ) {
+        return new double[]{
+                face.minX() / 16.0 + offX, face.minY() / 16.0 + lift, face.minZ() / 16.0 + offZ,
+                face.maxX() / 16.0 + offX, face.maxY() / 16.0 + lift, face.maxZ() / 16.0 + offZ};
+    }
+
+    /**
+     * Faces ordered by descending surface area, capped at {@code limit}. Keeps the
+     * overlay frame budget on the largest patches when dense carvings spike the count.
+     */
+    public static List<MicrovoxelGreedyMesher.Face> largestFirst(
+            List<MicrovoxelGreedyMesher.Face> faces, int limit) {
+        if (faces == null || faces.isEmpty() || limit <= 0) return List.of();
+        List<MicrovoxelGreedyMesher.Face> ordered = new ArrayList<>(faces);
+        ordered.sort((left, right) -> Double.compare(faceArea(right), faceArea(left)));
+        return List.copyOf(ordered.subList(0, Math.min(limit, ordered.size())));
+    }
+
+    private static double faceArea(MicrovoxelGreedyMesher.Face face) {
+        double dx = face.maxX() - face.minX();
+        double dy = face.maxY() - face.minY();
+        double dz = face.maxZ() - face.minZ();
+        return dx * dy + dy * dz + dz * dx;
+    }
+
+    /**
+     * Volume cells inside inclusive bounds, capped at {@code cap}. Out-of-range
+     * coordinates are skipped instead of failing, so live previews never crash
+     * on a half-built drag.
+     */
+    public static List<Integer> previewCells(int[] bounds, int cap) {
+        if (bounds == null || bounds.length != 6 || cap <= 0) return List.of();
+        List<Integer> cells = new ArrayList<>();
+        outer:
+        for (int y = bounds[1]; y <= bounds[4]; y++) {
+            for (int z = bounds[2]; z <= bounds[5]; z++) {
+                for (int x = bounds[0]; x <= bounds[3]; x++) {
+                    if (x < 0 || x >= DraftMask.RESOLUTION
+                            || y < 0 || y >= DraftMask.RESOLUTION
+                            || z < 0 || z >= DraftMask.RESOLUTION) continue;
+                    if (cells.size() >= cap) break outer;
+                    cells.add(DraftMask.index(x, y, z));
+                }
+            }
+        }
+        return List.copyOf(cells);
     }
 
     /**

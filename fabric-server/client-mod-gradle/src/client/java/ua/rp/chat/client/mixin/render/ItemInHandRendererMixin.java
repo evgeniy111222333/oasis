@@ -15,6 +15,13 @@ import ua.rp.chat.client.camera.SmartCameraManager;
 public class ItemInHandRendererMixin {
     @Inject(method = "renderHandsWithItems", at = @At("HEAD"), cancellable = true)
     private void eclipse$cancelFirstPersonHands(float partialTick, PoseStack poseStack, SubmitNodeCollector collector, LocalPlayer player, int light, CallbackInfo ci) {
+        try {
+            if (ua.rp.chat.client.carver.CarverClientState.working()) {
+                ci.cancel();
+                return;
+            }
+        } catch (RuntimeException ignored) {
+        }
         if (SmartCameraManager.getInstance().isFullBodyFirstPersonEnabled()) {
             ci.cancel();
         }

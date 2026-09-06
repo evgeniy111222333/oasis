@@ -30,6 +30,13 @@ public class LevelRendererMixin {
         SmartCameraManager.getInstance().setRenderingFirstPersonPlayer(false);
     }
 
+    @Inject(method = "renderHitOutline", at = @At("HEAD"))
+    private void eclipse$stonemasonChalk(PoseStack poseStack, VertexConsumer vertexConsumer,
+                                         double camX, double camY, double camZ,
+                                         BlockOutlineRenderState outlineState, int light, float partialTick) {
+        ua.rp.chat.client.stonemason.StonemasonChalkOverlay.render();
+    }
+
     @Inject(method = "renderHitOutline", at = @At("HEAD"), cancellable = true)
     private void eclipse$cancelMicrovoxelOutline(PoseStack poseStack, VertexConsumer vertexConsumer,
                                                  double camX, double camY, double camZ,

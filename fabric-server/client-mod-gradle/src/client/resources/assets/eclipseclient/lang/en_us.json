@@ -58,5 +58,7 @@
   "key.eclipseclient.microvoxel_copy": "Copy voxels",
   "key.eclipseclient.microvoxel_paste": "Paste voxels",
   "key.eclipseclient.microvoxel_rotate": "Rotate clipboard",
-  "key.eclipseclient.microvoxel_mirror": "Mirror clipboard"
+  "key.eclipseclient.microvoxel_mirror": "Mirror clipboard",
+  "item.eclipseserver.carver_chisel_flat": "Flat chisel",
+  "item.eclipseserver.carver_chisel_point": "Point chisel"
 }

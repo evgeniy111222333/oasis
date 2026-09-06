@@ -58,5 +58,7 @@
   "key.eclipseclient.microvoxel_copy": "Копировать воксели",
   "key.eclipseclient.microvoxel_paste": "Вставить воксели",
   "key.eclipseclient.microvoxel_rotate": "Повернуть буфер",
-  "key.eclipseclient.microvoxel_mirror": "Отразить буфер"
+  "key.eclipseclient.microvoxel_mirror": "Отразить буфер",
+  "item.eclipseserver.carver_chisel_flat": "Долото плоское",
+  "item.eclipseserver.carver_chisel_point": "Долото точечное"
 }

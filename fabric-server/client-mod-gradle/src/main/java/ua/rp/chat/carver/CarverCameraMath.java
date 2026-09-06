@@ -31,8 +31,8 @@ public final class CarverCameraMath {
     /** Corner offset applied to the entry yaw: face the edge, never the flat. */
     public static final float ENTRY_CORNER_OFFSET = 45.0f;
     /** Work framing: a touch wider and lower, aimed at the socket being carved. */
-    public static final double WORK_DIST = 3.0;
-    public static final float WORK_PITCH = 32.0f;
+    public static final double WORK_DIST = 3.4;
+    public static final float WORK_PITCH = 28.0f;
     /** Transition from the design orbit to the work framing, in client ticks. */
     public static final int WORK_FLY_TICKS = 20;
 
