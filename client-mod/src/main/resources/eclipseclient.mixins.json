@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "package": "ua.rp.chat.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractClientPlayerMixin",
+    "CameraMixin",
+    "EntityRenderDispatcherMixin",
+    "EntityEyePositionMixin",
+    "LevelRendererMixin",
+    "PlayerTabOverlayMixin",
+    "PlayerRendererMixin",
+    "PlayerModelMixin",
+    "HumanoidArmorLayerMixin",
+    "CustomHeadLayerMixin",
+    "ItemInHandRendererMixin",
+    "AvatarRenderStateMixin",
+    "MultiPlayerGameModeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

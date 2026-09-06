@@ -1,0 +1,29 @@
+{
+  "required": true,
+  "package": "ua.rp.chat.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "auth.AuthContainerMixin",
+    "combat.AbstractArrowImpactMixin",
+    "auth.AuthCommandMixin",
+    "microvoxel.BlockStateMicrovoxelMixin",
+    "CubeVoxelShapeInvoker",
+    "DisplayAccessor",
+    "entity.EntityCollisionMixin",
+    "fluid.EntityFluidRefineMixin",
+    "ItemEntityAccessor",
+    "entity.ItemEntityMixin",
+    "microvoxel.LightEngineMicrovoxelMixin",
+    "entity.LivingEntityMixin",
+    "PathNavigationRegionAccessor",
+    "entity.PlayerActionMixin",
+    "entity.PlayerListMixin",
+    "entity.PlayerPoseMixin",
+    "combat.ProjectileWeaponItemMixin",
+    "microvoxel.ServerExplosionMicrovoxelMixin",
+    "TextDisplayAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

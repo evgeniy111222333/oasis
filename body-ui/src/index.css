@@ -1,0 +1,260 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  #root {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    caret-color: transparent;
+  }
+
+  ::selection {
+    background: transparent;
+    color: inherit;
+  }
+}
+
+@layer components {
+  .font-cinzel {
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+
+  .font-inter {
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+
+  /* Glass effect for the main menu */
+  .glass-panel {
+    background:
+      linear-gradient(145deg, rgba(20, 20, 20, 0.68), rgba(10, 10, 10, 0.58));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid rgba(232, 220, 196, 0.22);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.36),
+      0 0 0 1px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(232, 220, 196, 0.08);
+  }
+
+  /* Body part hover glow */
+  .body-part {
+    transition: filter 0.16s ease, opacity 0.16s ease;
+    cursor: pointer;
+    filter: drop-shadow(0 0 0px rgba(232, 220, 196, 0));
+  }
+
+  .body-part:hover {
+    filter: drop-shadow(0 0 12px rgba(232, 220, 196, 0.4));
+  }
+
+  .body-part:hover path {
+    stroke: #E8DCC4;
+    stroke-width: 2.5;
+  }
+
+  .body-part.active {
+    filter: drop-shadow(0 0 16px rgba(232, 220, 196, 0.5));
+  }
+
+  .body-part.active path {
+    stroke: #FFFFFF;
+    stroke-width: 2.5;
+  }
+
+  /* Transparent in-game backdrop */
+  .bg-grid {
+    display: none;
+  }
+
+  /* Status bar animations */
+  .status-dot {
+    transition: transform 0.18s ease, opacity 0.18s ease;
+  }
+
+  .status-dot.active {
+    transform: scale(1.3);
+  }
+
+  /* Ornamental line */
+  .ornament-line {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(232, 220, 196, 0.3) 20%,
+      rgba(232, 220, 196, 0.5) 50%,
+      rgba(232, 220, 196, 0.3) 80%,
+      transparent 100%
+    );
+  }
+
+  /* Corner ornaments */
+  .corner-ornament {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-color: rgba(232, 220, 196, 0.25);
+    transition: all 0.4s ease;
+  }
+
+  .corner-ornament.tl {
+    top: -1px;
+    left: -1px;
+    border-top: 1px solid;
+    border-left: 1px solid;
+  }
+
+  .corner-ornament.tr {
+    top: -1px;
+    right: -1px;
+    border-top: 1px solid;
+    border-right: 1px solid;
+  }
+
+  .corner-ornament.bl {
+    bottom: -1px;
+    left: -1px;
+    border-bottom: 1px solid;
+    border-left: 1px solid;
+  }
+
+  .corner-ornament.br {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 1px solid;
+    border-right: 1px solid;
+  }
+
+  /* Menu entrance animation */
+  @keyframes menuEnter {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .menu-enter {
+    animation: menuEnter 0.18s ease-out forwards;
+  }
+
+  /* Panel slide in */
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .slide-in-right {
+    animation: slideInRight 0.18s ease-out forwards;
+  }
+
+  /* Fade in */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .fade-in {
+    animation: fadeIn 0.12s ease forwards;
+  }
+
+  /* Pulse glow for low stamina */
+  @keyframes pulseGlow {
+    0%, 100% {
+      box-shadow: 0 0 5px rgba(232, 165, 91, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px rgba(232, 165, 91, 0.6);
+    }
+  }
+
+  .pulse-glow {
+    animation: pulseGlow 2.2s ease-in-out infinite;
+  }
+
+  /* Breathing animation for breath debt */
+  @keyframes breathe {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  .breathe-anim {
+    animation: breathe 1.5s ease-in-out infinite;
+  }
+
+  /* Ripple effect for status changes */
+  @keyframes ripple {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.6;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+
+  .ripple-effect::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    animation: ripple 0.8s ease-out forwards;
+  }
+
+  /* Tooltip styling */
+  .tooltip-glass {
+    background: rgba(26, 26, 26, 0.9);
+    backdrop-filter: none;
+    border: 1px solid rgba(232, 220, 196, 0.15);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(232, 220, 196, 0.2);
+    border-radius: 2px;
+  }
+}

@@ -22,13 +22,30 @@ active-style: 1
 web:
   # Port for the embedded HTTP server (Must be open on firewall)
   port: 25580
-  # Base URL shown to players in game (e.g. "http://yourserverip:25580")
-  url: "http://localhost:25580"
+  # Base URL sent to client auth overlay. Use the LAN/public address players can reach.
+  url: "https://api.eclipse-roleplay.online"
 
 # ==========================================
 #             Auth Session Settings
 # ==========================================
 auth:
-  # Legacy behavior: skip the auth window when the player's IP matches the last login.
-  # Keep disabled for RP servers; "remember me" should only prefill the form.
+  # Every connection requires explicit confirmation in the auth window.
+  # Saved credentials may fill the fields, but never submit the form automatically.
   auto-login-by-ip: false
+
+# ==========================================
+#             Appearance Storage
+# ==========================================
+appearance:
+  storage:
+    # local = keep skins only on the game server.
+    # r2 = upload immutable skin PNGs to Cloudflare R2 and serve them by public URL.
+    provider: "r2"
+    r2:
+      bucket: "${ECLIPSE_APPEARANCE_BUCKET}"
+      endpoint: "https://111db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
+      public-url: "${ECLIPSE_APPEARANCE_PUBLIC_URL}"
+      region: "auto"
+      required: false
+      access-key-id: "${ECLIPSE_R2_ACCESS_KEY_ID}"
+      secret-access-key: "${ECLIPSE_R2_SECRET_ACCESS_KEY}"

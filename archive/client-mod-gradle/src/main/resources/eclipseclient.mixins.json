@@ -1,0 +1,37 @@
+{
+  "required": true,
+  "package": "ua.rp.chat.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractClientPlayerMixin",
+    "CameraMixin",
+    "ChatComponentMixin",
+    "EntityRenderDispatcherMixin",
+    "EntityEyePositionMixin",
+    "MinecraftMixin",
+    "BlockStateMicrovoxelMixin",
+    "LevelRendererMixin",
+    "PlayerTabOverlayMixin",
+    "PlayerRendererMixin",
+    "PlayerModelMixin",
+    "PlayerPoseMixin",
+    "ModelPartAccessor",
+    "ModelPartCubeAccessor",
+    "ModelPartRenderMixin",
+    "HumanoidModelBreathingMixin",
+    "CapeLayerBreathingMixin",
+    "WingsLayerBreathingMixin",
+    "HumanoidArmorLayerMixin",
+    "CustomHeadLayerMixin",
+    "ItemInHandRendererMixin",
+    "ItemInHandLayerMixin",
+    "ItemEntityRendererMixin",
+    "InventoryScreenMixin",
+    "AvatarRenderStateMixin",
+    "MultiPlayerGameModeMixin",
+    "ItemStackMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

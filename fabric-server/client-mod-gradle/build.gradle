@@ -1,0 +1,432 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"eclipseclient" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	compileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Local MCEF Mod Dependency
+	implementation files('libs/mcef_fabric_2.2.0_MC_26.1.1.jar')
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.compilerArgs << "-Xlint:deprecation"
+}
+
+tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks segmented limb continuity, wearable growth and UV invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ArticulatedLimbLayoutTest"
+}
+
+tasks.register("verifyStuckProjectileSafety", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks invisible player attachment cuboids and all-empty model crash fallback."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.StuckProjectileAttachmentTest"
+}
+
+sourceSets.test.compileClasspath += sourceSets.client.output
+sourceSets.test.runtimeClasspath += sourceSets.client.output
+
+tasks.register("verifyElbowBridgeRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic elbow renderer with base and overlay layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ElbowBridgeRendererTest"
+}
+
+tasks.register("verifyCameraCollisionMath", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks continuous camera-volume collision and fail-closed invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CameraCollisionMathTest"
+}
+
+tasks.register("verifyRespirationModel", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks respiratory phase continuity, FPS independence and recovery timing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.RespirationModelTest"
+}
+
+tasks.register("verifyBreathingTorsoLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks V-shaped torso geometry, phase propagation and layer clearance."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoLayoutTest"
+}
+
+tasks.register("verifyBreathingTorsoRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic breathing torso renderer for skin and jacket layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoRendererTest"
+}
+
+tasks.register("verifyBreathingShoulderLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks breathing shoulder seam, clearance, symmetry and stability."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingShoulderLayoutTest"
+}
+
+tasks.register("verifyMicrovoxelCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks 16x16x16 greedy meshing, neighbour culling, ray traversal and collision merging."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.MicrovoxelCoreTest"
+}
+
+tasks.register("verifyBloodFxCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks deterministic blood FX cadence, LOD, surface aging and particle budgets."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BloodFxCoreTest"
+}
+
+tasks.register("verifyBloodFxAssets") {
+	group = "verification"
+	description = "Checks every Blood FX sprite and particle atlas declaration."
+	def bloodTextures = layout.projectDirectory.dir(
+			"src/main/resources/assets/eclipseclient/textures/particle/blood")
+	def particleDefs = layout.projectDirectory.dir(
+			"src/main/resources/assets/eclipseclient/particles")
+	inputs.dir(bloodTextures)
+	inputs.dir(particleDefs)
+	doLast {
+		def expected = (0..4).collect { "drop_${it}.png" }
+		expected += (0..7).collect { "splat_${it}.png" }
+		expected += (0..4).collect { "wound_${it}.png" }
+		expected.each { name ->
+			def file = bloodTextures.file(name).asFile
+			assert file.isFile(): "Missing Blood FX sprite: ${name}"
+			def image = javax.imageio.ImageIO.read(file)
+			assert image != null && image.width == 32 && image.height == 32:
+					"Blood FX sprite must be a valid 32x32 PNG: ${name}"
+			assert image.colorModel.hasAlpha(): "Blood FX sprite requires transparency: ${name}"
+			assert ((image.getRGB(0, 0) >>> 24) & 0xff) == 0:
+					"Blood FX sprite corner must be transparent: ${name}"
+			def visible = 0
+			for (int y = 0; y < image.height; y++) {
+				for (int x = 0; x < image.width; x++) {
+					if (((image.getRGB(x, y) >>> 24) & 0xff) > 24) visible++
+				}
+			}
+			assert visible >= 3 && visible <= 800:
+					"Blood FX sprite has invalid visible coverage: ${name} (${visible})"
+		}
+		["blood_drop.json", "blood_decal.json", "blood_wound.json"].each { name ->
+			def file = particleDefs.file(name).asFile
+			assert file.isFile(): "Missing Blood FX particle definition: ${name}"
+			def json = new JsonSlurper().parse(file)
+			assert json.textures && !json.textures.isEmpty(): "Empty Blood FX particle atlas: ${name}"
+		}
+		println "Blood FX assets: 18 transparent sprites and 3 atlases are valid"
+	}
+}
+
+
+tasks.register("verifyPickupPrompt", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client-side right-click pickup range and prompt fade invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.PickupPromptRulesTest"
+}
+
+tasks.register("verifyCarverMirror", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client Carver mirrors: template masks, mask codec and workload pricing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverMirrorTest"
+}
+
+tasks.register("verifyCarverHologram", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks hologram anchoring: vertical lift, occlusion nudge, landing falloff, offset picking, camera target, box area and chalk fingerprint."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverHologramOffsetTest"
+}
+
+tasks.register("verifyCarverApproach", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks work-start approach: stand picking around obstacles, dust envelopes and hologram shading."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverApproachTest"
+}
+
+tasks.register("verifyCarverHologramFilter", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks hologram draft filter: flat-axis face bounds, solid/ghost split and ghost fallback."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverHologramFilterTest"
+}
+
+tasks.register("verifyCarverSurfaceWire", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks surface wireframe mapping: face-to-frame bounds on every axis, offsets and frame budget."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverSurfaceWireTest"
+}
+
+tasks.register("verifyCarverObservedDraft", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks observer draft board: snapshot isolation, overwrite, tick expiry and cleanup."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ObservedDraftBoardTest"
+}
+
+tasks.register("verifyCarverWorkAim", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks work strike aim: draft centroid, face normal and compensated tool placement nets."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverWorkAimTest"
+}
+
+tasks.register("verifyCarverStrikeAlign", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks strike alignment: plan parity, normal-locked trajectory, ring stand and solve budgets."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverStrikeAlignTest"
+}
+
+tasks.register("verifyCarverChiselAssets", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks carver chisel assets: model bounds, 0..16 UV range, legal rotations and 128x128 textures."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverChiselAssetsTest"
+}
+
+tasks.register("verifyMixinSignatures") {
+	group = "verification"
+	description = "Fails when an @Inject handler lacks its trailing CallbackInfo parameter."
+	def mixinDir = layout.projectDirectory.dir("src/client/java/ua/rp/chat/client/mixin")
+	inputs.dir(mixinDir)
+	doLast {
+		def bad = []
+		mixinDir.asFile.eachFileRecurse { file ->
+			if (!file.name.endsWith("Mixin.java")) return
+			def text = file.getText("UTF-8")
+			def matcher = text =~ /@Inject\([^)]*\)\s*\n\s*private void (eclipse\$\w+)\(([^)]*)\)\s*\{/
+			while (matcher.find()) {
+				String name = matcher.group(1)
+				String params = matcher.group(2).trim()
+				String last = params.isEmpty() ? "" : params.split(",")[-1].trim()
+				if (!(last.contains("CallbackInfo"))) {
+					bad.add("${file.name}:${name}".toString())
+				}
+			}
+		}
+		assert bad.isEmpty():
+				"Mixin handlers without trailing CallbackInfo (game would crash at startup): ${bad}"
+	}
+}
+
+
+tasks.named("test") {
+	failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyArticulatedLimbGeometry")
+	dependsOn tasks.named("verifyStuckProjectileSafety")
+	dependsOn tasks.named("verifyElbowBridgeRenderer")
+	dependsOn tasks.named("verifyCameraCollisionMath")
+	dependsOn tasks.named("verifyRespirationModel")
+	dependsOn tasks.named("verifyBreathingTorsoLayout")
+	dependsOn tasks.named("verifyBreathingTorsoRenderer")
+	dependsOn tasks.named("verifyBreathingShoulderLayout")
+	dependsOn tasks.named("verifyMicrovoxelCore")
+	dependsOn tasks.named("verifyCarverMirror")
+	dependsOn tasks.named("verifyCarverHologram")
+	dependsOn tasks.named("verifyCarverApproach")
+	dependsOn tasks.named("verifyCarverHologramFilter")
+	dependsOn tasks.named("verifyCarverSurfaceWire")
+	dependsOn tasks.named("verifyCarverObservedDraft")
+	dependsOn tasks.named("verifyCarverChiselAssets")
+	dependsOn tasks.named("verifyCarverWorkAim")
+	dependsOn tasks.named("verifyCarverStrikeAlign")
+	dependsOn tasks.named("verifyMixinSignatures")
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+tasks.register("syncClientDistribution") {
+	dependsOn tasks.named("jar")
+
+	def remappedJar = tasks.named("jar").flatMap { it.archiveFile }
+	def clientRoot = layout.projectDirectory.dir("../../plugins/RPChat/client")
+	def fabricClientRoots = [
+		layout.projectDirectory.dir("../plugins/RPChat/client"),
+		layout.projectDirectory.dir("../config/RPChat/client")
+	]
+	def modsDir = clientRoot.dir("mods")
+	def manifestFile = clientRoot.file("mods.json")
+	def modFileName = "eclipse-client-${project.version}.jar"
+	def supersededClientSha1 = "d2a7c3b26354307f9a6d504f16aae5a786a11b7f"
+
+	inputs.file(remappedJar)
+	outputs.file(modsDir.file(modFileName))
+	outputs.file(manifestFile)
+	fabricClientRoots.each { destination ->
+		outputs.file(destination.file("mods/${modFileName}"))
+		outputs.file(destination.file("mods.json"))
+	}
+
+	doLast {
+		def sourceJar = remappedJar.get().asFile
+		def targetJar = modsDir.file(modFileName).asFile
+		targetJar.parentFile.mkdirs()
+		targetJar.bytes = sourceJar.bytes
+
+		def sha1 = MessageDigest.getInstance("SHA-1")
+			.digest(targetJar.bytes)
+			.collect { String.format("%02x", it) }
+			.join()
+
+		def manifest = []
+		if (manifestFile.asFile.exists()) {
+			manifest = new JsonSlurper().parse(manifestFile.asFile) as List
+		}
+		def obsoleteClientEntries = manifest.findAll {
+			it.sha1 == supersededClientSha1 || (it.name?.startsWith("eclipse-client-") && it.name != modFileName)
+		}
+		obsoleteClientEntries.each { obsolete ->
+			def obsoleteFile = modsDir.file(obsolete.name as String).asFile
+			if (obsoleteFile.exists()) {
+				obsoleteFile.delete()
+			}
+		}
+		manifest.removeAll {
+			it.sha1 == supersededClientSha1 || it.name == modFileName || it.name?.startsWith("eclipse-client-")
+		}
+
+		def entry = [
+			name: modFileName,
+			path: "mods/${modFileName}",
+			url: "https://api.eclipse-roleplay.online/dist/client/mods/${modFileName}"
+		]
+		manifest.add(0, entry)
+		entry.path = "mods/${modFileName}"
+		entry.sha1 = sha1
+		entry.size = targetJar.length()
+
+		manifestFile.asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), "UTF-8")
+		fabricClientRoots.each { destination ->
+			def destinationMods = destination.dir("mods").asFile
+			destinationMods.mkdirs()
+			destinationMods.listFiles()?.findAll {
+				it.name.startsWith("eclipse-client-") && it.name != modFileName
+			}?.each { it.delete() }
+			destination.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+			destination.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
+		}
+		println "Synced ${modFileName} to ${targetJar} (${sha1}, ${targetJar.length()} bytes)"
+	}
+}
+
+tasks.named("build") {
+	finalizedBy tasks.named("syncClientDistribution")
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyBloodFxCore")
+	dependsOn tasks.named("verifyBloodFxAssets")
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

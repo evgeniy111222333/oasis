@@ -46,7 +46,33 @@ target/
 *.db
 *.class
 .DS_Store
-tools/
+tools/*
+!tools/generate_minecraft_heavy_hammer.py
+!tools/request_hammer_render.py
+!tools/inspect_hammer_render.py
 node_modules/
+launcher/dist/
+/distribution-build/
+/eclipse-*.tar.gz
 
+# Local Google Drive publisher credentials and refresh tokens
+/secrets/
+/deployment/google_drive.local.json
+/deployment/google_drive_release.json
 
+# Python and bytecode
+__pycache__/
+*.py[cod]
+
+# Logs, runtime dumps, and local backups
+*.log
+*.log.gz
+/fabric-server/server/logs/
+/fabric-server/client-mod-gradle/logs/
+/fabric-server/server/run/
+/fabric-server/STDOUT
+/fabric-server/config/RPChat/*.dat
+/fabric-server/config/RPChat/*.dat.bak
+/backups/
+/model/
+/fabric-server/steve.png

@@ -1,0 +1,7 @@
+{
+  "folderId": "18nWKF7P6_YhyBRm-JUaleLkbegIq3WCp",
+  "clientSecretPath": "secrets/google-drive-oauth.json",
+  "tokenPath": "secrets/google-drive-token.json",
+  "makePublic": true,
+  "retention": 8
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "eclipseserver",
+  "version": "${version}",
+  "name": "Eclipse Roleplay Server Mod",
+  "description": "Server-side mod for Eclipse Roleplay.",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "ua.rp.chat.RPChat"
+    ]
+  },
+  "mixins": [
+    "eclipseserver.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.1",
+    "fabric-api": "*",
+    "java": ">=25"
+  }
+}

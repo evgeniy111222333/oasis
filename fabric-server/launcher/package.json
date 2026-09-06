@@ -1,0 +1,60 @@
+{
+  "name": "eclipse-launcher",
+  "version": "1.0.20",
+  "description": "Eclipse RolePlay Desktop Launcher",
+  "author": "Eclipse RolePlay",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis",
+    "test": "node tests/optional-mods.test.js && node tests/update-network.test.js && node tests/mirror-health.test.js && node tests/adaptive-download.test.js && node tests/update-operation-mutex.test.js && node tests/launcher-update-safety.test.js && node tests/google-drive-mirror.test.js && node --check main.js && node --check renderer.js"
+  },
+  "build": {
+    "appId": "ua.eclipse.roleplay.launcher",
+    "productName": "Eclipse RolePlay Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "optional-mods.js",
+      "update-network.js",
+      "mirror-health.js",
+      "update-operation-mutex.js",
+      "renderer.js",
+      "index.html",
+      "style.css",
+      "launcher_logo.png",
+      "launcher_logo.ico",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "launcher_logo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh"
+    }
+  },
+  "dependencies": {
+    "minecraft-launcher-core": "^3.18.2"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
