@@ -2,6 +2,7 @@ package ua.rp.chat.microvoxel;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntPredicate;
 
 public final class MicrovoxelGreedyMesher {
     private MicrovoxelGreedyMesher() {
@@ -12,6 +13,18 @@ public final class MicrovoxelGreedyMesher {
      */
     public static List<Face> build(MicrovoxelVolume volume, NeighbourLookup neighbours) {
         return build(volume, neighbours, 1);
+    }
+
+    /**
+     * Exact mesh with a hidden-cell predicate: a hidden cell reads as air for both occupancy
+     * and neighbour culling, so it contributes no faces and exposes its neighbours' faces on
+     * the cell boundary. The Carver hologram uses this to render the live carving minus its
+     * draft without ever mutating or copying the volume, which makes a released stroke vanish
+     * (and the fresh cavity walls appear) on the very next frame. Null keeps the plain mesh.
+     */
+    public static List<Face> build(MicrovoxelVolume volume, NeighbourLookup neighbours,
+                                   IntPredicate hidden) {
+        return buildExact(volume, neighbours, hidden);
     }
 
     /**
@@ -132,6 +145,11 @@ public final class MicrovoxelGreedyMesher {
     }
 
     private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours) {
+        return buildExact(volume, neighbours, null);
+    }
+
+    private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours,
+                                         IntPredicate hidden) {
         List<Face> faces = new ArrayList<>();
         for (Direction direction : Direction.values()) {
             for (int slice = 0; slice < 16; slice++) {
@@ -139,8 +157,8 @@ public final class MicrovoxelGreedyMesher {
                 for (int v = 0; v < 16; v++) {
                     for (int u = 0; u < 16; u++) {
                         int[] xyz = coordinates(direction, slice, u, v);
-                        int material = volume.materialAt(xyz[0], xyz[1], xyz[2]);
-                        if (material != 0 && neighbours.materialAt(
+                        int material = maskedMaterial(volume::materialAt, hidden, xyz[0], xyz[1], xyz[2]);
+                        if (material != 0 && maskedMaterial(neighbours, hidden,
                                 xyz[0] + direction.dx, xyz[1] + direction.dy, xyz[2] + direction.dz) == 0) {
                             mask[v][u] = material;
                         }
@@ -150,6 +168,21 @@ public final class MicrovoxelGreedyMesher {
             }
         }
         return List.copyOf(faces);
+    }
+
+    /**
+     * Material read that treats a hidden cell inside the 16^3 lattice as air. The cell index
+     * matches {@code MicrovoxelVolume.index} / {@code DraftMask.index} exactly, so the Carver
+     * draft mask can be fed in without a translation layer. Coordinates outside the lattice
+     * (real neighbours) are never hidden.
+     */
+    private static int maskedMaterial(NeighbourLookup lookup, IntPredicate hidden,
+                                      int x, int y, int z) {
+        if (hidden != null && x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16
+                && hidden.test(x | (z << 4) | (y << 8))) {
+            return 0;
+        }
+        return lookup.materialAt(x, y, z);
     }
 
     private static void greedy(Direction direction, int slice, int[][] mask, List<Face> output) {

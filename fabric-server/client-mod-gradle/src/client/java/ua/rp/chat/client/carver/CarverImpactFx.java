@@ -20,9 +20,9 @@ public final class CarverImpactFx {
     /** Particle/sound cutoff for distant artisans (32 blocks squared). */
     public static final double FAR_CUTOFF_SQ = 1024.0;
     /** Camera shake for top-down chisel blows. */
-    public static final double SHAKE_TOP = 0.22;
+    public static final double SHAKE_TOP = 0.30;
     /** Camera shake for side-face blows. */
-    public static final double SHAKE_SIDE = 0.15;
+    public static final double SHAKE_SIDE = 0.20;
 
     private CarverImpactFx() {
     }
@@ -74,6 +74,7 @@ public final class CarverImpactFx {
                 int tint = CarverDustStorm.tintFor(client, focus, state);
                 CarverDustStorm.accent(client, at, tint);
                 CarverContactFx.chips(client, focus, at);
+                materialImpact(client, state, at);
             }
             float top = Math.max(0.0f, Math.min(1.0f, topness));
             float pitch = 1.0f + (player.getRandom().nextFloat() - 0.5f) * 0.2f;
@@ -94,6 +95,45 @@ public final class CarverImpactFx {
             return true;
         } catch (RuntimeException ignored) {
             return false;
+        }
+    }
+
+    /**
+     * Material-specific impact debris layered on the shared dust: sparks for metal, brittle
+     * shards for ice and glass, dry splinters for wood. Stone keeps reading as plain dust chips.
+     */
+    private static void materialImpact(Minecraft client, net.minecraft.world.level.block.state.BlockState state,
+                                       Vec3 at) {
+        try {
+            net.minecraft.resources.Identifier key = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                    .getKey(state.getBlock());
+            ua.rp.chat.carver.CarverWorkAnim.Material material =
+                    ua.rp.chat.carver.CarverWorkAnim.classify(key == null ? "" : key.toString());
+            var rand = client.level.getRandom();
+            if (ua.rp.chat.carver.CarverWorkAnim.sparks(material)) {
+                for (int i = 0; i < 6; i++) {
+                    client.level.addParticle(net.minecraft.core.particles.ParticleTypes.CRIT,
+                            at.x, at.y, at.z,
+                            (rand.nextDouble() - 0.5) * 1.3, rand.nextDouble() * 0.9,
+                            (rand.nextDouble() - 0.5) * 1.3);
+                }
+            } else if (ua.rp.chat.carver.CarverWorkAnim.shards(material)) {
+                for (int i = 0; i < 6; i++) {
+                    client.level.addParticle(net.minecraft.core.particles.ParticleTypes.SNOWFLAKE,
+                            at.x, at.y + 0.02, at.z,
+                            (rand.nextDouble() - 0.5) * 0.7, rand.nextDouble() * 0.6,
+                            (rand.nextDouble() - 0.5) * 0.7);
+                }
+            } else if (ua.rp.chat.carver.CarverWorkAnim.splinters(material)) {
+                var opt = new net.minecraft.core.particles.BlockParticleOption(
+                        net.minecraft.core.particles.ParticleTypes.BLOCK, state);
+                for (int i = 0; i < 5; i++) {
+                    client.level.addParticle(opt, at.x, at.y + 0.02, at.z,
+                            (rand.nextDouble() - 0.5) * 0.9, rand.nextDouble() * 0.8,
+                            (rand.nextDouble() - 0.5) * 0.9);
+                }
+            }
+        } catch (RuntimeException ignored) {
         }
     }
 

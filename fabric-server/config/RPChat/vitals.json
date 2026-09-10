@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1788725856915,
+  "savedAt": 1789070039688,
   "players": {
     "85307a7e-3cf5-39fe-98e5-639b63a71759": {
       "stamina": 100.0,
@@ -183,7 +183,7 @@
       "blood": 100.0,
       "lastDamage": 0.0,
       "lastDamageCause": "",
-      "ticks": 375332,
+      "ticks": 444414,
       "unconsciousTicks": 0,
       "parts": {
         "head": {

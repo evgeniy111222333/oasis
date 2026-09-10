@@ -78,23 +78,8 @@ public final class CarverChalkOverlay {
         double lift = CarverHologram.visualLift();
         double offX = CarverHologram.offsetX();
         double offZ = CarverHologram.offsetZ();
-        int wireDrawn = drawSurfaceWire(focus, lift, offX, offZ);
-        submitted += wireDrawn;
-        if (wireDrawn == 0) {
-            double[] occupied = occupiedBounds(focus);
-            double frameX0 = occupied == null ? 0.0 : occupied[0] / 16.0;
-            double frameY0 = occupied == null ? 0.0 : occupied[1] / 16.0;
-            double frameZ0 = occupied == null ? 0.0 : occupied[2] / 16.0;
-            double frameX1 = occupied == null ? 1.0 : occupied[3] / 16.0;
-            double frameY1 = occupied == null ? 1.0 : occupied[4] / 16.0;
-            double frameZ1 = occupied == null ? 1.0 : occupied[5] / 16.0;
-            Gizmos.cuboid(new AABB(
-                    focus.getX() + offX + frameX0 - PAD, focus.getY() + lift + frameY0 - PAD,
-                    focus.getZ() + offZ + frameZ0 - PAD,
-                    focus.getX() + offX + frameX1 + PAD, focus.getY() + lift + frameY1 + PAD,
-                    focus.getZ() + offZ + frameZ1 + PAD),
-                    FRAME);
-        }
+        // No surface/boundary wire: drafted cells already vanish from the hologram copy the
+        // moment they are released, so any outline here would only read as a stray glowing cut.
         if (CarverClientState.hasPendingBox()) {
             int[] pending = CarverClientState.pendingBox();
             Gizmos.cuboid(new AABB(
@@ -145,43 +130,6 @@ public final class CarverChalkOverlay {
             drawn++;
         }
         submitted += drawn;
-    }
-
-    /**
-     * Wireframe of the simulated removal: thin outlines only around drafted faces,
-     * so intact surface stays clean while the pending cut reads live. Reuses the
-     * hologram display cache, hence no extra meshing.
-     */
-    private static int drawSurfaceWire(BlockPos focus, double lift, double offX, double offZ) {
-        if (focus == null || !CarverHologram.active()) return 0;
-        BlockState state = CarverHologram.displayState();
-        if (state == null) return 0;
-        CarverHologramRenderer.DisplayMesh display;
-        try {
-            display = CarverHologramRenderer.displayMesh(focus, state);
-        } catch (RuntimeException unreadable) {
-            return 0;
-        }
-        return submitSurfaceFrames(focus, lift, offX, offZ,
-                CarverChalkQuads.largestFirst(display.ghost(), MAX_SURFACE_FRAMES), SURFACE);
-    }
-
-    private static int submitSurfaceFrames(BlockPos focus, double lift, double offX, double offZ,
-                                           java.util.List<MicrovoxelGreedyMesher.Face> faces,
-                                           GizmoStyle style) {
-        int drawn = 0;
-        for (MicrovoxelGreedyMesher.Face face : faces) {
-            double[] bounds = CarverChalkQuads.surfaceFrameBounds(face, lift, offX, offZ);
-            Gizmos.cuboid(new AABB(
-                    focus.getX() + bounds[0] - SURFACE_PAD,
-                    focus.getY() + bounds[1] - SURFACE_PAD,
-                    focus.getZ() + bounds[2] - SURFACE_PAD,
-                    focus.getX() + bounds[3] + SURFACE_PAD,
-                    focus.getY() + bounds[4] + SURFACE_PAD,
-                    focus.getZ() + bounds[5] + SURFACE_PAD), style);
-            drawn++;
-        }
-        return drawn;
     }
 
     /**

@@ -1050,6 +1050,31 @@ public final class MicrovoxelClientState {
     }
 
     /**
+     * Re-asserts the native marker for a volume whose socket the Carver hid locally for its
+     * design hologram. The terrain section model only emits microvoxel geometry for a marker
+     * block, so a stranded air socket renders nothing. A re-entered carving keeps the very same
+     * marker state, so the server never re-sends it after the work; this settles the socket to
+     * the carving already synced on this client. Returns true when a marker was (re)installed.
+     */
+    public static boolean refreshMarker(BlockPos position) {
+        if (activeLevel == null || position == null) return false;
+        BlockPos immutable = position.immutable();
+        CachedVolume cached = VOLUMES.get(immutable);
+        if (cached == null || cached.volume == null) return false;
+        try {
+            net.minecraft.world.level.block.state.BlockState desired = MicrovoxelBlocks.markerState(
+                    lightLevel(cached.volume), soundProfile(cached.volume));
+            if (!activeLevel.getBlockState(immutable).equals(desired)) {
+                activeLevel.setBlock(immutable, desired, 11);
+            }
+            queueRebuild(immutable);
+            return true;
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
+    }
+
+    /**
      * Predicted block-light level for locally placed volumes. Uses the exact server formula
      * (fractional emission over exposed cells), so predictions glow precisely as the server
      * will confirm instead of flashing full brightness until the authoritative packet lands.

@@ -320,6 +320,14 @@ public class CarverDesignScreen extends Screen {
 
     @Override
     public void onClose() {
+        // SPACE doubles as the approve key, so vanilla may latch a jump trigger in
+        // the same frame the screen closes: kill it here or the artisan hops.
+        try {
+            if (Minecraft.getInstance() != null && Minecraft.getInstance().options != null) {
+                Minecraft.getInstance().options.keyJump.setDown(false);
+            }
+        } catch (RuntimeException ignored) {
+        }
         CarverAutoWalk.abort();
         if (painting) {
             painting = false;
@@ -375,13 +383,17 @@ public class CarverDesignScreen extends Screen {
                                             net.minecraft.client.Camera camera, float fov,
                                             double mouseX, double mouseY, BlockPos focus,
                                             double lift, double offX, double offZ) {
-        ua.rp.chat.client.microvoxel.MicrovoxelClientState.CachedVolume cached;
+        // Unified source: the synced carving, or the virtual full cube for a fresh socket.
+        // The draft is fed in as a hidden mask so already-carved cells read as air and the
+        // ray lands on the freshly exposed cavity wall, which is what lets the artisan keep
+        // stepping one layer deeper without leaving the session.
+        ua.rp.chat.microvoxel.MicrovoxelVolume volume;
         try {
-            cached = ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(focus);
-            if (cached == null || cached.volume == null) return null;
+            volume = CarverHologramRenderer.sourceVolume(focus);
         } catch (RuntimeException unreadable) {
             return null;
         }
+        if (volume == null) return null;
         double[] ray = CarverCursorPick.ray(pos.x, pos.y, pos.z,
                 camera.yRot(), camera.xRot(), fov, width, height, mouseX, mouseY);
         if (ray == null) return null;
@@ -390,14 +402,15 @@ public class CarverDesignScreen extends Screen {
         // preserves faces and cells exactly), casting the socket volume itself.
         double reach = pos.distanceTo(new net.minecraft.world.phys.Vec3(
                 focus.getX() + 0.5, focus.getY() + 0.5, focus.getZ() + 0.5)) + 2.0;
+        ua.rp.chat.microvoxel.MicrovoxelRaycaster.Entry entry =
+                new ua.rp.chat.microvoxel.MicrovoxelRaycaster.Entry(
+                        focus.getX(), focus.getY(), focus.getZ(), volume);
         ua.rp.chat.microvoxel.MicrovoxelRaycaster.Hit hit;
         try {
             hit = ua.rp.chat.microvoxel.MicrovoxelRaycaster.cast(
                     ray[0] - offX, ray[1] - lift, ray[2] - offZ,
-                    ray[3], ray[4], ray[5], reach, java.util.List.of(
-                            new ua.rp.chat.microvoxel.MicrovoxelRaycaster.Entry(
-                                    focus.getX(), focus.getY(), focus.getZ(),
-                                    cached.volume)));
+                    ray[3], ray[4], ray[5], reach, java.util.List.of(entry),
+                    (maskedEntry, cell) -> CarverClientState.draft().get(cell));
         } catch (RuntimeException unreadable) {
             return null;
         }

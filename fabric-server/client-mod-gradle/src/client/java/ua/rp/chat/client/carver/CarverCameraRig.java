@@ -208,6 +208,10 @@ public final class CarverCameraRig {
             double[] framing = CarverCameraMath.workFraming(workPitchFrom, workDistFrom, t);
             orbitPitch = framing[0];
             orbitDist = framing[1];
+            // A slow handheld drift keeps the work camera alive instead of locked on rails.
+            orbitYaw += Math.sin(workTick * 0.035) * 0.0009;
+            orbitPitch = CarverCameraMath.clampPitch(
+                    (float) (orbitPitch + Math.cos(workTick * 0.027) * 0.0006));
             if (Math.abs(dragVelYaw) > 0.01 || Math.abs(dragVelPitch) > 0.01) {
                 orbitYaw += dragVelYaw;
                 orbitPitch = CarverCameraMath.clampPitch((float) (orbitPitch + dragVelPitch));

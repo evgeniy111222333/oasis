@@ -11,6 +11,13 @@ package ua.rp.chat.carver;
  * {@link #SETTLE_POS_TOL} and releases past {@link #SETTLE_POS_TOL_RELEASE}, so
  * physics jitter on the boundary cannot flap the movement keys.</p>
  *
+ * <p>Window contract with the work stance (single source of truth, enforced by
+ * test): one walking tick covers ~0.21 blocks of binary key input, so demanding
+ * centimeter precision would orbit the stand forever. The approve window
+ * ({@link #SETTLE_POS_TOL} blocks, {@link #SETTLE_YAW_TOL} degrees) clears one
+ * step of error with margin, and the stance torso turn
+ * ({@code CarverWorkStance.MAX_BODY_TURN}) always covers the leftover yaw.</p>
+ *
  * <p>Pure and dependency-free: safe to unit-test.</p>
  *
  * <p>Mirror contract: client-only helper, no server copy exists by design.</p>
@@ -19,11 +26,11 @@ public final class CarverSettleLogic {
     /** Settle approval budget in ticks before a yaw-snapped approve. */
     public static final int SETTLE_TICKS = 10;
     /** Engage distance (blocks) to the stand for the ALIGN phase. */
-    public static final double SETTLE_POS_TOL = 0.15;
+    public static final double SETTLE_POS_TOL = 0.5;
     /** Release distance (blocks): leaving past it returns to SEEK. */
-    public static final double SETTLE_POS_TOL_RELEASE = 0.30;
+    public static final double SETTLE_POS_TOL_RELEASE = 0.65;
     /** Yaw error (degrees) accepted for a clean aligned approve. */
-    public static final float SETTLE_YAW_TOL = 2.0f;
+    public static final float SETTLE_YAW_TOL = 25.0f;
 
     /** One-tick settle decision. */
     public enum Action {

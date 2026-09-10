@@ -25,6 +25,7 @@ public final class MicrovoxelCoreTest {
     public static void main(String[] args) {
         verifyPredictionReplay();
         verifyCavityRaycast();
+        verifyDraftMaskedRaycast();
         verifyLodMeshing();
         verifyLoadStand();
         verifyLodTiers();
@@ -403,6 +404,33 @@ public final class MicrovoxelCoreTest {
                         && floor.face() == MicrovoxelGreedyMesher.Direction.UP,
                 "A downward ray into a shaft must strike its floor with the micro UP normal");
         System.out.println("MicrovoxelCavityRaycastTest: pocket/tunnel/shaft targeting passed");
+    }
+
+    /**
+     * Draft-aware targeting: the CellMask overload the Carver picker feeds must let the ray
+     * pass through already-hidden cells, so the artisan selecting a removed voxel actually
+     * targets the wall one layer deeper instead of re-hitting the cell that just vanished.
+     */
+    private static void verifyDraftMaskedRaycast() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        MicrovoxelRaycaster.Entry entry =
+                new MicrovoxelRaycaster.Entry(0, 0, 0, full);
+        int hidden = MicrovoxelVolume.index(0, 8, 8);
+        MicrovoxelRaycaster.Hit base = MicrovoxelRaycaster.cast(
+                -1.0, 8.5 / 16.0, 8.5 / 16.0, 1.0, 0.0, 0.0, 3.0, List.of(entry));
+        require(base != null && base.cell() == hidden,
+                "An unmasked ray must strike the outermost cell first");
+        MicrovoxelRaycaster.Hit masked = MicrovoxelRaycaster.cast(
+                -1.0, 8.5 / 16.0, 8.5 / 16.0, 1.0, 0.0, 0.0, 3.0, List.of(entry),
+                (candidate, cell) -> cell == hidden);
+        require(masked != null && masked.cell() == MicrovoxelVolume.index(1, 8, 8)
+                        && masked.face() == MicrovoxelGreedyMesher.Direction.WEST,
+                "A masked ray must skip the hidden cell and strike the next wall");
+        MicrovoxelRaycaster.Hit allHidden = MicrovoxelRaycaster.cast(
+                -1.0, 8.5 / 16.0, 8.5 / 16.0, 1.0, 0.0, 0.0, 3.0, List.of(entry),
+                (candidate, cell) -> true);
+        require(allHidden == null, "A fully hidden volume must offer no pick target");
+        System.out.println("MicrovoxelDraftMaskedRaycastTest: draft-aware targeting passed");
     }
 
     /**

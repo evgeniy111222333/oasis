@@ -20,16 +20,34 @@ public final class MicrovoxelRaycaster {
 
     public static Hit cast(double ox, double oy, double oz, double dx, double dy, double dz,
                            double maxDistance, Collection<Entry> entries) {
+        return cast(ox, oy, oz, dx, dy, dz, maxDistance, entries, null);
+    }
+
+    /**
+     * Cast with a per-entry hidden-cell filter. The Carver design picker passes the live
+     * draft here so that already-hidden cells read as air: the ray keeps travelling and
+     * lands on the freshly exposed cavity wall underneath, which is exactly what lets the
+     * artisan step one layer deeper without approving and re-entering the session. Null
+     * keeps the ordinary occupied-cell behaviour.
+     */
+    public static Hit cast(double ox, double oy, double oz, double dx, double dy, double dz,
+                           double maxDistance, Collection<Entry> entries, CellMask hidden) {
         Hit nearest = null;
         for (Entry entry : entries) {
-            Hit hit = castVolume(ox, oy, oz, dx, dy, dz, maxDistance, entry);
+            Hit hit = castVolume(ox, oy, oz, dx, dy, dz, maxDistance, entry, hidden);
             if (hit != null && (nearest == null || hit.distance < nearest.distance)) nearest = hit;
         }
         return nearest;
     }
 
+    /** Per-entry hidden-cell test: true when the entry's cell must be treated as air. */
+    @FunctionalInterface
+    public interface CellMask {
+        boolean hidden(Entry entry, int cell);
+    }
+
     private static Hit castVolume(double ox, double oy, double oz, double dx, double dy, double dz,
-                                  double maxDistance, Entry entry) {
+                                  double maxDistance, Entry entry, CellMask hidden) {
         Slab slab = intersectUnitBlock(ox - entry.x, oy - entry.y, oz - entry.z, dx, dy, dz, maxDistance);
         if (slab == null) return null;
         double t = Math.max(0.0, slab.enter) + EPSILON;
@@ -42,8 +60,12 @@ public final class MicrovoxelRaycaster {
         MicrovoxelGreedyMesher.Direction enteredFace = slab.face;
 
         for (int steps = 0; steps < 52 && t <= slab.exit + EPSILON && t <= maxDistance; steps++) {
-            if (entry.volume.materialAt(x, y, z) != 0) {
-                return new Hit(entry, MicrovoxelVolume.index(x, y, z), enteredFace, t);
+            int cell = MicrovoxelVolume.index(x, y, z);
+            // A hidden cell (already drafted by the Carver) reads as air: the ray passes
+            // through it and can strike the wall of the cavity one layer further in.
+            if (entry.volume.materialAt(x, y, z) != 0
+                    && (hidden == null || !hidden.hidden(entry, cell))) {
+                return new Hit(entry, cell, enteredFace, t);
             }
             double tx = nextBoundary(t, ox, dx, entry.x + (dx > 0 ? (x + 1) / 16.0 : x / 16.0));
             double ty = nextBoundary(t, oy, dy, entry.y + (dy > 0 ? (y + 1) / 16.0 : y / 16.0));

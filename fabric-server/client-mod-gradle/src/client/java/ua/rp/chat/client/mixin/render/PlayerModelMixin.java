@@ -196,6 +196,9 @@ public class PlayerModelMixin {
         try {
             if (local) {
                 if (!ua.rp.chat.client.carver.CarverClientState.working()) {
+                    if (ua.rp.chat.client.carver.CarverClientState.finishing()) {
+                        eclipse$poseFinish(model, player);
+                    }
                     return;
                 }
                 focus = ua.rp.chat.client.carver.CarverClientState.focus();
@@ -261,12 +264,53 @@ public class PlayerModelMixin {
         double dz = (strikePoint == null ? focus.getZ() + 0.5 : strikePoint[2]) - eye.z;
         double horizontal = Math.sqrt(dx * dx + dz * dz);
         if (!(horizontal > 1.0e-6)) {
-            return;
+            // Eye straight above the contact (carving underfoot): fall back to the
+            // entity facing so the pose always applies instead of vanishing. This
+            // is what guarantees the stance is visible every time, for everyone.
+            double faceRad = Math.toRadians(player.getYRot());
+            dx = -Math.sin(faceRad);
+            dz = Math.cos(faceRad);
+            horizontal = 1.0;
         }
-        double cycle = ua.rp.chat.carver.CarverWorkStroke.cycleOf(smoothTicks, totalTicks);
+        // Seeded rhythm: the same work clock is humanized per artisan, so no two masters strike
+        // alike. Local and observers share the seed (the player UUID), so the beat, the tools
+        // and the impact stay in lockstep everywhere.
+        long seed = player.getUUID().getLeastSignificantBits();
+        ua.rp.chat.carver.CarverWorkStroke.Placement placement =
+                ua.rp.chat.carver.CarverWorkStroke.placement(smoothTicks, totalTicks, seed);
+        double cycle = placement.cycle();
+        int strikeIndex = placement.index();
         double lift = ua.rp.chat.carver.CarverWorkStroke.lift(cycle);
         double contact = ua.rp.chat.carver.CarverWorkStroke.contact(cycle);
-        int strikeIndex = ua.rp.chat.carver.CarverWorkStroke.strikeIndex(smoothTicks, totalTicks);
+        // Material, the held chisel and the running stamina shape how heavy and how patient the
+        // work reads: rough removal, the body of the job, then fine detailing, heavier and slower
+        // as the artisan tires. Pure model, so the same animation is unit-tested away from game.
+        int chisel = 0;
+        try {
+            net.minecraft.resources.Identifier offId =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
+                            player.getOffhandItem().getItem());
+            String id = offId == null ? "" : offId.toString();
+            chisel = id.contains("carver_chisel_point") ? 2
+                    : id.contains("carver_chisel_flat") ? 1 : 0;
+        } catch (RuntimeException unavailable) {
+            chisel = 0;
+        }
+        float workProgress = totalTicks <= 0 ? 0.0f
+                : (float) Math.max(0.0, Math.min(1.0, smoothTicks / totalTicks));
+        ua.rp.chat.carver.CarverWorkAnim.Material material = local
+                ? ua.rp.chat.carver.CarverWorkAnim.classify(
+                        ua.rp.chat.client.carver.CarverClientState.materialId())
+                : ua.rp.chat.carver.CarverWorkAnim.Material.GENERIC;
+        double fatigue = 0.0;
+        try {
+            fatigue = 1.0 - ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
+        } catch (RuntimeException unavailable) {
+            fatigue = 0.0;
+        }
+        ua.rp.chat.carver.CarverWorkAnim.Pose anim = ua.rp.chat.carver.CarverWorkAnim.pose(
+                ua.rp.chat.carver.CarverWorkAnim.stage(workProgress),
+                ua.rp.chat.carver.CarverWorkAnim.strikeType(chisel), fatigue, material);
         ua.rp.chat.client.carver.CarverWorkPoseCache.Pose ik = null;
         float partial = 1.0f;
         try {
@@ -312,106 +356,72 @@ public class PlayerModelMixin {
         ModelPart forearmLeft = eclipse$getChildOrNull(model.leftArm, "eclipse_forearm");
         ModelPart forearmRight = eclipse$getChildOrNull(model.rightArm, "eclipse_forearm");
 
-        // PHASE CHOREOGRAPHY:
-        // Left hand (Tool 1 - Point Chisel):
-        // 0..11 ticks: reach back towards loop_left on backpack
-        // 11..18 ticks: bring forward to targetAim
-        // 18+ ticks: working position at stone with shiver
-        if (smoothTicks < 11.0) {
-            double p = smoothTicks / 11.0;
-            double s = p * p * (3.0 - 2.0 * p);
-            model.leftArm.xRot = (float) (s * 0.65);
-            model.leftArm.yRot = (float) (s * 0.35);
-            model.leftArm.zRot = (float) (-s * 0.25);
-            if (forearmLeft != null) {
-                forearmLeft.xRot = (float) (-s * 0.45);
-            }
-        } else if (smoothTicks < 18.0) {
-            double p = (smoothTicks - 11.0) / 7.0;
-            double s = p * p * (3.0 - 2.0 * p);
-            model.leftArm.xRot = (float) (0.65 + s * (targetAim - 0.65));
-            model.leftArm.yRot = (float) (0.35 + s * (0.18f - 0.35));
-            model.leftArm.zRot = (float) (-0.25 + s * (0.1f - (-0.25)));
-            if (forearmLeft != null) {
-                forearmLeft.xRot = (float) (-0.45 + s * (-0.95f - (-0.45)));
-            }
-        } else if (ik != null) {
-            model.leftArm.xRot = ik.leftPitch();
-            model.leftArm.yRot = 0.18f + ik.leftYaw();
-            model.leftArm.zRot = 0.1f;
-            if (forearmLeft != null) {
-                float shiver = (float) (Math.sin(smoothTicks * 3.1) * 0.035 * (0.3 + 0.7 * contact)
-                        + Math.sin(smoothTicks * 7.3) * 0.012 * contact);
-                forearmLeft.xRot = -ik.leftElbow() + shiver - (float) (contact * 0.12);
-            }
-        } else {
-            model.leftArm.xRot = targetAim;
-            model.leftArm.yRot = 0.18f;
-            model.leftArm.zRot = 0.1f;
-            if (forearmLeft != null) {
-                float shiver = (float) (Math.sin(smoothTicks * 3.1) * 0.035 * (0.3 + 0.7 * contact)
-                        + Math.sin(smoothTicks * 7.3) * 0.012 * contact);
-                forearmLeft.xRot = -0.95f + shiver - (float) (contact * 0.12);
-            }
+        // WORK CHOREOGRAPHY: a physical hammer cycle layered on the contact-accurate IK aim.
+        // The base hand positions still come from the shared StrikePlan (or the fallback aim);
+        // the pure CarverWorkStroke beat then overlays anticipation, a fast strike, the impact
+        // shock and the settle, so one swing reads as mass hitting stone. Everything blends
+        // from this frame's idle/breathing pose over the entry, so the artisan settles in
+        // instead of snapping or flailing through a hand-authored reach-back.
+        double workLift = ua.rp.chat.carver.CarverWorkStroke.lift(cycle);
+        double workContact = ua.rp.chat.carver.CarverWorkStroke.contact(cycle);
+        double workDrive = ua.rp.chat.carver.CarverWorkStroke.drive(cycle);
+        double workShock = ua.rp.chat.carver.CarverWorkStroke.shock(cycle);
+        float workEntry = (float) ua.rp.chat.carver.CarverGazeMath.entryBlend(smoothTicks);
+
+        // Left hand: the chisel stays planted on the contact and shivers with every blow.
+        float chiselBasePitch = ik != null ? ik.leftPitch() : targetAim;
+        float chiselBaseYaw = ik != null ? ik.leftYaw() : 0.0f;
+        float chiselBaseElbow = ik != null ? ik.leftElbow() : 0.95f;
+        double amp = anim.amplitude();
+        double shockGain = anim.shockGain();
+        double brace = anim.twoHanded() ? 1.0 : 0.0;
+
+        // Left hand: the chisel stays planted on the contact and shivers with every blow. On a
+        // heavy rough mallet blow the off hand also drives in, bracing the strike with the torso.
+        float chiselShiver = (float) (Math.sin(smoothTicks * 3.1) * 0.02 * (0.3 + 0.7 * workContact)
+                + Math.sin(smoothTicks * 7.3) * 0.01 * workContact
+                + workShock * 0.10 * shockGain + workDrive * 0.08 * brace);
+        float leftArmX = chiselBasePitch + chiselShiver + (float) (workContact * 0.05 * shockGain)
+                - (float) (workDrive * 0.10 * brace);
+        float leftForeX = -chiselBaseElbow + chiselShiver * 0.5f
+                - (float) (workContact * 0.10 * shockGain) - (float) (workDrive * 0.14 * brace);
+        float leftArmY = 0.18f + chiselBaseYaw;
+        float leftArmZ = 0.10f;
+
+        // Right hand: the striker. Anticipation raises and folds the arm; the strike snaps it
+        // down and open into the blow, then the recoil follows through.
+        float strikeBasePitch = ik != null ? ik.rightPitch() : (targetAim - 0.15f);
+        float strikeBaseYaw = ik != null ? (-0.18f + ik.rightYaw()) : -0.18f;
+        float strikeBaseElbow = ik != null ? ik.rightElbow() : 0.9f;
+        float rightArmX = strikeBasePitch - (float) (workLift * 1.35 * amp)
+                + (float) (workDrive * 0.30) + (float) (workContact * 0.12 * shockGain);
+        float rightForeX = -strikeBaseElbow - (float) (workLift * 1.05 * amp)
+                + (float) (workDrive * 0.55) + (float) (workContact * 0.28 * shockGain);
+        float rightArmY = strikeBaseYaw + (float) (workLift * 0.15 * amp)
+                - (float) (workDrive * 0.18);
+        float rightArmZ = -0.10f - (float) (workLift * 0.22 * amp);
+
+        model.leftArm.xRot = blendAngle(model.leftArm.xRot, leftArmX, workEntry);
+        model.leftArm.yRot = blendAngle(model.leftArm.yRot, leftArmY, workEntry);
+        model.leftArm.zRot = blendAngle(model.leftArm.zRot, leftArmZ, workEntry);
+        if (forearmLeft != null) {
+            forearmLeft.xRot = blendAngle(forearmLeft.xRot, leftForeX, workEntry);
+        }
+        model.rightArm.xRot = blendAngle(model.rightArm.xRot, rightArmX, workEntry);
+        model.rightArm.yRot = blendAngle(model.rightArm.yRot, rightArmY, workEntry);
+        model.rightArm.zRot = blendAngle(model.rightArm.zRot, rightArmZ, workEntry);
+        if (forearmRight != null) {
+            forearmRight.xRot = blendAngle(forearmRight.xRot, rightForeX, workEntry);
         }
 
-        // Right hand (Tool 2 - Flat Chisel / Striker):
-        // 0..12 ticks: wait in ready pose
-        // 12..23 ticks: reach back towards loop_right on backpack
-        // 23..30 ticks: bring forward to targetAim - 0.15f
-        // 30+ ticks: striking rhythm with lift and recoil
-        if (smoothTicks < 12.0) {
-            model.rightArm.xRot = 0.0f;
-            model.rightArm.yRot = 0.0f;
-            model.rightArm.zRot = 0.0f;
-            if (forearmRight != null) {
-                forearmRight.xRot = 0.0f;
-            }
-        } else if (smoothTicks < 23.0) {
-            double p = (smoothTicks - 12.0) / 11.0;
-            double s = p * p * (3.0 - 2.0 * p);
-            model.rightArm.xRot = (float) (s * 0.65);
-            model.rightArm.yRot = (float) (-s * 0.35);
-            model.rightArm.zRot = (float) (s * 0.25);
-            if (forearmRight != null) {
-                forearmRight.xRot = (float) (-s * 0.45);
-            }
-        } else if (smoothTicks < 30.0) {
-            double p = (smoothTicks - 23.0) / 7.0;
-            double s = p * p * (3.0 - 2.0 * p);
-            float targetR = targetAim - 0.15f;
-            model.rightArm.xRot = (float) (0.65 + s * (targetR - 0.65));
-            model.rightArm.yRot = (float) (-0.35 + s * (-0.18f - (-0.35)));
-            model.rightArm.zRot = (float) (0.25 + s * (-0.1f - 0.25));
-            if (forearmRight != null) {
-                forearmRight.xRot = (float) (-0.45 + s * (-0.55f - (-0.45)));
-            }
-        } else if (ik != null) {
-            float snap = (float) (contact * 0.28);
-            model.rightArm.xRot = ik.rightPitch() - (float) (lift * 0.35) + snap;
-            model.rightArm.yRot = -0.18f + ik.rightYaw();
-            model.rightArm.zRot = -0.1f;
-            if (forearmRight != null) {
-                forearmRight.xRot = (float) (-ik.rightElbow() - lift * 0.9 + contact * 0.3);
-            } else {
-                model.rightArm.xRot = ik.rightPitch() - (float) (lift * 0.7) + snap;
-            }
-        } else {
-            float snap = (float) (contact * 0.28);
-            model.rightArm.xRot = targetAim - 0.15f - (float) (lift * 0.55) + snap;
-            model.rightArm.yRot = -0.18f;
-            model.rightArm.zRot = -0.1f;
-            if (forearmRight != null) {
-                forearmRight.xRot = (float) (-0.35 - lift * 1.4 + contact * 0.3);
-            } else {
-                model.rightArm.xRot = targetAim - 0.15f - (float) (lift * 1.1) + snap;
-            }
-        }
-
-        // Torso flavor-lean only:
-        model.body.xRot += 0.05f;
-        float dip = (smoothTicks >= 28.0) ? (float) (contact * 0.75) : 0.0f;
-        model.body.y -= dip;
+        // Torso follow-through: lean into the strike, dip on impact and counter-twist with the
+        // swing. Lean grows over delicate work; fatigue slumps the shoulders and bends the spine.
+        float slump = (float) anim.fatigue();
+        model.body.xRot += (float) (workEntry * anim.lean()
+                * (0.06 + workDrive * 0.10 - workLift * 0.03)) + workEntry * slump * 0.05f;
+        model.body.yRot += (float) (workEntry * anim.twist() * (workDrive - workLift * 0.55) * 0.16);
+        float dip = (float) (workEntry * anim.dip() * (workContact * 0.9 + workShock * 0.5));
+        model.body.y -= dip + slump * 0.6f;
         model.head.y -= dip;
         model.leftArm.y -= dip;
         model.rightArm.y -= dip;
@@ -430,21 +440,99 @@ public class PlayerModelMixin {
         } catch (RuntimeException unavailable) {
             skipStance = false;
         }
-        if (!skipStance && horizontal > 1.0e-6) {
+        if (!skipStance) {
             double worldYaw = Math.toDegrees(Math.atan2(-dx, dz));
             double turn = ua.rp.chat.carver.CarverWorkStance.bodyTurn(worldYaw, player.getYRot());
             double entry = ua.rp.chat.carver.CarverGazeMath.entryBlend(smoothTicks);
             model.body.yRot += (float) (turn * entry);
-            ua.rp.chat.carver.CarverWorkStance.LegStance stance =
-                    ua.rp.chat.carver.CarverWorkStance.blended(entry);
-            model.leftLeg.xRot = stance.leftPitch();
-            model.rightLeg.xRot = stance.rightPitch();
-            model.leftLeg.yRot = stance.leftYaw();
-            model.rightLeg.yRot = stance.rightYaw();
+            // Lead side: frozen per session for the local artisan (sampled once at
+            // work start), derived live for observers from the broadcast contact —
+            // frozen inputs there too, so no mid-animation foot swapping anywhere.
+            ua.rp.chat.carver.CarverWorkStance.Side side;
+            double floorDh;
+            if (local) {
+                side = ua.rp.chat.client.carver.CarverClientState.workSide();
+                floorDh = ua.rp.chat.client.carver.CarverClientState.workFloorDh();
+                if (side == null) side = ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD;
+            } else {
+                double ccx = strikePoint == null ? focus.getX() + 0.5 : strikePoint[0];
+                double ccz = strikePoint == null ? focus.getZ() + 0.5 : strikePoint[2];
+                side = ua.rp.chat.carver.CarverWorkStance.sideFor(
+                        ua.rp.chat.carver.CarverWorkStance.lateralDeg(
+                                ccx, ccz, player.getX(), player.getZ(), player.getYRot()));
+                floorDh = 0.0;
+            }
+            ua.rp.chat.carver.CarverWorkStance.FullLegs legs =
+                    ua.rp.chat.carver.CarverWorkStance.blended(entry, side, floorDh);
+            ua.rp.chat.carver.CarverWorkStance.LegStance yaw =
+                    ua.rp.chat.carver.CarverWorkStance.stance(side);
+            float entryF = (float) Math.max(0.0, Math.min(1.0, entry));
+            model.leftLeg.xRot = legs.thighLeft();
+            model.rightLeg.xRot = legs.thighRight();
+            model.leftLeg.yRot = yaw.leftYaw() * entryF;
+            model.rightLeg.yRot = yaw.rightYaw() * entryF;
+            model.body.y -= legs.hipDrop();
+            ModelPart shinLeft = eclipse$getChildOrNull(model.leftLeg, "eclipse_shin");
+            if (shinLeft != null) shinLeft.xRot = -legs.kneeLeft();
+            ModelPart shinRight = eclipse$getChildOrNull(model.rightLeg, "eclipse_shin");
+            if (shinRight != null) shinRight.xRot = -legs.kneeRight();
         }
 
         eclipse$applyWorkGaze(model, player, eye, focus, strikePoint, smoothTicks,
                 totalTicks, cycle, strikeIndex, local, breathPhase);
+    }
+
+    /**
+     * Local post-work finale: the artisan straightens, presents the finished piece at arm's
+     * length, gives one approving nod, then lowers the hands and settles. Purely local; the
+     * shared work pose already stopped with the session.
+     */
+    @Unique
+    private void eclipse$poseFinish(PlayerModel model, Player player) {
+        double t = ua.rp.chat.client.carver.CarverClientState.finishProgress();
+        double rise = ua.rp.chat.carver.CarverGazeMath.smoothstep(Math.min(1.0, t / 0.40));
+        double lower = ua.rp.chat.carver.CarverGazeMath.smoothstep(
+                Math.max(0.0, (t - 0.72) / 0.28));
+        double hold = rise * (1.0 - lower);
+        float present = (float) (hold * -1.05);
+        model.leftArm.xRot = blendAngle(model.leftArm.xRot, present, (float) rise);
+        model.rightArm.xRot = blendAngle(model.rightArm.xRot, present, (float) rise);
+        model.leftArm.yRot = blendAngle(model.leftArm.yRot, 0.32f, (float) hold);
+        model.rightArm.yRot = blendAngle(model.rightArm.yRot, -0.32f, (float) hold);
+        float elbow = (float) (hold * -0.5);
+        ModelPart foreL = eclipse$getChildOrNull(model.leftArm, "eclipse_forearm");
+        ModelPart foreR = eclipse$getChildOrNull(model.rightArm, "eclipse_forearm");
+        if (foreL != null) foreL.xRot = blendAngle(foreL.xRot, elbow, (float) hold);
+        if (foreR != null) foreR.xRot = blendAngle(foreR.xRot, elbow, (float) hold);
+        model.body.xRot += (float) (rise * 0.03);
+        double nod = (t > 0.42 && t < 0.68)
+                ? Math.sin((t - 0.42) / 0.26 * Math.PI) * 0.12 : 0.0;
+        net.minecraft.core.BlockPos focus =
+                ua.rp.chat.client.carver.CarverClientState.finishFocus();
+        if (focus != null) {
+            try {
+                double dx = focus.getX() + 0.5 - player.getX();
+                double dz = focus.getZ() + 0.5 - player.getZ();
+                double horiz = Math.sqrt(dx * dx + dz * dz);
+                if (horiz > 1.0e-6) {
+                    double yaw = ua.rp.chat.carver.CarverGazeMath.wrapDelta(
+                            Math.atan2(-dx, dz) - Math.toRadians(player.getYRot()));
+                    model.head.yRot = blendAngle(model.head.yRot, (float) yaw, (float) rise);
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        model.head.xRot += (float) nod;
+    }
+
+    /**
+     * Frame-local blend of two angles for the work entry: a plain clamped lerp, so the pose
+     * slides from the idle/breathing frame into the working pose over the entry window.
+     */
+    @Unique
+    private static float blendAngle(float from, float to, float t) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, t));
+        return from + (to - from) * clamped;
     }
 
     @Unique
@@ -483,7 +571,14 @@ public class PlayerModelMixin {
         double cdx = contactX - eye.x;
         double cdz = contactZ - eye.z;
         double choriz = Math.sqrt(cdx * cdx + cdz * cdz);
-        if (!(choriz > 1.0e-6)) return;
+        if (!(choriz > 1.0e-6)) {
+            // Eye straight above the contact: gaze along the entity facing so the
+            // head never freezes in its pre-work angle.
+            double faceRad = Math.toRadians(player.getYRot());
+            cdx = -Math.sin(faceRad);
+            cdz = Math.cos(faceRad);
+            choriz = 1.0;
+        }
         double fullYaw = ua.rp.chat.carver.CarverGazeMath.wrapDelta(
                 Math.atan2(-cdx, cdz) - Math.toRadians(player.getYRot()));
         double fullPitch = Math.atan2(eye.y - contactY, choriz);

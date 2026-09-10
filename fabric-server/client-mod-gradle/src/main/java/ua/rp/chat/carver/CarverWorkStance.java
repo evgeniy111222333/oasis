@@ -25,8 +25,47 @@ public final class CarverWorkStance {
     public static final float TRAIL_LEG_PITCH = -0.22f;
     /** Outward foot splay, radians at full blend. */
     public static final float FOOT_SPLAY = 0.06f;
+    /**
+     * Lateral deadband in degrees: contact inside it keeps the symmetric CENTER
+     * stance, so a millimeter of drift never mirrors the feet. Pure XZ measure.
+     */
+    public static final double SIDE_DEADBAND_DEG = 15.0;
+    /** Widest floor step absorbed by the knees, blocks. Beyond it: hips only. */
+    public static final double MAX_FLOOR_STEP = 0.5;
+    /** Knee bend per block of floor step, radians. Clamped by MAX_KNEE_BEND. */
+    public static final double KNEE_PER_BLOCK = 1.0;
+    /** Widest knee bend, radians. */
+    public static final double MAX_KNEE_BEND = 0.5;
+
+    /** Which foot leads, from the lateral contact side. Frozen per session. */
+    public enum Side { LEFT_LEAD, CENTER, RIGHT_LEAD }
 
     private CarverWorkStance() {
+    }
+
+    /**
+     * Signed lateral angle in degrees between the facing yaw and the direction to
+     * the contact, measured strictly in the XZ plane (top faces included: the
+     * contact underfoot still has an XZ projection). Negative reads contact on the
+     * left side of the facing, positive on the right. Pure.
+     */
+    public static double lateralDeg(double contactX, double contactZ,
+                                    double playerX, double playerZ, double entityYawDeg) {
+        double dx = contactX - playerX;
+        double dz = contactZ - playerZ;
+        if (dx * dx + dz * dz < 1.0e-8) return 0.0;
+        double targetYaw = Math.toDegrees(Math.atan2(-dx, dz));
+        double delta = (targetYaw - entityYawDeg) % 360.0;
+        if (delta >= 180.0) delta -= 360.0;
+        if (delta < -180.0) delta += 360.0;
+        return delta;
+    }
+
+    /** Lead-foot side with the center deadband. Pure. */
+    public static Side sideFor(double lateralDeg) {
+        if (lateralDeg < -SIDE_DEADBAND_DEG) return Side.LEFT_LEAD;
+        if (lateralDeg > SIDE_DEADBAND_DEG) return Side.RIGHT_LEAD;
+        return Side.CENTER;
     }
 
     /**
@@ -47,6 +86,22 @@ public final class CarverWorkStance {
     }
 
     public static LegStance stance() {
+        return stance(Side.LEFT_LEAD);
+    }
+
+    /**
+     * Foot stance for the frozen lead side. Tools never swap hands (chisel stays
+     * left, hammer right); only the feet mirror, so the strike choreography and
+     * the tool rendering survive untouched. Pure.
+     */
+    public static LegStance stance(Side side) {
+        if (side == Side.RIGHT_LEAD) {
+            return new LegStance(TRAIL_LEG_PITCH, LEAD_LEG_PITCH, -FOOT_SPLAY, FOOT_SPLAY);
+        }
+        if (side == Side.CENTER) {
+            float half = (LEAD_LEG_PITCH + TRAIL_LEG_PITCH) * 0.25f;
+            return new LegStance(half, -half, -FOOT_SPLAY, FOOT_SPLAY);
+        }
         return new LegStance(LEAD_LEG_PITCH, TRAIL_LEG_PITCH, -FOOT_SPLAY, FOOT_SPLAY);
     }
 
@@ -56,9 +111,35 @@ public final class CarverWorkStance {
      */
     public static LegStance blended(double entryBlend) {
         double b = Math.max(0.0, Math.min(1.0, entryBlend));
-        LegStance full = stance();
+        LegStance full = stance(Side.LEFT_LEAD);
         float bF = (float) b;
         return new LegStance(full.leftPitch() * bF, full.rightPitch() * bF,
                 full.leftYaw() * bF, full.rightYaw() * bF);
+    }
+
+    /**
+     * Full working legs: side mirror plus floor-step knees. {@code floorStep} is
+     * left-ground minus right-ground in blocks (positive: left foot uphill),
+     * clamped to {@link #MAX_FLOOR_STEP}; the uphill knee absorbs it, the pelvis
+     * drops half of it. Returns thigh pitches, knee bends and the hip drop in
+     * model units (1/16 block each, same unit as the existing work dip). Pure.
+     */
+    public record FullLegs(float thighLeft, float thighRight,
+                           float kneeLeft, float kneeRight, float hipDrop) {
+    }
+
+    public static FullLegs blended(double entryBlend, Side side, double floorStep) {
+        double b = Math.max(0.0, Math.min(1.0, entryBlend));
+        LegStance base = stance(side);
+        double dh = Math.max(-MAX_FLOOR_STEP, Math.min(MAX_FLOOR_STEP, floorStep));
+        double kneeUphill = Math.min(MAX_KNEE_BEND, Math.abs(dh) * KNEE_PER_BLOCK);
+        double kneeLeft = dh > 0.0 ? kneeUphill : 0.0;
+        double kneeRight = dh < 0.0 ? kneeUphill : 0.0;
+        double thighLeft = base.leftPitch() + (dh > 0.0 ? kneeUphill * 0.5 : -kneeUphill * 0.3);
+        double thighRight = base.rightPitch() + (dh < 0.0 ? kneeUphill * 0.5 : -kneeUphill * 0.3);
+        double hipDrop = Math.abs(dh) * 16.0 * 0.5;
+        float bF = (float) b;
+        return new FullLegs((float) (thighLeft * b), (float) (thighRight * b),
+                (float) (kneeLeft * b), (float) (kneeRight * b), (float) (hipDrop * b));
     }
 }

@@ -224,7 +224,23 @@ public final class CarverHologram {
         BlockPos landedAt = focus;
         BlockState dust = dustState;
         boolean effects = impactArmed;
-        restore(minecraft);
+        if (!effects) {
+            // Rejected or unconfirmed approval: the socket was only hidden for the hologram, so
+            // put the design snapshot straight back.
+            restore(minecraft);
+        } else if (landedAt != null && minecraft.level != null
+                && minecraft.level.getBlockState(landedAt).isAir()) {
+            // Confirmed work. The server projects a native marker into the socket, but a
+            // re-entered carving keeps the very same marker state, so materialize() sees no
+            // change and never re-sends the block. Our design-time hide would then strand the
+            // socket invisible until a rejoin. Settle it to the carving we already synced; when
+            // nothing synced yet, restore the snapshot and let the authoritative update land.
+            boolean settled = ua.rp.chat.client.microvoxel.MicrovoxelClientState
+                    .refreshMarker(landedAt);
+            if (!settled) {
+                restore(minecraft);
+            }
+        }
         active = false;
         focus = null;
         hiddenState = null;

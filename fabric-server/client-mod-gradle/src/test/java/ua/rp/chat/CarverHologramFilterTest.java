@@ -18,7 +18,68 @@ public final class CarverHologramFilterTest {
         verifyRemnantCoveredByDraft();
         verifyEmptyDraftNeverClears();
         verifyPreviewCells();
+        verifyMaskedMeshRemovesOuterLayer();
+        verifyMaskedMeshOpensInteriorCavity();
+        verifyMaskedMeshFullyHidden();
+        verifyMaskedMeshNullMatchesPlain();
         System.out.println("CarverHologramFilterTest passed");
+    }
+
+    /**
+     * The new hologram mesh (volume minus draft) must re-cut on the hidden boundary: hiding
+     * the top layer drops the old top plane and exposes the freshly revealed one, rather than
+     * leaving the untouched side faces of the full cube standing.
+     */
+    private static void verifyMaskedMeshRemovesOuterLayer() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        java.util.List<MicrovoxelGreedyMesher.Face> open = mesh(full);
+        require(open.size() == 6, "A solid volume must mesh to six outer quads, got " + open.size());
+        java.util.List<MicrovoxelGreedyMesher.Face> masked = MicrovoxelGreedyMesher.build(
+                full, full::materialAt, cell -> DraftMask.y(cell) == 15);
+        boolean oldTop = masked.stream().anyMatch(face ->
+                face.direction() == MicrovoxelGreedyMesher.Direction.UP && face.maxY() == 16);
+        boolean freshTop = masked.stream().anyMatch(face ->
+                face.direction() == MicrovoxelGreedyMesher.Direction.UP && face.maxY() == 15);
+        require(!oldTop && freshTop,
+                "Hiding the top layer must remove the y=16 top plane and reveal the y=15 one");
+        boolean tallerSide = masked.stream().anyMatch(face ->
+                face.direction() == MicrovoxelGreedyMesher.Direction.EAST && face.maxY() > 15);
+        require(!tallerSide, "Side faces must shorten to the remaining height, not stay full");
+    }
+
+    /** Hiding one interior cell must open its six cavity walls while the outer six stay. */
+    private static void verifyMaskedMeshOpensInteriorCavity() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        int cell = DraftMask.index(8, 8, 8);
+        java.util.List<MicrovoxelGreedyMesher.Face> masked = MicrovoxelGreedyMesher.build(
+                full, full::materialAt, candidate -> candidate == cell);
+        require(masked.size() == 12,
+                "One hidden interior cell must add six cavity walls to the six outer quads, got "
+                        + masked.size());
+        for (MicrovoxelGreedyMesher.Face face : masked) {
+            require(face.minX() >= 0 && face.minY() >= 0 && face.minZ() >= 0
+                            && face.maxX() <= 16 && face.maxY() <= 16 && face.maxZ() <= 16,
+                    "Masked faces must stay inside the unit block");
+        }
+    }
+
+    /** Hiding every cell must leave no faces at all. */
+    private static void verifyMaskedMeshFullyHidden() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        java.util.List<MicrovoxelGreedyMesher.Face> masked = MicrovoxelGreedyMesher.build(
+                full, full::materialAt, cell -> true);
+        require(masked.isEmpty(), "A fully hidden volume must mesh to nothing");
+    }
+
+    /** A null hidden predicate must be bit-identical to the plain exact mesh. */
+    private static void verifyMaskedMeshNullMatchesPlain() {
+        MicrovoxelVolume carved = MicrovoxelVolume.full("minecraft:stone");
+        for (int cell = 0; cell < 200; cell++) carved.update(cell, "");
+        java.util.List<MicrovoxelGreedyMesher.Face> plain = mesh(carved);
+        java.util.List<MicrovoxelGreedyMesher.Face> nullMask =
+                MicrovoxelGreedyMesher.build(carved, carved::materialAt, null);
+        require(plain.equals(nullMask),
+                "Null hidden predicate must keep the plain exact mesh");
     }
 
     private static void verifySmallDraftKeepsFullCube() {

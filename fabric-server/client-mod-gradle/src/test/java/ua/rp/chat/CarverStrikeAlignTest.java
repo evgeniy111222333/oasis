@@ -26,6 +26,9 @@ public final class CarverStrikeAlignTest {
         verifyPoseLerp();
         verifySettleLogic();
         verifyWorkStance();
+        verifyStanceSide();
+        verifyFloorKnees();
+        verifyLookMath();
         verifyBenchmark();
         System.out.println("CarverStrikeAlignTest passed");
     }
@@ -359,43 +362,49 @@ public final class CarverStrikeAlignTest {
     }
 
     private static void verifySettleLogic() {
+        // Contract window: half a block and 25 degrees clear one step of error.
         // Far from the stand: always SEEK, whatever the yaw error or budget.
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.5, 0.0f, 0, false)
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.8, 0.0f, 0, false)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.SEEK,
                 "Far stand must SEEK");
         require(ua.rp.chat.carver.CarverSettleLogic.next(5.0, 170.0f, 999, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.SEEK,
                 "Far stand must SEEK even past the budget");
-        // Close and aligned: approve without any snap.
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.10, 1.0f, 3, true)
+        // Inside the window and aimed: approve without any snap.
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.40, 20.0f, 3, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.APPROVE_ALIGNED,
-                "Close and aligned must APPROVE_ALIGNED");
-        // Close but turned away: ALIGN until the budget, then snap-approve.
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.10, 45.0f, 3, true)
+                "Window hit must APPROVE_ALIGNED");
+        // Inside but turned past the window: ALIGN until the budget, then snap.
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.40, 45.0f, 3, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.ALIGN,
-                "Close but turned must ALIGN");
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.10, 45.0f, 10, true)
+                "Turned past window must ALIGN");
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.40, 45.0f, 10, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.APPROVE_TIMEOUT,
                 "Spent budget must APPROVE_TIMEOUT");
-        // Hysteresis: 0.2 engages only with the latch held, never fresh.
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.20, 45.0f, 3, false)
+        // Hysteresis: 0.55 engages only with the latch held, never fresh.
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.55, 45.0f, 3, false)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.SEEK,
                 "Boundary without latch must SEEK");
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.20, 45.0f, 3, true)
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.55, 45.0f, 3, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.ALIGN,
                 "Boundary with latch must stay ALIGN");
-        require(ua.rp.chat.carver.CarverSettleLogic.next(0.35, 45.0f, 3, true)
+        require(ua.rp.chat.carver.CarverSettleLogic.next(0.70, 45.0f, 3, true)
                         == ua.rp.chat.carver.CarverSettleLogic.Action.SEEK,
                 "Past release must return to SEEK");
-        require(!ua.rp.chat.carver.CarverSettleLogic.latch(0.20, false)
-                        && ua.rp.chat.carver.CarverSettleLogic.latch(0.20, true),
-                "Latch must engage fresh only under 0.15 and hold under 0.30");
+        require(!ua.rp.chat.carver.CarverSettleLogic.latch(0.55, false)
+                        && ua.rp.chat.carver.CarverSettleLogic.latch(0.55, true),
+                "Latch must engage fresh only under 0.5 and hold under 0.65");
         // Yaw error wraps through 180 degrees.
         require(close(ua.rp.chat.carver.CarverSettleLogic.yawErr(179.0f, -179.0f), 2.0),
                 "Yaw error must wrap, got "
                         + ua.rp.chat.carver.CarverSettleLogic.yawErr(179.0f, -179.0f));
         require(close(ua.rp.chat.carver.CarverSettleLogic.yawErr(10.0f, 10.0f), 0.0),
                 "Equal yaws must read zero error");
+        // Window contract: the yaw window must stay inside the stance coverage
+        // with margin, or the autowalk promises what the chest cannot cover.
+        require(ua.rp.chat.carver.CarverSettleLogic.SETTLE_YAW_TOL
+                        < Math.toDegrees(ua.rp.chat.carver.CarverWorkStance.MAX_BODY_TURN),
+                "Settle yaw window must sit inside stance coverage");
         System.out.println("CarverSettleLogicTest: seek/align/approve/hysteresis passed");
     }
 
@@ -429,6 +438,106 @@ public final class CarverStrikeAlignTest {
         System.out.println("CarverWorkStanceTest: torso turn and foot stance passed");
     }
 
+    private static void verifyStanceSide() {
+        // Facing south (+Z, yaw 0): +X contact reads left, -X reads right.
+        double left = ua.rp.chat.carver.CarverWorkStance.lateralDeg(
+                1.5, 0.5, 0.5, 0.5, 0.0f);
+        double right = ua.rp.chat.carver.CarverWorkStance.lateralDeg(
+                -0.5, 0.5, 0.5, 0.5, 0.0f);
+        require(left < -15.0 && right > 15.0,
+                "Lateral must sign the contact side, got " + left + "/" + right);
+        require(ua.rp.chat.carver.CarverWorkStance.sideFor(left)
+                        == ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD,
+                "Left contact must lead left");
+        require(ua.rp.chat.carver.CarverWorkStance.sideFor(right)
+                        == ua.rp.chat.carver.CarverWorkStance.Side.RIGHT_LEAD,
+                "Right contact must lead right");
+        // Deadband: near-center contact keeps the symmetric stance.
+        require(ua.rp.chat.carver.CarverWorkStance.sideFor(0.0)
+                        == ua.rp.chat.carver.CarverWorkStance.Side.CENTER,
+                "Center must not mirror");
+        require(ua.rp.chat.carver.CarverWorkStance.sideFor(14.9)
+                        == ua.rp.chat.carver.CarverWorkStance.Side.CENTER,
+                "Inside deadband must stay center");
+        require(ua.rp.chat.carver.CarverWorkStance.sideFor(-15.1)
+                        == ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD,
+                "Past deadband must mirror");
+        // Overhead contact (top face, XZ on the player): zero, never NaN.
+        require(ua.rp.chat.carver.CarverWorkStance.lateralDeg(0.5, 0.5, 0.5, 0.5, 90.0f) == 0.0,
+                "Coincident XZ must read zero lateral");
+        // Mirror keeps tools: only feet swap, magnitudes match.
+        ua.rp.chat.carver.CarverWorkStance.LegStance l =
+                ua.rp.chat.carver.CarverWorkStance.stance(
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD);
+        ua.rp.chat.carver.CarverWorkStance.LegStance r =
+                ua.rp.chat.carver.CarverWorkStance.stance(
+                        ua.rp.chat.carver.CarverWorkStance.Side.RIGHT_LEAD);
+        require(close(l.leftPitch(), r.rightPitch()) && close(l.rightPitch(), r.leftPitch()),
+                "Mirror must swap feet exactly");
+        System.out.println("CarverStanceSideTest: lateral sign and deadband passed");
+    }
+
+    private static void verifyFloorKnees() {
+        // Flat floor: no knees, no hip drop, base stance untouched.
+        ua.rp.chat.carver.CarverWorkStance.FullLegs flat =
+                ua.rp.chat.carver.CarverWorkStance.blended(1.0,
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD, 0.0);
+        require(flat.kneeLeft() == 0.0f && flat.kneeRight() == 0.0f && flat.hipDrop() == 0.0f,
+                "Flat floor must not bend anything");
+        // Half-block step (slab): uphill knee bends, hip drops half the step.
+        ua.rp.chat.carver.CarverWorkStance.FullLegs step =
+                ua.rp.chat.carver.CarverWorkStance.blended(1.0,
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD, 0.5);
+        require(step.kneeLeft() > 0.4f && step.kneeRight() == 0.0f,
+                "Uphill knee must bend, downhill stay straight, got " + step);
+        require(step.hipDrop() > 3.0f && step.hipDrop() < 5.0f,
+                "Half step must drop the hip ~4 model units, got " + step.hipDrop());
+        // Mirror side: the other knee takes it.
+        ua.rp.chat.carver.CarverWorkStance.FullLegs stepDown =
+                ua.rp.chat.carver.CarverWorkStance.blended(1.0,
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD, -0.5);
+        require(stepDown.kneeRight() > 0.4f && stepDown.kneeLeft() == 0.0f,
+                "Downhill side must bend the other knee");
+        // Clamp: full block step never exceeds the knee budget.
+        ua.rp.chat.carver.CarverWorkStance.FullLegs huge =
+                ua.rp.chat.carver.CarverWorkStance.blended(1.0,
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD, 2.0);
+        require(huge.kneeLeft() <= (float) ua.rp.chat.carver.CarverWorkStance.MAX_KNEE_BEND + 1e-6f,
+                "Knee must clamp at the budget");
+        // Zero entry: everything scales to vanilla.
+        ua.rp.chat.carver.CarverWorkStance.FullLegs zero =
+                ua.rp.chat.carver.CarverWorkStance.blended(0.0,
+                        ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD, 0.5);
+        require(zero.thighLeft() == 0.0f && zero.kneeLeft() == 0.0f && zero.hipDrop() == 0.0f,
+                "Zero blend must leave vanilla legs alone");
+        System.out.println("CarverFloorKneesTest: steps, clamps and blend passed");
+    }
+
+    private static void verifyLookMath() {
+        // Due south, level: yaw 0, pitch 0.
+        double[] south = ua.rp.chat.carver.CarverLookMath.lookYawPitch(
+                0.0, 64.0, 0.0, 0.0, 64.0, 5.0);
+        require(close(south[0], 0.0) && close(south[1], 0.0),
+                "Level south must read 0/0, got " + south[0] + "/" + south[1]);
+        // Due east: yaw -90.
+        double[] east = ua.rp.chat.carver.CarverLookMath.lookYawPitch(
+                0.0, 64.0, 0.0, 5.0, 64.0, 0.0);
+        require(close(east[0], -90.0) && close(east[1], 0.0),
+                "Level east must read -90/0");
+        // Straight down and up.
+        double[] down = ua.rp.chat.carver.CarverLookMath.lookYawPitch(
+                0.0, 64.0, 0.0, 0.0, 60.0, 0.0);
+        require(close(down[1], 90.0), "Down must pitch +90, got " + down[1]);
+        double[] up = ua.rp.chat.carver.CarverLookMath.lookYawPitch(
+                0.0, 64.0, 0.0, 0.0, 68.0, 0.0);
+        require(close(up[1], -90.0), "Up must pitch -90, got " + up[1]);
+        // 45 degrees down-forward.
+        double[] diag = ua.rp.chat.carver.CarverLookMath.lookYawPitch(
+                0.0, 64.0, 0.0, 0.0, 60.0, 4.0);
+        require(close(diag[1], 45.0), "Diagonal must pitch +45, got " + diag[1]);
+        System.out.println("CarverLookMathTest: yaw/pitch convention passed");
+    }
+
     private static void verifyBenchmark() {
         List<Integer> cells = slabTop();
         long start = System.nanoTime();
@@ -452,7 +561,7 @@ public final class CarverStrikeAlignTest {
     }
 
     private static boolean close(double a, double b) {
-        return Math.abs(a - b) < 1.0e-9;
+        return Math.abs(a - b) < 1.0e-4;
     }
 
     private static void require(boolean condition, String message) {

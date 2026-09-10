@@ -34,6 +34,10 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
     /** Anchor on the mid-upper back in body-bone space (Y down from neck, Z back from spine). */
     private static final float ANCHOR_Y = 6.0f / 16.0f;
     private static final float ANCHOR_Z = 2.80f / 16.0f;
+    /** Work tick the point chisel leaves the bag and appears in the left hand. */
+    private static final double POINT_DRAW_TICK = 4.0;
+    /** Work tick the flat chisel leaves the bag and appears in the right hand. */
+    private static final double FLAT_DRAW_TICK = 8.0;
 
     private final ItemModelResolver resolver;
 
@@ -84,7 +88,9 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
                 if (observed == null) return 0.0;
                 total = Math.max(1, observed.totalTicks());
             }
-            return ua.rp.chat.carver.CarverWorkStroke.cycleOf(workTicks, total);
+            // Same seeded, humanized rhythm the body pose uses, so the tools stay in lockstep.
+            return ua.rp.chat.carver.CarverWorkStroke.cycleOf(
+                    workTicks, total, player.getUUID().getLeastSignificantBits());
         } catch (RuntimeException unreadable) {
             return 0.0;
         }
@@ -128,9 +134,9 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
 
         // 1. Render backpack on the spine (with dynamic tool disappearance)
         ItemStack displayBag;
-        if (workTicks >= 23.0) {
+        if (workTicks >= FLAT_DRAW_TICK) {
             displayBag = new ItemStack(ua.rp.chat.carver.CarverItems.BAG_EMPTY);
-        } else if (workTicks >= 11.0) {
+        } else if (workTicks >= POINT_DRAW_TICK) {
             displayBag = new ItemStack(ua.rp.chat.carver.CarverItems.BAG_NO_POINT);
         } else {
             displayBag = bag;
@@ -156,8 +162,8 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
             }
         }
 
-        // 2. Render Point Chisel in left hand once drawn (workTicks >= 11.0)
-        if (workTicks >= 11.0) {
+        // 2. Render Point Chisel in left hand once drawn (workTicks >= POINT_DRAW_TICK)
+        if (workTicks >= POINT_DRAW_TICK) {
             ItemStackRenderState leftToolRender = new ItemStackRenderState();
             try {
                 resolver.updateForLiving(leftToolRender,
@@ -183,8 +189,8 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
             }
         }
 
-        // 3. Render Flat Chisel / Striker in right hand once drawn (workTicks >= 23.0)
-        if (workTicks >= 23.0) {
+        // 3. Render Flat Chisel / Striker in right hand once drawn (workTicks >= FLAT_DRAW_TICK)
+        if (workTicks >= FLAT_DRAW_TICK) {
             ItemStackRenderState rightToolRender = new ItemStackRenderState();
             try {
                 resolver.updateForLiving(rightToolRender,

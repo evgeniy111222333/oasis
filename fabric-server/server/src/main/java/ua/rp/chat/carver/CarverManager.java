@@ -9,7 +9,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -627,7 +626,9 @@ public final class CarverManager {
         CarverWorkRhythm.Slot slot = CarverWorkRhythm.slotForTick(done, swingEvery);
         float volume = (float) (tuning.workSoundVolume * CarverWorkRhythm.volumeEnvelope(progress));
         if (slot == CarverWorkRhythm.Slot.STRIKE) {
-            player.swing(InteractionHand.MAIN_HAND);
+            // The client mod owns the entire work animation (CarverWorkStroke drives the arms,
+            // torso and gaze). Firing the vanilla arm swing here would layer a cheap flail on
+            // top of the crafted strike, so the server only keeps the sound and the cadence.
             float jitter = (player.getRandom().nextFloat() - 0.5f) * 0.06f;
             if (kit.invertBalance()) {
                 level.playSound(null, focus, kit.scrape(), SoundSource.BLOCKS,

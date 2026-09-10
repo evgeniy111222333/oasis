@@ -39,6 +39,9 @@ public final class CarverMirrorTest {
         verifyStrokeLine();
         verifyPickLift();
         verifyHologramFall();
+        verifyWorkStroke();
+        verifyWorkAnim();
+        verifyHumanRhythm();
         System.out.println("CarverMirrorTest passed");
     }
 
@@ -440,6 +443,135 @@ public final class CarverMirrorTest {
                         && DraftMask.z(lifted.cell()) == 15,
                 "Lifted cube must pick the same face and cells");
         System.out.println("CarverPickLiftTest: hologram offset passed");
+    }
+
+    /**
+     * Strike beat used by the work animation: full raise before a sharp contact drop, a
+     * one-sided impact shock and a drive that ramps into the blow then settles to zero.
+     */
+    private static void verifyWorkStroke() {
+        require(ua.rp.chat.carver.CarverWorkStroke.lift(0.0) == 0.0,
+                "The striker must start down at phase 0");
+        require(ua.rp.chat.carver.CarverWorkStroke.lift(0.65) > 0.99,
+                "The striker must be fully raised before the strike");
+        require(ua.rp.chat.carver.CarverWorkStroke.lift(0.9) < 0.05,
+                "The striker must be on the stone at contact");
+        require(ua.rp.chat.carver.CarverWorkStroke.contact(0.95) > 0.9
+                        && ua.rp.chat.carver.CarverWorkStroke.contact(0.5) == 0.0,
+                "Contact must pulse only inside the impact window");
+        require(ua.rp.chat.carver.CarverWorkStroke.drive(0.5) == 0.0
+                        && ua.rp.chat.carver.CarverWorkStroke.drive(0.9) > 0.99
+                        && ua.rp.chat.carver.CarverWorkStroke.drive(1.0) == 0.0,
+                "Drive must ramp into the blow and settle back to zero");
+        require(ua.rp.chat.carver.CarverWorkStroke.shock(0.5) == 0.0
+                        && ua.rp.chat.carver.CarverWorkStroke.shock(0.9) == 1.0
+                        && ua.rp.chat.carver.CarverWorkStroke.shock(1.0) == 0.0,
+                "Shock must be a non-negative bump that decays to zero");
+        for (double t = 0.0; t < 1.0; t += 0.01) {
+            double shock = ua.rp.chat.carver.CarverWorkStroke.shock(t);
+            double drive = ua.rp.chat.carver.CarverWorkStroke.drive(t);
+            require(shock >= 0.0 && shock <= 1.0, "Shock must stay in [0,1] at " + t);
+            require(drive >= 0.0 && drive <= 1.0, "Drive must stay in [0,1] at " + t);
+        }
+        System.out.println("CarverWorkStrokeTest: anticipation, contact, drive and shock passed");
+    }
+
+    /** Material classifier, stages, strike type and the fatigue/stage pose multipliers. */
+    private static void verifyWorkAnim() {
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:stone")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.STONE,
+                "Stone must classify as stone");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:oak_planks")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.WOOD,
+                "Planks must classify as wood");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:iron_block")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.METAL,
+                "Iron must classify as metal");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:blue_ice")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.ICE,
+                "Blue ice must classify as ice");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:glass")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.GLASS,
+                "Glass must classify as glass");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("minecraft:white_wool")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.CLOTH,
+                "Wool must classify as cloth");
+        require(ua.rp.chat.carver.CarverWorkAnim.classify("")
+                        == ua.rp.chat.carver.CarverWorkAnim.Material.GENERIC,
+                "Blank id must classify as generic");
+        require(ua.rp.chat.carver.CarverWorkAnim.stage(0.10)
+                        == ua.rp.chat.carver.CarverWorkAnim.Stage.ROUGH
+                        && ua.rp.chat.carver.CarverWorkAnim.stage(0.50)
+                        == ua.rp.chat.carver.CarverWorkAnim.Stage.MAIN
+                        && ua.rp.chat.carver.CarverWorkAnim.stage(0.95)
+                        == ua.rp.chat.carver.CarverWorkAnim.Stage.FINE,
+                "Progress stages must split at 34% and 80%");
+        require(ua.rp.chat.carver.CarverWorkAnim.strikeType(2)
+                        == ua.rp.chat.carver.CarverWorkAnim.StrikeType.POINT_CHISEL
+                        && ua.rp.chat.carver.CarverWorkAnim.strikeType(1)
+                        == ua.rp.chat.carver.CarverWorkAnim.StrikeType.FLAT_MALLET,
+                "Off-hand chisel code must select the strike type");
+        var rough = ua.rp.chat.carver.CarverWorkAnim.pose(
+                ua.rp.chat.carver.CarverWorkAnim.Stage.ROUGH,
+                ua.rp.chat.carver.CarverWorkAnim.StrikeType.FLAT_MALLET, 0.0,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        var fine = ua.rp.chat.carver.CarverWorkAnim.pose(
+                ua.rp.chat.carver.CarverWorkAnim.Stage.FINE,
+                ua.rp.chat.carver.CarverWorkAnim.StrikeType.POINT_CHISEL, 0.0,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        require(rough.twoHanded(), "Rough mallet work must read as two-handed");
+        require(fine.amplitude() < rough.amplitude(),
+                "Fine detailing must strike smaller than rough removal");
+        var fresh = ua.rp.chat.carver.CarverWorkAnim.pose(
+                ua.rp.chat.carver.CarverWorkAnim.Stage.MAIN,
+                ua.rp.chat.carver.CarverWorkAnim.StrikeType.FLAT_MALLET, 0.0,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        var tired = ua.rp.chat.carver.CarverWorkAnim.pose(
+                ua.rp.chat.carver.CarverWorkAnim.Stage.MAIN,
+                ua.rp.chat.carver.CarverWorkAnim.StrikeType.FLAT_MALLET, 1.0,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        require(tired.tempo() < fresh.tempo() && tired.lean() > fresh.lean(),
+                "Fatigue must slow the tempo and slump the lean");
+        require(ua.rp.chat.carver.CarverWorkAnim.sparks(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.METAL)
+                        && ua.rp.chat.carver.CarverWorkAnim.shards(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.ICE)
+                        && ua.rp.chat.carver.CarverWorkAnim.splinters(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.WOOD),
+                "Material impact classes must select sparks, shards and splinters");
+        System.out.println("CarverWorkAnimTest: material, stages, strike type and pose passed");
+    }
+
+    /** Humanized rhythm: deterministic per seed, bounded, monotonic and interval-exact. */
+    private static void verifyHumanRhythm() {
+        long seed = 0xEC12A5EL;
+        var start = ua.rp.chat.carver.CarverWorkStroke.placement(0.0, 200, seed);
+        require(start.index() == 0 && start.cycle() == 0.0,
+                "The first tick must open strike 0 at phase 0");
+        for (double tick = 0.0; tick <= 200.0; tick += 5.0) {
+            var p = ua.rp.chat.carver.CarverWorkStroke.placement(tick, 200, seed);
+            require(p.cycle() >= 0.0 && p.cycle() < 1.0,
+                    "Humanized cycle must stay in [0,1) at " + tick);
+        }
+        int previous = -1;
+        for (double tick = 0.0; tick <= 200.0; tick += 1.0) {
+            int index = ua.rp.chat.carver.CarverWorkStroke.placement(tick, 200, seed).index();
+            require(index >= previous, "Strike index must never go backwards");
+            previous = index;
+        }
+        int strikes = ua.rp.chat.carver.CarverWorkStroke.strikesFor(200);
+        require(ua.rp.chat.carver.CarverWorkStroke.placement(200.0, 200, seed).index() == strikes - 1,
+                "The last tick must land on the final strike");
+        boolean differs = false;
+        for (double tick = 0.0; tick <= 200.0; tick += 3.0) {
+            if (ua.rp.chat.carver.CarverWorkStroke.placement(tick, 200, seed).cycle()
+                    != ua.rp.chat.carver.CarverWorkStroke.placement(tick, 200, seed ^ 1L).cycle()) {
+                differs = true;
+                break;
+            }
+        }
+        require(differs, "Different artisans must not share one metronome");
+        System.out.println("CarverHumanRhythmTest: determinism, bounds and rhythm passed");
     }
 
     private static void require(boolean condition, String message) {

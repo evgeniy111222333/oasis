@@ -196,28 +196,31 @@ public final class CarverHologramRenderer {
     }
 
     /**
-     * Source volume for the copy: the live carving when one synced, otherwise a
-     * virtual full cube of the display material. Meshed unculled, minus faces the
-     * current stroke fully covers.
+     * Live source for the hologram copy and the design picker: the synced carving when one
+     * exists, otherwise a virtual full cube of the display material. Never null, so both the
+     * renderer and the picker can share one authoritative geometry (plus the draft mask).
      */
-    static DisplayMesh displayMesh(BlockPos focus, BlockState state) {
-        ua.rp.chat.microvoxel.MicrovoxelVolume volume;
-        String sourceKey;
+    static ua.rp.chat.microvoxel.MicrovoxelVolume sourceVolume(BlockPos focus) {
         try {
             var cached = ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(focus);
             if (cached != null && cached.volume != null
                     && ua.rp.chat.microvoxel.MicrovoxelVolume.dominantMaterial(
                             cached.volume) != null) {
-                volume = cached.volume;
-                sourceKey = "v" + volume.revision();
-            } else {
-                volume = virtualFull();
-                sourceKey = "m" + CarverHologram.materialKey();
+                return cached.volume;
             }
         } catch (RuntimeException unreadable) {
-            volume = virtualFull();
-            sourceKey = "m" + CarverHologram.materialKey();
+            // Fall through to the virtual full cube, exactly like the original renderer.
         }
+        return virtualFull();
+    }
+
+    static DisplayMesh displayMesh(BlockPos focus, BlockState state) {
+        ua.rp.chat.microvoxel.MicrovoxelVolume volume = sourceVolume(focus);
+        // Identity against the cached virtual cube labels the source without a second
+        // dominant-material scan; a real carving keys on its revision.
+        String sourceKey = volume == virtualVolume
+                ? "m" + CarverHologram.materialKey()
+                : "v" + volume.revision();
         ua.rp.chat.carver.DraftMask draft = CarverClientState.draft();
         long draftFp = draft.isEmpty() ? 0L
                 : ua.rp.chat.carver.CarverChalkQuads.draftFingerprint(draft);
@@ -226,23 +229,21 @@ public final class CarverHologramRenderer {
                 && current.sourceKey().equals(sourceKey) && current.draftFp() == draftFp) {
             return current;
         }
-        List<MicrovoxelGreedyMesher.Face> mesh =
-                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(volume, volume::materialAt);
-        List<MicrovoxelGreedyMesher.Face> visible = mesh;
-        List<MicrovoxelGreedyMesher.Face> ghost = List.of();
-        if (draftFp != 0L) {
-            visible = new ArrayList<>(mesh.size());
-            ghost = new ArrayList<>(mesh.size());
-            for (MicrovoxelGreedyMesher.Face face : mesh) {
-                if (ua.rp.chat.carver.CarverChalkQuads.cellsClearedFace(face, draft)) {
-                    ghost.add(face);
-                    continue;
-                }
-                visible.add(face);
-            }
-            visible = List.copyOf(visible);
-            ghost = List.copyOf(ghost);
+        // Solid pass: mesh the live volume with every drafted cell read as air. A released
+        // stroke therefore vanishes on this frame, and the greedy quads re-cut on the cell
+        // boundary so the fresh cavity floor and walls are exposed instead of whole faces
+        // of the un-masked mesh being dropped.
+        List<MicrovoxelGreedyMesher.Face> visible;
+        if (draftFp == 0L) {
+            visible = ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(volume, volume::materialAt);
+        } else {
+            visible = ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(
+                    volume, volume::materialAt, draft::get);
         }
+        // The drafted cells simply vanish from the solid pass. There is deliberately no ghost /
+        // surface-wire pass any more: outlining removed faces on the copy only read as a stray
+        // glow around the cut, which is exactly what the artisan must not see.
+        List<MicrovoxelGreedyMesher.Face> ghost = List.of();
         DisplayMesh built = new DisplayMesh(focus.immutable(), sourceKey, draftFp,
                 visible, ghost, volume.palette());
         displayCache = built;

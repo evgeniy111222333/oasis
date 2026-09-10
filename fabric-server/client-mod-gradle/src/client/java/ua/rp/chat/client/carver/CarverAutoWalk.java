@@ -22,8 +22,8 @@ public final class CarverAutoWalk {
     static final int TIMEOUT_TICKS = 200;
     /** Arrival radius in blocks around the stand point. */
     static final double ARRIVE_RADIUS = 0.7;
-    /** Sprint past this distance, stroll inside it for a soft landing. */
-    static final double SPRINT_BEYOND = 3.5;
+    /** Walk the whole approach: a deliberate stride into the stance, never a sprint. */
+    static final double SPRINT_BEYOND = 64.0;
 
     private CarverAutoWalk() {
     }
@@ -93,6 +93,28 @@ public final class CarverAutoWalk {
         }
         if (stand == null) {
             trace("no stand found, approving immediately");
+            engageLook(minecraft, focus, plan);
+            CarverClientState.sendApprove();
+            return;
+        }
+        // Zero-tick fast path: already inside the contract window (one step of
+        // error or less), so no walk at all — approve instantly with no body
+        // fidget between the keypress and the work start.
+        double sdx = stand.x - player.x;
+        double sdz = stand.z - player.z;
+        double sdist = Math.sqrt(sdx * sdx + sdz * sdz);
+        float strikeYaw = plan == null
+                ? (float) Math.toDegrees(Math.atan2(-sdx, sdz))
+                : plan.standYaw();
+        float startYawErr = ua.rp.chat.carver.CarverSettleLogic.yawErr(
+                minecraft.player.getYRot(), strikeYaw);
+        if (sdist < ua.rp.chat.carver.CarverSettleLogic.SETTLE_POS_TOL
+                && Math.abs(player.y - stand.y) < 1.3
+                && startYawErr < ua.rp.chat.carver.CarverSettleLogic.SETTLE_YAW_TOL) {
+            trace("already in window, approving instantly");
+            CarverSasDiag.start(stand.x, stand.z, strikeYaw);
+            CarverSasDiag.finish("fast-path", startYawErr, sdist, 0);
+            engageLook(minecraft, focus, plan);
             CarverClientState.sendApprove();
             return;
         }
@@ -107,9 +129,36 @@ public final class CarverAutoWalk {
         walkStartZ = player.z;
         active = true;
         trace("walking to " + stand);
-        CarverSasDiag.start(stand.x, stand.z,
-                plan == null ? minecraft.player.getYRot() : plan.standYaw());
+        CarverSasDiag.start(stand.x, stand.z, strikeYaw);
+        engageLook(minecraft, focus, plan);
         CarverClientState.sendAutowalk();
+    }
+
+    /**
+     * Cursor kill-switch: from this SPACE press until the end of the process the
+     * look is owned by the contact. Engages (and snaps) instantly, so not one
+     * frame between the keypress and the walk steering can leak the stale cursor
+     * direction into the body, the IK or the gaze.
+     */
+    private static void engageLook(Minecraft minecraft, BlockPos focus,
+                                   ua.rp.chat.carver.CarverStrikeAlign.StrikePlan plan) {
+        try {
+            if (minecraft == null || minecraft.player == null || focus == null) return;
+            double cx;
+            double cy;
+            double cz;
+            if (plan != null) {
+                cx = plan.contactX();
+                cy = plan.contactY();
+                cz = plan.contactZ();
+            } else {
+                cx = focus.getX() + 0.5;
+                cy = focus.getY() + 0.6;
+                cz = focus.getZ() + 0.5;
+            }
+            CarverLookLock.engage(minecraft.player, cx, cy, cz);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     /** Standability probe over absolute block positions. Pure: unit-testable with grids. */
@@ -490,6 +539,7 @@ public final class CarverAutoWalk {
         if (active) trace("aborted");
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null) stopKeys(minecraft);
+        CarverLookLock.disengage();
         CarverSasDiag.abort(active ? "user" : "idle");
         active = false;
         settling = false;

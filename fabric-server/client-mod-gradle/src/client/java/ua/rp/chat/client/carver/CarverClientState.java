@@ -24,6 +24,24 @@ public final class CarverClientState {
     private static BlockPos focus;
     private static String materialId = "";
     private static final DraftMask draft = new DraftMask();
+    /**
+     * Last authoritative draft echoed by the server. {@link #draft} carries the optimistic
+     * local edits so a released stroke disappears the same frame; if the server never echoes
+     * a throttled or rejected stroke inside {@link #OPTIMISTIC_RECONCILE_TICKS}, the working
+     * draft snaps back to this snapshot so the artisan's client never lies about the result.
+     */
+    private static final DraftMask serverDraft = new DraftMask();
+    /** Client tick of the newest optimistic edit still awaiting a server echo; -1 when idle. */
+    private static long optimisticEditTick = -1L;
+    /** Reconcile window in client ticks; generous enough to ride out a slow link. */
+    private static final long OPTIMISTIC_RECONCILE_TICKS = 40L;
+    /**
+     * Post-work finale: after the last blow the artisan steps back and inspects the finished
+     * piece, then settles. Runs for {@link #FINISH_TICKS} client ticks and is local-only.
+     */
+    private static final int FINISH_TICKS = 64;
+    private static int finishTicks = -1;
+    private static BlockPos finishFocus;
     private static int estimateCells;
     private static float estimateSeconds;
     private static float estimateStamina;
@@ -44,6 +62,25 @@ public final class CarverClientState {
      */
     private static ua.rp.chat.carver.CarverStrikeAlign.StrikePlan cachedPlan;
     private static int cachedPlanCells = -1;
+    /**
+     * Frozen per work session: lead-foot side from the lateral contact angle and
+     * the left-minus-right floor step in blocks. Sampled once at work start, so
+     * the feet never re-decide mid-animation; observers (contact only) fall back
+     * to live lateral with a flat floor.
+     */
+    private static ua.rp.chat.carver.CarverWorkStance.Side workSide =
+            ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD;
+    private static double workFloorDh;
+
+    /** Frozen lead-foot side for the local work pose. */
+    public static ua.rp.chat.carver.CarverWorkStance.Side workSide() {
+        return workSide;
+    }
+
+    /** Frozen floor step (left minus right, blocks) for the local work pose. */
+    public static double workFloorDh() {
+        return workFloorDh;
+    }
     /**
      * Look locked at work start: the work camera frames the bench, so the artisan
      * must not turn away under it with the mouse. Enforced every client tick
@@ -69,6 +106,22 @@ public final class CarverClientState {
 
     public static boolean inSession() {
         return designing || working;
+    }
+
+    /** True while the local post-work inspection finale plays. */
+    public static boolean finishing() {
+        return finishTicks >= 0;
+    }
+
+    /** Finale progress 0..1 for the inspect pose. */
+    public static double finishProgress() {
+        if (finishTicks < 0) return 0.0;
+        return Math.min(1.0, finishTicks / (double) FINISH_TICKS);
+    }
+
+    /** Socket of the just-finished piece, for the inspect gaze. */
+    public static BlockPos finishFocus() {
+        return finishFocus;
     }
 
     public static BlockPos focus() {
@@ -225,6 +278,10 @@ public final class CarverClientState {
         working = false;
         focus = pos;
         draft.clearAll();
+        serverDraft.clearAll();
+        optimisticEditTick = -1L;
+        finishTicks = -1;
+        finishFocus = null;
         workDoneTicks = 0;
         workTotalTicks = 0;
         try (DataInputStream input = stream(data)) {
@@ -260,8 +317,13 @@ public final class CarverClientState {
         if (designing && pos.equals(focus)) {
             try {
                 DraftMask server = DraftMask.decode(data);
+                // Authoritative echo: adopt it and drop every pending optimistic edit, so a
+                // throttled or capped stroke is reconciled the moment the server answers.
                 draft.clearAll();
                 draft.orIn(server);
+                serverDraft.clearAll();
+                serverDraft.orIn(server);
+                optimisticEditTick = -1L;
             } catch (IllegalArgumentException ignored) {
             }
             return;
@@ -298,7 +360,12 @@ public final class CarverClientState {
         if (minecraft.player != null) {
             lockYaw = minecraft.player.getYRot();
             lockPitch = minecraft.player.getXRot();
+            try {
+                if (minecraft.options != null) minecraft.options.keyJump.setDown(false);
+            } catch (RuntimeException ignored) {
+            }
         }
+        sampleWorkStance(minecraft);
         if (minecraft.screen instanceof CarverDesignScreen) {
             minecraft.setScreen(null);
         }
@@ -345,10 +412,14 @@ public final class CarverClientState {
         CarverPerfLog.endSession();
         CarverWorkPoseCache.clear();
         CarverImpactFx.clear();
+        CarverLookLock.disengage();
         cachedPlan = null;
         cachedPlanCells = -1;
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.flushWorkFocus();
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(null);
+        // Start the local inspection finale on the finished socket before the focus clears.
+        finishFocus = pos.immutable();
+        finishTicks = 0;
         focus = null;
         overlay(Minecraft.getInstance(), "Готово: снято " + removed + " вокселей.");
     }
@@ -366,6 +437,10 @@ public final class CarverClientState {
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(null);
         focus = null;
         draft.clearAll();
+        serverDraft.clearAll();
+        optimisticEditTick = -1L;
+        finishTicks = -1;
+        finishFocus = null;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof CarverDesignScreen) {
             minecraft.setScreen(null);
@@ -375,6 +450,7 @@ public final class CarverClientState {
         CarverPerfLog.endSession();
         CarverWorkPoseCache.clear();
         CarverImpactFx.clear();
+        CarverLookLock.disengage();
         cachedPlan = null;
         cachedPlanCells = -1;
         int reason = data != null && data.length > 0 ? data[0] & 0xFF : 0;
@@ -385,19 +461,82 @@ public final class CarverClientState {
 
     public static void sendStroke(boolean add, DraftMask stroke) {
         if (!designing || focus == null) return;
+        applyOptimisticDraft(add, stroke);
         send(add ? CarverProtocol.ACTION_STROKE_ADD : CarverProtocol.ACTION_STROKE_ERASE,
                 focus, stroke.encode());
     }
 
     public static void sendClear() {
         if (!designing || focus == null) return;
+        // Clearing is instant locally; the echo confirms it against the authoritative mask.
+        draft.clearAll();
+        optimisticEditTick = clientTickCounter;
         send(CarverProtocol.ACTION_CLEAR_DRAFT, focus, new byte[0]);
     }
 
     public static void sendBox(boolean add, DraftMask box) {
         if (!designing || focus == null || box.isEmpty()) return;
+        applyOptimisticDraft(add, box);
         send(add ? CarverProtocol.ACTION_BOX_ADD : CarverProtocol.ACTION_BOX_ERASE,
                 focus, box.encode());
+    }
+
+    /**
+     * Applies one released stroke/box to the working draft immediately, mirroring the server's
+     * own mirror expansion so the optimistic hide matches the authoritative result. The edit is
+     * dropped (snapped back to {@link #serverDraft}) if no server echo arrives in time.
+     */
+    private static void applyOptimisticDraft(boolean add, DraftMask cells) {
+        if (cells == null || cells.isEmpty()) return;
+        DraftMask twin = cells.copy();
+        expandMirroredLocally(twin, mirrorAxes);
+        if (add) {
+            draft.orIn(twin);
+        } else {
+            draft.andNot(twin);
+        }
+        optimisticEditTick = clientTickCounter;
+    }
+
+    /**
+     * Client mirror of {@code DraftSession.expandMirrored}: unions every mirrored twin of the
+     * mask into itself so a mirror-mode stroke hides both halves the moment it is released,
+     * instead of waiting for the server to expand and echo the mask back.
+     */
+    private static void expandMirroredLocally(DraftMask mask, int axes) {
+        int mirrorX = 1;
+        int mirrorZ = 2;
+        axes &= mirrorX | mirrorZ;
+        if (axes == 0) return;
+        DraftMask twins = new DraftMask();
+        for (int cell : mask.cells()) {
+            if ((axes & mirrorX) != 0) twins.set(mirrorCellLocally(cell, mirrorX));
+            if ((axes & mirrorZ) != 0) twins.set(mirrorCellLocally(cell, mirrorZ));
+            if (axes == (mirrorX | mirrorZ)) twins.set(mirrorCellLocally(cell, mirrorX | mirrorZ));
+        }
+        mask.orIn(twins);
+    }
+
+    /** Mirrors one cell around the volume centre exactly like {@code DraftSession.mirrorCell}. */
+    private static int mirrorCellLocally(int cell, int axes) {
+        int x = DraftMask.x(cell);
+        int y = DraftMask.y(cell);
+        int z = DraftMask.z(cell);
+        if ((axes & 1) != 0) x = 15 - x;
+        if ((axes & 2) != 0) z = 15 - z;
+        return DraftMask.index(x, y, z);
+    }
+
+    /**
+     * Snaps the working draft back to the last server-confirmed mask when the optimistic edit
+     * was never echoed in time, so a rejected stroke never keeps cells hidden locally.
+     */
+    private static void reconcileOptimisticDraft() {
+        if (optimisticEditTick < 0L) return;
+        if (clientTickCounter - optimisticEditTick <= OPTIMISTIC_RECONCILE_TICKS) return;
+        draft.clearAll();
+        draft.orIn(serverDraft);
+        optimisticEditTick = -1L;
     }
 
     private static int pendingX0 = -1;
@@ -563,11 +702,16 @@ public final class CarverClientState {
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(null);
         focus = null;
         draft.clearAll();
+        serverDraft.clearAll();
+        optimisticEditTick = -1L;
+        finishTicks = -1;
+        finishFocus = null;
         CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
         CarverWorkPoseCache.clear();
         CarverImpactFx.clear();
+        CarverLookLock.disengage();
         cachedPlan = null;
         cachedPlanCells = -1;
     }
@@ -613,6 +757,80 @@ public final class CarverClientState {
     }
 
     /**
+     * Freezes the work stance once per session: lead-foot side from the lateral
+     * contact angle (strict XZ projection, top faces included) and the floor step
+     * under the feet from exact collision-shape tops (slabs, stairs, paths and
+     * snow included, not integer block coords). One world probe at work start:
+     * zero per-frame cost, zero mid-animation re-decisions.
+     */
+    private static void sampleWorkStance(Minecraft minecraft) {
+        workSide = ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD;
+        workFloorDh = 0.0;
+        try {
+            if (minecraft == null || minecraft.player == null || minecraft.level == null
+                    || focus == null) return;
+            double px = minecraft.player.getX();
+            double py = minecraft.player.getY();
+            double pz = minecraft.player.getZ();
+            float yaw = minecraft.player.getYRot();
+            ua.rp.chat.carver.CarverStrikeAlign.StrikePlan plan = null;
+            try {
+                plan = ua.rp.chat.carver.CarverStrikeAlign.solve(
+                        focus.getX(), focus.getY(), focus.getZ(), draft.cells(), px, py, pz);
+            } catch (RuntimeException unreadable) {
+                plan = null;
+            }
+            double cx = plan == null ? focus.getX() + 0.5 : plan.contactX();
+            double cz = plan == null ? focus.getZ() + 0.5 : plan.contactZ();
+            workSide = ua.rp.chat.carver.CarverWorkStance.sideFor(
+                    ua.rp.chat.carver.CarverWorkStance.lateralDeg(cx, cz, px, pz, yaw));
+            double rad = Math.toRadians(yaw);
+            double fx = -Math.sin(rad);
+            double fz = Math.cos(rad);
+            double lx = fz;
+            double lz = -fx;
+            double footLx = px + fx * 0.12 + lx * 0.22;
+            double footLz = pz + fz * 0.12 + lz * 0.22;
+            double footRx = px + fx * 0.12 - lx * 0.22;
+            double footRz = pz + fz * 0.12 - lz * 0.22;
+            double topL = footTop(minecraft.level, footLx, py, footLz);
+            double topR = footTop(minecraft.level, footRx, py, footRz);
+            if (!Double.isNaN(topL) && !Double.isNaN(topR)) {
+                double dh = topL - topR;
+                double max = ua.rp.chat.carver.CarverWorkStance.MAX_FLOOR_STEP;
+                workFloorDh = Math.max(-max, Math.min(max, dh));
+            }
+        } catch (RuntimeException unreadable) {
+            workSide = ua.rp.chat.carver.CarverWorkStance.Side.LEFT_LEAD;
+            workFloorDh = 0.0;
+        }
+    }
+
+    /** Exact support height under one foot from collision shapes. NaN if none. */
+    private static double footTop(net.minecraft.client.multiplayer.ClientLevel level,
+                                  double x, double feetY, double z) {
+        try {
+            int top = (int) Math.floor(feetY + 1.0);
+            for (int y = top; y >= top - 4; y--) {
+                BlockPos pos = new BlockPos((int) Math.floor(x), y, (int) Math.floor(z));
+                net.minecraft.world.level.block.state.BlockState state;
+                try {
+                    state = level.getBlockState(pos);
+                } catch (RuntimeException unreadable) {
+                    return Double.NaN;
+                }
+                net.minecraft.world.phys.shapes.VoxelShape shape =
+                        state.getCollisionShape(level, pos);
+                if (shape.isEmpty()) continue;
+                return pos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
+            }
+        } catch (RuntimeException unreadable) {
+            return Double.NaN;
+        }
+        return Double.NaN;
+    }
+
+    /**
      * Refreshes the cached strike plan once per tick while a session lives. The
      * render thread reads the cached value, so the draft centroid scan never runs
      * at frame rate. Re-solves only when the draft cell count changed.
@@ -645,7 +863,18 @@ public final class CarverClientState {
     public static void clientTick(Minecraft minecraft) {
         clientTickCounter++;
         lastClientTickNanos = System.nanoTime();
+        reconcileOptimisticDraft();
+        if (finishTicks >= 0) {
+            finishTicks++;
+            if (finishTicks > FINISH_TICKS) {
+                finishTicks = -1;
+                finishFocus = null;
+            }
+        }
         OBSERVED_DRAFTS.expire(clientTickCounter, OBSERVED_DRAFT_TTL_TICKS);
+        // Cursor kill-switch: while engaged (walk, settle or work) the mouse can
+        // never own the look, so not one turned frame leaks into IK or gaze.
+        CarverLookLock.tick(minecraft);
         if (minecraft.player != null && working) {
             // Hands on the workpiece means eyes on it too: plain mouse-look is
             // reverted every tick (camera orbit via right-drag keeps working),
@@ -671,11 +900,14 @@ public final class CarverClientState {
                 ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(null);
                 focus = null;
                 draft.clearAll();
+                serverDraft.clearAll();
+                optimisticEditTick = -1L;
                 CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
         CarverWorkPoseCache.clear();
         CarverImpactFx.clear();
+        CarverLookLock.disengage();
         cachedPlan = null;
         cachedPlanCells = -1;
             }
