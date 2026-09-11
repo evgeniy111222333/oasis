@@ -76,3 +76,9 @@ __pycache__/
 /backups/
 /model/
 /fabric-server/steve.png
+
+# Local auth database backups and carver runtime state (never commit secrets/user data)
+/fabric-server/config/RPChat/*.db.bak-*
+/fabric-server/config/RPChat/appearances/.legacy-mirror-migration-v1
+/fabric-server/config/RPChat/carver/
+/plugins/RPChat/*.db.bak-*

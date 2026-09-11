@@ -123,6 +123,8 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
         }
 
         List<String> palette = cached.volume.palette();
+        ua.rp.chat.carver.CarverGrainField.Field grain =
+                MicrovoxelGrain.fieldFor(pos, cached.volume);
         for (MicrovoxelGreedyMesher.Face face : mesh) {
             int material = face.material();
             if (material <= 0 || material >= palette.size()) continue;
@@ -136,7 +138,8 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
                 continue;
             }
             for (BakedQuad quad : quads) {
-                emitMaterialQuad(emitter, level, pos, materialFaces.state, face, direction, quad);
+                emitMaterialQuad(emitter, level, pos, materialFaces.state, face, direction, quad,
+                        grain);
             }
         }
     }
@@ -175,7 +178,8 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
     private static void emitMaterialQuad(QuadEmitter emitter, BlockAndTintGetter level,
                                          BlockPos pos, BlockState materialState,
                                          MicrovoxelGreedyMesher.Face face, Direction direction,
-                                         BakedQuad source) {
+                                         BakedQuad source,
+                                         ua.rp.chat.carver.CarverGrainField.Field grain) {
         emitter.fromBakedQuad(source);
         setFacePositionsAndUvs(emitter, face, source);
         emitter.nominalFace(direction).cullFace(null);
@@ -188,6 +192,12 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             if (tint != null) {
                 color = 0xFF000000 | (tint.colorInWorld(materialState, level, pos) & 0xFFFFFF);
             }
+        }
+        if (grain != null && grain.hasGrain()) {
+            int cell = ua.rp.chat.carver.CarverGrainTint.faceCell(
+                    face.direction(), face.minX(), face.minY(), face.minZ());
+            color = ua.rp.chat.carver.CarverGrainTint.apply(color, grain.type(),
+                    grain.domain(cell), grain.strength(cell), grain.boundaryness(cell));
         }
         for (int vertex = 0; vertex < 4; vertex++) {
             emitter.color(vertex, ARGB.multiply(emitter.color(vertex), color));

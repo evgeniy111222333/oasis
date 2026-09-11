@@ -26,6 +26,7 @@ public final class MicrovoxelCoreTest {
         verifyPredictionReplay();
         verifyCavityRaycast();
         verifyDraftMaskedRaycast();
+        verifyRegionMeshing();
         verifyLodMeshing();
         verifyLoadStand();
         verifyLodTiers();
@@ -431,6 +432,24 @@ public final class MicrovoxelCoreTest {
                 (candidate, cell) -> true);
         require(allHidden == null, "A fully hidden volume must offer no pick target");
         System.out.println("MicrovoxelDraftMaskedRaycastTest: draft-aware targeting passed");
+    }
+
+    /**
+     * Region-gated merging: the Carver feeds the grain domain here so banded geology survives
+     * greedy merging. A uniform region must leave the plain mesh byte-for-byte identical, and a
+     * region split must cut the faces along the boundary instead of merging across it.
+     */
+    private static void verifyRegionMeshing() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        int plain = MicrovoxelGreedyMesher.build(full, full::materialAt).size();
+        require(plain == 6, "A solid volume must still mesh to six quads");
+        int sameRegion = MicrovoxelGreedyMesher.build(full, full::materialAt, null,
+                (x, y, z) -> 0).size();
+        require(sameRegion == plain, "A uniform region must leave the plain mesh untouched");
+        int banded = MicrovoxelGreedyMesher.build(full, full::materialAt, null,
+                (x, y, z) -> x < 8 ? 0 : 1).size();
+        require(banded > plain, "A region split must cut faces along the band boundary");
+        System.out.println("MicrovoxelRegionMeshingTest: region gate passed");
     }
 
     /**

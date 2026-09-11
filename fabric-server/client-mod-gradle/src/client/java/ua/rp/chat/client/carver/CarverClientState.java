@@ -299,6 +299,16 @@ public final class CarverClientState {
         CarverHologram.begin(Minecraft.getInstance(), pos, materialId);
         CarverPerfLog.stage("hologram");
         Minecraft minecraft = Minecraft.getInstance();
+        // Phase 0 inspection: freeze the procedural geology and material readout for this job.
+        float hardness = 1.5f;
+        try {
+            net.minecraft.world.level.block.state.BlockState state = CarverHologram.displayState();
+            if (state != null && minecraft.level != null) {
+                hardness = state.getDestroySpeed(minecraft.level, pos);
+            }
+        } catch (RuntimeException ignored) {
+        }
+        CarverInspection.begin(pos, materialId, hardness);
         if (minecraft.player != null) {
             net.minecraft.world.phys.Vec3 look =
                     minecraft.player.getViewVector(1.0f).normalize();
@@ -379,6 +389,7 @@ public final class CarverClientState {
         lastFlushedProgress = -1.0;
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.setWorkFocus(pos);
         ua.rp.chat.client.microvoxel.MicrovoxelClientState.flushWorkFocus();
+        CarverInspection.clear();
         overlay(minecraft, "Работа началась. Не двигайтесь, мастер.");
     }
 
@@ -441,6 +452,7 @@ public final class CarverClientState {
         optimisticEditTick = -1L;
         finishTicks = -1;
         finishFocus = null;
+        CarverInspection.clear();
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof CarverDesignScreen) {
             minecraft.setScreen(null);
@@ -706,6 +718,7 @@ public final class CarverClientState {
         optimisticEditTick = -1L;
         finishTicks = -1;
         finishFocus = null;
+        CarverInspection.clear();
         CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();
@@ -871,6 +884,7 @@ public final class CarverClientState {
                 finishFocus = null;
             }
         }
+        CarverInspection.clientTick();
         OBSERVED_DRAFTS.expire(clientTickCounter, OBSERVED_DRAFT_TTL_TICKS);
         // Cursor kill-switch: while engaged (walk, settle or work) the mouse can
         // never own the look, so not one turned frame leaks into IK or gaze.
@@ -902,6 +916,7 @@ public final class CarverClientState {
                 draft.clearAll();
                 serverDraft.clearAll();
                 optimisticEditTick = -1L;
+                CarverInspection.clear();
                 CarverCameraRig.end();
         CarverHologram.clear();
         CarverPerfLog.endSession();

@@ -511,6 +511,14 @@ tasks.register("verifyMicrovoxelFluidWiring") {
     }
 }
 
+tasks.register("verifyAppearanceLegacySkin", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks the legacy 64x32 -> 64x64 skin conversion mirrors the left limbs."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.auth.AppearanceLegacySkinTest"
+}
+
 tasks.named("test") {
     failOnNoDiscoveredTests = false
 }
@@ -521,6 +529,19 @@ tasks.register("verifyCarverParity") {
     def pairs = [
             ["server/src/main/java/ua/rp/chat/carver/DraftMask.java",
              "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftMask.java"],
+
+            ["server/src/main/java/ua/rp/chat/carver/CarverWorkAnim.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverWorkAnim.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverNoise.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverNoise.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverFaceSlicer.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverFaceSlicer.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverGrainField.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverGrainField.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverGrainPalette.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverGrainPalette.java"],
+            ["server/src/main/java/ua/rp/chat/carver/CarverGrainMechanics.java",
+             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverGrainMechanics.java"],
 
             ["server/src/main/java/ua/rp/chat/carver/DraftEstimate.java",
              "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftEstimate.java"],
@@ -567,6 +588,7 @@ tasks.named("check") {
     dependsOn tasks.named("verifyMicrovoxelMining")
     dependsOn tasks.named("verifyCarver")
     dependsOn tasks.named("verifyMicrovoxelParentage")
+    dependsOn tasks.named("verifyAppearanceLegacySkin")
 }
 
 // Fast local loop: pure unit invariants only (no asset or file-contract checks).

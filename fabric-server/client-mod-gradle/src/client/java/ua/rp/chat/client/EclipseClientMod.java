@@ -81,6 +81,8 @@ public class EclipseClientMod implements ClientModInitializer {
                 context -> {
                     ua.rp.chat.client.carver.CarverHologramRenderer.render(context);
                     ua.rp.chat.client.carver.CarverChalkOverlay.render();
+                    ua.rp.chat.client.carver.CarverInspectionOverlay.render();
+                    ua.rp.chat.client.carver.CarverGrainLensOverlay.render();
                 });
         MicrovoxelInteractionController.register();
         ua.rp.chat.client.carver.CarverKeybinds.register();

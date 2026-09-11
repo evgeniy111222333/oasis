@@ -54,6 +54,7 @@ public final class CarverManager {
     private final Map<UUID, net.minecraft.core.particles.ParticleOptions> dust = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastDraftOpAt = new ConcurrentHashMap<>();
     private final AtomicLong transactions = new AtomicLong(1L);
+    private final CarverArtisanStore artisans;
     /** Minimum milliseconds between accepted stroke packets per player. */
     private static final long STROKE_THROTTLE_MS = 100L;
 
@@ -63,6 +64,9 @@ public final class CarverManager {
         this.plugin = plugin;
         this.microvoxels = microvoxels;
         this.stamina = stamina;
+        this.artisans = new CarverArtisanStore(
+                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                        .resolve("rpchat").resolve("carver").resolve("artisans.json"));
     }
 
     public CarverTuning tuning() {
@@ -537,6 +541,28 @@ public final class CarverManager {
         int tool = CarverItems.chiselOf(player.getOffhandItem());
         int workTicks = Math.max(1, DraftEstimate.workTicks(
                 cells.size(), fill, span, multiplier, tool));
+        // Grain feedback is known the moment the drawing is fixed: a draft that follows the
+        // bedding planes finishes sooner and spares the edge, one that slices across drags and
+        // dulls the chisel. Evaluated on the same mirrored field the client renders.
+        CarverGrainField.GrainType grainType =
+                CarverGrainField.typeFor(CarverWorkAnim.classify(session.materialId()));
+        CarverGrainField.Field grainField = CarverGrainField.hasGrain(grainType)
+                ? CarverGrainField.build(CarverGrainField.seedFor(x, y, z), grainType) : null;
+        double grainRespect = grainField == null ? -1.0
+                : CarverEvaluation.grainRespect(session.mask(), grainField);
+        if (grainRespect >= 0.0) {
+            double pace = 0.85 + 0.30 * grainRespect;
+            workTicks = Math.max(1, (int) Math.round(workTicks / pace));
+            session.setGrainRespect(grainRespect);
+            session.setGrainWear(1.0 + 0.6 * (1.0 - grainRespect));
+            player.sendSystemMessage(Component.literal(
+                    "Зерно: " + grainName(grainType) + " · резьба " + percent(grainRespect)
+                            + (grainRespect >= 0.70 ? " (по слою)"
+                            : grainRespect <= 0.45 ? " (поперёк)" : "")), true);
+        } else {
+            session.setGrainRespect(-1.0);
+            session.setGrainWear(1.0);
+        }
         double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
         if (stamina.escapeStamina(player) < cost) {
             player.sendSystemMessage(Component.literal("Нехватка сил: нужно "
@@ -610,8 +636,11 @@ public final class CarverManager {
         } catch (RuntimeException ignored) {
         }
         int done = session.workDoneTicks();
-        // One strike, one notch of wear on the held chisel, paced with the work song.
-        if (done > 0 && done % CarverWorkRhythm.STRIKE_WEAR_EVERY_TICKS == 0
+        // One strike, one notch of wear on the held chisel, paced with the work song and the
+        // grain fight: cross-grain drafts dull the edge faster, clean drafts spare it.
+        int wearEvery = Math.max(6, (int) Math.round(
+                CarverWorkRhythm.STRIKE_WEAR_EVERY_TICKS / session.grainWear()));
+        if (done > 0 && done % wearEvery == 0
                 && player.level() instanceof ServerLevel workLevel) {
             wearChisel(player, workLevel);
         }
@@ -802,9 +831,60 @@ public final class CarverManager {
                 CarverSyncPayload.observedEndData(player.getUUID()));
         sendEvent(player, CarverProtocol.EVENT_WORK_DONE, pos,
                 CarverSyncPayload.doneData(removed));
+        if (full && session.mask() != null && !session.mask().isEmpty()) {
+            evaluateAndRecord(player, pos, plan, session, after);
+        }
         player.sendSystemMessage(Component.literal(full
                 ? "Готово: снято " + removed + " вокселей."
                 : "Работа прервана, но снятые " + removed + " вокселей сохранены."), true);
+    }
+
+    /**
+     * Phase 4: scores the finished piece against the workpiece grain and the remaining volume,
+     * persists the artisan's progression and reports the verdict. Runs entirely on mirrored pure
+     * classes, so the client render and this verdict read the same geology.
+     */
+    private void evaluateAndRecord(ServerPlayer player, BlockPos pos, WorkPlan plan,
+                                   DraftSession session, MicrovoxelVolume after) {
+        try {
+            CarverGrainField.GrainType grainType =
+                    CarverGrainField.typeFor(CarverWorkAnim.classify(plan.materialId()));
+            CarverGrainField.Field grainField = CarverGrainField.hasGrain(grainType)
+                    ? CarverGrainField.build(
+                            CarverGrainField.seedFor(pos.getX(), pos.getY(), pos.getZ()), grainType)
+                    : null;
+            CarverEvaluation.Result verdict =
+                    CarverEvaluation.evaluate(session.mask(), after, grainField);
+            String discovery = artisans.record(player.getUUID(), verdict, grainType);
+            CarverArtisanStore.Profile profile = artisans.profile(player.getUUID());
+            player.sendSystemMessage(Component.literal(
+                    "Оценка: " + verdict.grade()
+                            + "  (зерно " + percent(verdict.grainRespect())
+                            + ", стойкость " + percent(verdict.stability()) + ")"
+                            + "  +" + verdict.mastery() + " мастерства"
+                            + "  ·  ранг: " + profile.rank()), true);
+            if (discovery != null) {
+                player.sendSystemMessage(Component.literal(
+                        "Кодекс геологии: впервые изучено зерно — " + grainName(grainType)), true);
+            }
+        } catch (RuntimeException ignored) {
+            // Evaluation is feedback, never a reason to lose a finished carve.
+        }
+    }
+
+    private static String percent(double value) {
+        return Math.round(Math.max(0.0, Math.min(1.0, value)) * 100.0) + "%";
+    }
+
+    private static String grainName(CarverGrainField.GrainType grain) {
+        return switch (grain) {
+            case LAYERS -> "Слои";
+            case RINGS -> "Кольца";
+            case FIBERS -> "Волокна";
+            case CRYSTALS -> "Кристаллы";
+            case WOVEN -> "Плетение";
+            case AMORPHOUS -> "Аморфное";
+        };
     }
 
     /** Interrupts work keeping the carved-so-far result; design drafts just dissolve. */

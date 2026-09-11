@@ -28,6 +28,17 @@ public final class MicrovoxelGreedyMesher {
     }
 
     /**
+     * Exact mesh that additionally gates merging by a per-cell region: neighbouring cells only
+     * merge when both their material and their region match. The Carver feeds the grain domain
+     * here, so banded geology survives greedy merging as one quad per band, which the renderer
+     * then tints per domain. A null region keeps the plain material merge (bit-identical).
+     */
+    public static List<Face> build(MicrovoxelVolume volume, NeighbourLookup neighbours,
+                                   IntPredicate hidden, RegionLookup region) {
+        return buildExact(volume, neighbours, hidden, region);
+    }
+
+    /**
      * Strided greedy mesh for distance LOD. A stride-N mesh samples each NxNxN block as one
      * merged cell (occupied when any sub-cell is occupied, dominant material wins) and emits
      * faces on the N-cell grid, so far volumes compile to a fraction of the quads while keeping
@@ -145,15 +156,21 @@ public final class MicrovoxelGreedyMesher {
     }
 
     private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours) {
-        return buildExact(volume, neighbours, null);
+        return buildExact(volume, neighbours, null, null);
     }
 
     private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours,
                                          IntPredicate hidden) {
+        return buildExact(volume, neighbours, hidden, null);
+    }
+
+    private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours,
+                                         IntPredicate hidden, RegionLookup region) {
         List<Face> faces = new ArrayList<>();
         for (Direction direction : Direction.values()) {
             for (int slice = 0; slice < 16; slice++) {
                 int[][] mask = new int[16][16];
+                int[][] regionMask = region == null ? null : new int[16][16];
                 for (int v = 0; v < 16; v++) {
                     for (int u = 0; u < 16; u++) {
                         int[] xyz = coordinates(direction, slice, u, v);
@@ -161,10 +178,13 @@ public final class MicrovoxelGreedyMesher {
                         if (material != 0 && maskedMaterial(neighbours, hidden,
                                 xyz[0] + direction.dx, xyz[1] + direction.dy, xyz[2] + direction.dz) == 0) {
                             mask[v][u] = material;
+                            if (regionMask != null) {
+                                regionMask[v][u] = region.regionAt(xyz[0], xyz[1], xyz[2]);
+                            }
                         }
                     }
                 }
-                greedy(direction, slice, mask, faces);
+                greedy(direction, slice, mask, regionMask, faces);
             }
         }
         return List.copyOf(faces);
@@ -186,17 +206,29 @@ public final class MicrovoxelGreedyMesher {
     }
 
     private static void greedy(Direction direction, int slice, int[][] mask, List<Face> output) {
+        greedy(direction, slice, mask, null, output);
+    }
+
+    private static void greedy(Direction direction, int slice, int[][] mask, int[][] regionMask,
+                               List<Face> output) {
         boolean[][] used = new boolean[16][16];
         for (int v = 0; v < 16; v++) {
             for (int u = 0; u < 16; u++) {
                 int material = mask[v][u];
                 if (material == 0 || used[v][u]) continue;
+                int region = regionMask == null ? 0 : regionMask[v][u];
                 int width = 1;
-                while (u + width < 16 && !used[v][u + width] && mask[v][u + width] == material) width++;
+                while (u + width < 16 && !used[v][u + width] && mask[v][u + width] == material
+                        && (regionMask == null || regionMask[v][u + width] == region)) {
+                    width++;
+                }
                 int height = 1;
                 outer: while (v + height < 16) {
                     for (int x = u; x < u + width; x++) {
-                        if (used[v + height][x] || mask[v + height][x] != material) break outer;
+                        if (used[v + height][x] || mask[v + height][x] != material
+                                || (regionMask != null && regionMask[v + height][x] != region)) {
+                            break outer;
+                        }
                     }
                     height++;
                 }
@@ -227,6 +259,11 @@ public final class MicrovoxelGreedyMesher {
 
     public interface NeighbourLookup {
         int materialAt(int x, int y, int z);
+    }
+
+    /** Per-cell merge region: two cells merge only when material AND region match. */
+    public interface RegionLookup {
+        int regionAt(int x, int y, int z);
     }
 
     public enum Direction {

@@ -116,6 +116,9 @@ public class RPChat implements DedicatedServerModInitializer {
             authDatabase.connect();
             R2AppearanceStorage appearanceStorage = R2AppearanceStorage.fromConfig(config, logger);
             appearanceManager = new AppearanceManager(dataFolder, authDatabase, logger, appearanceStorage);
+            // One-time repair of legacy 64x32 skins that the old converter stored with blank
+            // left arms/legs; mirrors the right limbs and keeps the profile hash in sync.
+            appearanceManager.migrateLegacyAppearances();
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to initialize Fabric authentication database", e);
         }

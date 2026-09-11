@@ -42,6 +42,8 @@ public final class CarverMirrorTest {
         verifyWorkStroke();
         verifyWorkAnim();
         verifyHumanRhythm();
+        verifyInspection();
+        verifyGrainMechanics();
         System.out.println("CarverMirrorTest passed");
     }
 
@@ -572,6 +574,277 @@ public final class CarverMirrorTest {
         }
         require(differs, "Different artisans must not share one metronome");
         System.out.println("CarverHumanRhythmTest: determinism, bounds and rhythm passed");
+    }
+
+    /** Grain 2.0: seam map, palette contrast, cut mechanics and scoring curves. */
+    private static void verifyGrainMechanics() {
+        require(ua.rp.chat.carver.CarverGrainField.seedFor(1, 2, 3)
+                        == ua.rp.chat.carver.CarverGrainField.seedFor(1, 2, 3),
+                "Grain seed must be deterministic");
+        var grain = ua.rp.chat.carver.CarverGrainField.build(2024L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS);
+        boolean seam = false;
+        boolean interior = false;
+        for (int y = 0; y < 16; y++) {
+            int cell = DraftMask.index(8, y, 8);
+            double b = grain.boundaryness(cell);
+            require(b >= 0.0 && b <= 1.0, "Boundaryness must be within [0,1]");
+            if (b >= 0.5) seam = true;
+            if (b <= 0.1) interior = true;
+        }
+        require(seam, "Layered grain must expose at least one seam cell");
+        require(interior, "Layered grain must expose interior cells away from a seam");
+        require(ua.rp.chat.carver.CarverGrainPalette.tint(
+                        ua.rp.chat.carver.CarverGrainField.GrainType.AMORPHOUS, 3, 1.0, 0.0)
+                        == 0xFFFFFFFF,
+                "Grainless palette must be identity");
+        int a = ua.rp.chat.carver.CarverGrainPalette.tint(
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8, 0.0);
+        int b = ua.rp.chat.carver.CarverGrainPalette.tint(
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 1, 0.8, 0.0);
+        require((a >>> 24) == 0xFF, "Palette alpha must stay opaque");
+        require(a != b, "Adjacent grain domains must shade differently");
+        int seamed = ua.rp.chat.carver.CarverGrainPalette.tint(
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8, 1.0);
+        require(luma(seamed) < luma(a), "A seam must darken its cell");
+        int tinted = ua.rp.chat.carver.CarverGrainTint.apply(0xFF7A9A6A,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8, 0.5);
+        require((tinted >>> 24) == 0xFF, "Grain tint must preserve alpha");
+        require(tinted == ua.rp.chat.carver.CarverGrainTint.apply(0xFF7A9A6A,
+                        ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8, 0.5),
+                "Grain tint must be deterministic");
+        var along = new ua.rp.chat.carver.CarverGrainField.Direction(1, 0, 0);
+        var cross = new ua.rp.chat.carver.CarverGrainField.Direction(-1, 0, 0);
+        require(ua.rp.chat.carver.CarverGrainMechanics.classify(along, along)
+                        == ua.rp.chat.carver.CarverGrainMechanics.Alignment.ALONG,
+                "A parallel cut must ride the grain");
+        require(ua.rp.chat.carver.CarverGrainMechanics.classify(cross, along)
+                        == ua.rp.chat.carver.CarverGrainMechanics.Alignment.CROSS,
+                "An opposed cut must fight the grain");
+        require(ua.rp.chat.carver.CarverGrainMechanics.hardnessMultiplier(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.ALONG, 1.0)
+                        < ua.rp.chat.carver.CarverGrainMechanics.hardnessMultiplier(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.CROSS, 1.0),
+                "Cutting across the grain must be harder");
+        require(ua.rp.chat.carver.CarverGrainMechanics.wearFactor(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.CROSS, 1.0)
+                        > ua.rp.chat.carver.CarverGrainMechanics.wearFactor(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.ALONG, 1.0),
+                "Cross-grain cuts must wear the tool faster");
+        require(ua.rp.chat.carver.CarverGrainMechanics.heatFactor(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.CROSS, 1.0)
+                        > ua.rp.chat.carver.CarverGrainMechanics.heatFactor(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.ALONG, 1.0),
+                "Cross-grain cuts must run hotter");
+        require(ua.rp.chat.carver.CarverGrainMechanics.tearOutChance(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.CROSS, 1.0, 1.0)
+                        > ua.rp.chat.carver.CarverGrainMechanics.tearOutChance(
+                        ua.rp.chat.carver.CarverGrainMechanics.Alignment.ALONG, 1.0, 1.0),
+                "Cross-grain cuts must tear out more often");
+        double good = ua.rp.chat.carver.CarverGrainMechanics.respectScore(10, 0, 0);
+        double bad = ua.rp.chat.carver.CarverGrainMechanics.respectScore(0, 0, 10);
+        require(good > bad, "Riding the grain must outscore fighting it");
+        require(ua.rp.chat.carver.CarverGrainMechanics.grade(0.95).equals("майстерна")
+                        && ua.rp.chat.carver.CarverGrainMechanics.grade(0.6).equals("чиста")
+                        && ua.rp.chat.carver.CarverGrainMechanics.grade(0.3).equals("груба"),
+                "Grade bands must map rough/clean/masterful");
+        require(ua.rp.chat.carver.CarverGrainMechanics.masteryPoints(1.0, 100)
+                        > ua.rp.chat.carver.CarverGrainMechanics.masteryPoints(0.0, 100),
+                "Higher grain respect must pay more mastery");
+        DraftMask band = new DraftMask();
+        int targetDomain = grain.domain(DraftMask.index(8, 8, 8));
+        for (int cell = 0; cell < DraftMask.CELL_COUNT; cell++) {
+            if (grain.domain(cell) == targetDomain) band.set(cell);
+        }
+        DraftMask half = new DraftMask();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = 0; y < 8; y++) half.set(DraftMask.index(x, y, z));
+            }
+        }
+        require(ua.rp.chat.carver.CarverGrainMechanics.draftRespect(band, grain)
+                        > ua.rp.chat.carver.CarverGrainMechanics.draftRespect(half, grain),
+                "A seam-following draft must out-score a cross-grain draft");
+        System.out.println("CarverGrainMechanicsTest: seam, palette and cut curves passed");
+    }
+
+    private static double luma(int argb) {
+        return 0.299 * ((argb >> 16) & 0xFF) + 0.587 * ((argb >> 8) & 0xFF) + 0.114 * (argb & 0xFF);
+    }
+
+    /** Phase 0 pure models: grain families, inclusion hints and the material readout. */
+    private static void verifyInspection() {
+        require(ua.rp.chat.carver.CarverGrainField.typeFor(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.STONE)
+                        == ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS,
+                "Stone grain must be layered bedding");
+        require(ua.rp.chat.carver.CarverGrainField.typeFor(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.WOOD)
+                        == ua.rp.chat.carver.CarverGrainField.GrainType.FIBERS,
+                "Wood grain must be fibers");
+        require(ua.rp.chat.carver.CarverGrainField.typeFor(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.METAL)
+                        == ua.rp.chat.carver.CarverGrainField.GrainType.CRYSTALS,
+                "Metal grain must be crystals");
+        require(ua.rp.chat.carver.CarverGrainField.typeFor(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.CLOTH)
+                        == ua.rp.chat.carver.CarverGrainField.GrainType.WOVEN,
+                "Cloth grain must be woven");
+        require(ua.rp.chat.carver.CarverGrainField.typeFor(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.ICE)
+                        == ua.rp.chat.carver.CarverGrainField.GrainType.AMORPHOUS,
+                "Ice grain must be amorphous");
+        // Coherent noise: deterministic, in range and continuous across cell boundaries.
+        double n1 = ua.rp.chat.carver.CarverNoise.value3(5L, 1.25, 2.5, 3.75);
+        double n2 = ua.rp.chat.carver.CarverNoise.value3(5L, 1.25, 2.5, 3.75);
+        require(n1 == n2 && n1 >= 0.0 && n1 < 1.0,
+                "Noise must be deterministic and within [0,1)");
+        double near = ua.rp.chat.carver.CarverNoise.value3(5L, 1.2501, 2.5, 3.75);
+        require(Math.abs(near - n1) < 0.05, "Noise must be continuous across the cell boundary");
+        double fbm = ua.rp.chat.carver.CarverNoise.fbm3(9L, 3.3, 4.4, 5.5, 3);
+        require(fbm >= 0.0 && fbm <= 1.0, "fBm must stay within [0,1]");
+        // Coherent grain field: deterministic, axis-quantized, banded, bounded by family.
+        int cell = DraftMask.index(3, 7, 9);
+        var layers = ua.rp.chat.carver.CarverGrainField.build(42L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS);
+        var layersAgain = ua.rp.chat.carver.CarverGrainField.build(42L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS);
+        require(layers.domain(cell) == layersAgain.domain(cell)
+                        && layers.strength(cell) == layersAgain.strength(cell)
+                        && layers.direction(cell).equals(layersAgain.direction(cell)),
+                "Grain field must be deterministic from the seed");
+        for (int sample = 0; sample < DraftMask.CELL_COUNT; sample += 137) {
+            var dir = layers.direction(sample);
+            require(Math.abs(dir.x()) + Math.abs(dir.y()) + Math.abs(dir.z()) == 1,
+                    "Field direction must be a unit lattice axis");
+            double layerStrength = layers.strength(sample);
+            require(layerStrength >= 0.0 && layerStrength <= 1.0,
+                    "Field strength must be within [0,1]");
+        }
+        boolean banded = false;
+        for (int y = 0; y < 15; y++) {
+            if (layers.domain(DraftMask.index(8, y, 8))
+                    != layers.domain(DraftMask.index(8, y + 1, 8))) {
+                banded = true;
+                break;
+            }
+        }
+        require(banded, "Sedimentary layers must band along the vertical");
+        var crystals = ua.rp.chat.carver.CarverGrainField.build(7L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.CRYSTALS);
+        for (int sample = 0; sample < DraftMask.CELL_COUNT; sample += 211) {
+            int domain = crystals.domain(sample);
+            require(domain >= 0 && domain < 18,
+                    "Crystal domains must stay within the seed count");
+        }
+        var woven = ua.rp.chat.carver.CarverGrainField.build(3L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.WOVEN);
+        java.util.HashSet<Integer> weave = new java.util.HashSet<>();
+        for (int wx = 0; wx < 8; wx++) {
+            for (int wz = 0; wz < 8; wz++) {
+                weave.add(woven.domain(DraftMask.index(wx, 4, wz)));
+            }
+        }
+        require(weave.size() == 4, "Woven cloth must show four weave cells");
+        var amorphous = ua.rp.chat.carver.CarverGrainField.build(1L,
+                ua.rp.chat.carver.CarverGrainField.GrainType.AMORPHOUS);
+        require(!amorphous.hasGrain() && amorphous.strength(cell) == 0.0,
+                "Amorphous materials must have no grain");
+        var projected = ua.rp.chat.carver.CarverGrainField.projected(
+                new ua.rp.chat.carver.CarverGrainField.Direction(1, 1, 1),
+                CarverFaceSlicer.Face.UP);
+        require(projected.y() == 0, "Grain projected on the top face must stay in-plane");
+
+        // Mesh-baked grain tint: grainless identity, band variation, alpha kept, deterministic.
+        int baseColor = 0xFF7A9A6A;
+        require(ua.rp.chat.carver.CarverGrainTint.apply(baseColor,
+                        ua.rp.chat.carver.CarverGrainField.GrainType.AMORPHOUS, 3, 1.0) == baseColor,
+                "Grainless materials must not be tinted");
+        int tintA = ua.rp.chat.carver.CarverGrainTint.apply(baseColor,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8);
+        int tintB = ua.rp.chat.carver.CarverGrainTint.apply(baseColor,
+                ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 1, 0.8);
+        require((tintA >>> 24) == 0xFF, "Grain tint must preserve the alpha channel");
+        require(tintA != tintB, "Adjacent grain domains must tint differently");
+        require(tintA == ua.rp.chat.carver.CarverGrainTint.apply(baseColor,
+                        ua.rp.chat.carver.CarverGrainField.GrainType.LAYERS, 0, 0.8),
+                "Grain tint must be deterministic");
+        require(ua.rp.chat.carver.CarverGrainTint.faceCell(
+                        ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.Direction.UP, 2, 4, 4)
+                        == DraftMask.index(2, 3, 4),
+                "An UP face must resolve to the cell under its plane");
+        require(ua.rp.chat.carver.CarverGrainTint.faceCell(
+                        ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.Direction.EAST, 5, 3, 4)
+                        == DraftMask.index(4, 3, 4),
+                "An EAST face must resolve to the cell behind its plane");
+        System.out.println("CarverGrainTintTest: bake tint and face mapping passed");
+        var structures = ua.rp.chat.carver.CarverInclusionField.structures(99L,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        var structuresAgain = ua.rp.chat.carver.CarverInclusionField.structures(99L,
+                ua.rp.chat.carver.CarverWorkAnim.Material.STONE);
+        require(structures.size() == structuresAgain.size(),
+                "Inclusion structures must be deterministic");
+        require(structures.size() <= ua.rp.chat.carver.CarverInclusionField
+                        .structureCount(ua.rp.chat.carver.CarverWorkAnim.Material.STONE),
+                "Structure count must respect the material budget");
+        for (int i = 0; i < structures.size(); i++) {
+            var a = structures.get(i);
+            var b = structuresAgain.get(i);
+            require(a.kind() == b.kind() && a.tier() == b.tier()
+                            && java.util.Arrays.equals(a.cells(), b.cells()),
+                    "Structure #" + i + " must be identical across builds");
+            require(a.cells().length > 0, "Structures must occupy at least one voxel");
+            require(a.radius() > 0.0, "Structures must have a bounding radius");
+            java.util.HashSet<Integer> unique = new java.util.HashSet<>();
+            for (int structureCell : a.cells()) {
+                require(structureCell >= 0 && structureCell < DraftMask.CELL_COUNT,
+                        "Structure cells must stay inside the volume");
+                require(unique.add(structureCell), "Structure cells must be unique");
+            }
+            if (a.kind() != ua.rp.chat.carver.CarverInclusionField.Kind.CAVITY) {
+                require(connected(a.cells()),
+                        "Crack and vein structures must form one connected voxel set");
+            }
+        }
+        require(ua.rp.chat.carver.CarverInclusionField.baseChance(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.METAL)
+                        > ua.rp.chat.carver.CarverInclusionField.baseChance(
+                        ua.rp.chat.carver.CarverWorkAnim.Material.CLOTH),
+                "Metals must hide more inclusions than cloth");
+        var readout = ua.rp.chat.carver.CarverMaterialView.of("minecraft:deepslate", 3.0f);
+        require(readout.name().equals("Deepslate"), "Readout must strip the namespace");
+        require(readout.workability() > 0.0 && readout.workability() <= 1.0,
+                "Workability must be a 0..1 fraction");
+        require(!ua.rp.chat.carver.CarverMaterialView.materialLabel(readout.material()).isBlank()
+                        && !ua.rp.chat.carver.CarverMaterialView.grainLabel(readout.grain()).isBlank(),
+                "Readout labels must be present");
+        System.out.println("CarverInspectionTest: grain, inclusions and readout passed");
+    }
+
+    /** 6-neighbour connectivity of a voxel set: proves a structure is one linked inclusion. */
+    private static boolean connected(int[] cells) {
+        java.util.HashSet<Integer> set = new java.util.HashSet<>();
+        for (int cell : cells) set.add(cell);
+        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        java.util.HashSet<Integer> seen = new java.util.HashSet<>();
+        queue.add(cells[0]);
+        seen.add(cells[0]);
+        int[][] dirs = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        while (!queue.isEmpty()) {
+            int cell = queue.removeFirst();
+            int x = DraftMask.x(cell);
+            int y = DraftMask.y(cell);
+            int z = DraftMask.z(cell);
+            for (int[] dir : dirs) {
+                int nx = x + dir[0];
+                int ny = y + dir[1];
+                int nz = z + dir[2];
+                if (nx < 0 || nx > 15 || ny < 0 || ny > 15 || nz < 0 || nz > 15) continue;
+                int next = DraftMask.index(nx, ny, nz);
+                if (set.contains(next) && seen.add(next)) queue.add(next);
+            }
+        }
+        return seen.size() == set.size();
     }
 
     private static void require(boolean condition, String message) {

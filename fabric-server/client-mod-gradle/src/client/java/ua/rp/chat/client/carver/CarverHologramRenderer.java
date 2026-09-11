@@ -157,12 +157,28 @@ public final class CarverHologramRenderer {
             List<BakedQuad> quads = materialFaces.faces().get(direction);
             if (quads == null || quads.isEmpty()) continue;
             BlockState materialState = materialFaces.state();
+            ua.rp.chat.carver.CarverGrainField.Field grain = CarverInspection.field();
+            boolean grainActive = grain != null && grain.hasGrain();
+            int grainDomain = 0;
+            double grainStrength = 0.0;
+            double grainBoundary = 0.0;
+            if (grainActive) {
+                int cell = ua.rp.chat.carver.CarverGrainTint.faceCell(face.direction(),
+                        face.minX(), face.minY(), face.minZ());
+                grainDomain = grain.domain(cell);
+                grainStrength = grain.strength(cell);
+                grainBoundary = grain.boundaryness(cell);
+            }
             for (BakedQuad quad : quads) {
                 RenderType type = solidRenderType(quad);
                 VertexConsumer consumer = bufferSource.getBuffer(type);
                 usedTypes.add(type);
                 var patch = ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.UvPatch.from(quad);
                 int color = tinted(minecraft, materialState, quad, focus);
+                if (grainActive) {
+                    color = ua.rp.chat.carver.CarverGrainTint.apply(
+                            color, grain.type(), grainDomain, grainStrength, grainBoundary);
+                }
                 color = shade(color, direction);
                 int faceLight = light;
                 float[][] corners = faceCorners(face);
@@ -229,17 +245,17 @@ public final class CarverHologramRenderer {
                 && current.sourceKey().equals(sourceKey) && current.draftFp() == draftFp) {
             return current;
         }
-        // Solid pass: mesh the live volume with every drafted cell read as air. A released
-        // stroke therefore vanishes on this frame, and the greedy quads re-cut on the cell
-        // boundary so the fresh cavity floor and walls are exposed instead of whole faces
-        // of the un-masked mesh being dropped.
-        List<MicrovoxelGreedyMesher.Face> visible;
-        if (draftFp == 0L) {
-            visible = ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(volume, volume::materialAt);
-        } else {
-            visible = ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(
-                    volume, volume::materialAt, draft::get);
-        }
+        // Solid pass: mesh the live volume with every drafted cell read as air. The grain field
+        // gates merging, so each band stays its own quad and the renderer tints it per domain.
+        ua.rp.chat.carver.CarverGrainField.Field grain = CarverInspection.field();
+        ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.RegionLookup region =
+                (grain != null && grain.hasGrain())
+                        ? (x, y, z) -> grain.domain(x | (z << 4) | (y << 8))
+                        : null;
+        java.util.function.IntPredicate hidden = draft.isEmpty() ? null : draft::get;
+        List<MicrovoxelGreedyMesher.Face> visible =
+                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(
+                        volume, volume::materialAt, hidden, region);
         // The drafted cells simply vanish from the solid pass. There is deliberately no ghost /
         // surface-wire pass any more: outlining removed faces on the copy only read as a stray
         // glow around the cut, which is exactly what the artisan must not see.

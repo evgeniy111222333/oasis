@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1789070039688,
+  "savedAt": 1789150347825,
   "players": {
     "85307a7e-3cf5-39fe-98e5-639b63a71759": {
       "stamina": 100.0,
@@ -181,9 +181,9 @@
       "breathDebt": 0.0,
       "fatigue": 0.0,
       "blood": 100.0,
-      "lastDamage": 0.0,
-      "lastDamageCause": "",
-      "ticks": 444414,
+      "lastDamage": 8.427731775088957E-259,
+      "lastDamageCause": "fall",
+      "ticks": 531295,
       "unconsciousTicks": 0,
       "parts": {
         "head": {
@@ -322,7 +322,7 @@
           "wounds": []
         },
         "rightLeg": {
-          "condition": 100.0,
+          "condition": 92.2,
           "bleeding": 0.0,
           "pain": 0.0,
           "burn": 0.0,
@@ -339,13 +339,13 @@
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Немає",
-          "lastCause": "",
-          "woundSide": 0.0,
-          "woundHeight": 0.5,
-          "woundIntensity": 0.0,
-          "woundSeed": 0,
-          "woundProfile": -1,
+          "injury": "Падение",
+          "lastCause": "fall",
+          "woundSide": 0.6766228079795837,
+          "woundHeight": 0.9603365659713745,
+          "woundIntensity": 0.09090909090909091,
+          "woundSeed": 3272530658681742613,
+          "woundProfile": 4,
           "wounds": []
         }
       }
