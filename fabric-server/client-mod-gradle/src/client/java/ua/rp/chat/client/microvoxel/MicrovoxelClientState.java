@@ -18,6 +18,7 @@ import ua.rp.chat.microvoxel.MicrovoxelMeshBackpressure;
 import ua.rp.chat.microvoxel.MicrovoxelPrediction;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.MicrovoxelRevision;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import ua.rp.chat.microvoxel.MicrovoxelWire;
 
@@ -1770,7 +1771,7 @@ public final class MicrovoxelClientState {
 
     /** Used by the renderer's vertex AO sampler. Coordinates are local to {@code base}. */
     public static boolean solidAt(BlockPos base, int x, int y, int z) {
-        return materialAt(base, x, y, z) != 0;
+        return subCellSolid(base, x, y, z);
     }
 
     /**
@@ -1780,30 +1781,41 @@ public final class MicrovoxelClientState {
      * neighbouring surface.
      */
     public static boolean shapeNeighborSolid(BlockPos base, int subX, int subY, int subZ) {
-        if (solidAt(base, subX, subY, subZ)) return true;
-        int offsetX = Math.floorDiv(subX, 16);
-        int offsetY = Math.floorDiv(subY, 16);
-        int offsetZ = Math.floorDiv(subZ, 16);
-        if (offsetX == 0 && offsetY == 0 && offsetZ == 0) return false;
-        if (activeLevel == null) return false;
-        return activeLevel.getBlockState(base.offset(offsetX, offsetY, offsetZ)).isSolidRender();
+        return subCellSolid(base, subX, subY, subZ);
     }
 
     private static final ThreadLocal<BlockPos.MutableBlockPos> SCRATCH_POS =
             ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
-    private static int materialAt(BlockPos base, int x, int y, int z) {
+    /**
+     * Solid test of one micro sub-cell, honouring the owning volume's geometry: an occupied but
+     * shaped cell is solid only where its shape actually occupies, so a neighbour's flush face is
+     * not culled by empty space inside a partial shape (AO and culling both rely on this).
+     */
+    private static boolean subCellSolid(BlockPos base, int x, int y, int z) {
         int offsetX = Math.floorDiv(x, 16);
         int offsetY = Math.floorDiv(y, 16);
         int offsetZ = Math.floorDiv(z, 16);
+        int localX = Math.floorMod(x, 16);
+        int localY = Math.floorMod(y, 16);
+        int localZ = Math.floorMod(z, 16);
         if (offsetX == 0 && offsetY == 0 && offsetZ == 0) {
             CachedVolume cached = VOLUMES.get(base);
-            return cached != null ? cached.volume.materialAt(x, y, z) : 0;
+            return cached != null && microSolid(cached.volume, localX, localY, localZ);
         }
         BlockPos.MutableBlockPos scratch = SCRATCH_POS.get();
         scratch.set(base.getX() + offsetX, base.getY() + offsetY, base.getZ() + offsetZ);
         CachedVolume cached = VOLUMES.get(scratch);
-        return cached != null ? cached.volume.materialAt(Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16)) : 0;
+        if (cached != null) return microSolid(cached.volume, localX, localY, localZ);
+        if (activeLevel == null) return false;
+        return activeLevel.getBlockState(scratch).isSolidRender();
+    }
+
+    private static boolean microSolid(MicrovoxelVolume volume, int x, int y, int z) {
+        if (volume.materialAt(x, y, z) == 0) return false;
+        int shapeId = volume.shapeAt(MicrovoxelVolume.index(x, y, z));
+        if (shapeId == 0) return true;
+        return MicrovoxelShape.byId(shapeId).occupied(x, y, z);
     }
 
     private static boolean changesTouchBoundary(MicrovoxelVolume oldVolume, MicrovoxelVolume newVolume) {
