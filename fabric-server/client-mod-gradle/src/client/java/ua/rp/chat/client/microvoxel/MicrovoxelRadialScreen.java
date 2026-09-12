@@ -33,10 +33,10 @@ import java.io.OutputStream;
  * is handed to {@link #listener} which drives the existing edit actions.</p>
  */
 public final class MicrovoxelRadialScreen extends Screen {
-    /** Callback the opener supplies: chosen action id, material id (nullable) and fragment flag. */
+    /** Callback the opener supplies: action id, material id (nullable), fragment flag, shape id. */
     @FunctionalInterface
     public interface Listener {
-        void onSelect(String action, String material, boolean fragment);
+        void onSelect(String action, String material, boolean fragment, int shapeId);
     }
 
     private static final String RESOURCE = "/assets/eclipseclient/web/radial/radial.html";
@@ -108,11 +108,22 @@ public final class MicrovoxelRadialScreen extends Screen {
         String action = jsonValue(json, "action");
         String material = jsonValue(json, "material");
         boolean fragment = !"false".equalsIgnoreCase(jsonValue(json, "fragment"));
+        int shapeId = jsonInt(json, "shapeId", -1);
         Minecraft minecraft = this.minecraft;
         if (minecraft != null) minecraft.execute(() -> {
-            if (listener != null) listener.onSelect(action, material, fragment);
+            if (listener != null) listener.onSelect(action, material, fragment, shapeId);
             if (minecraft.screen == this) minecraft.setScreen(null);
         });
+    }
+
+    private static int jsonInt(String json, String key, int fallback) {
+        String value = jsonValue(json, key);
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException error) {
+            return fallback;
+        }
     }
 
     private static String jsonValue(String json, String key) {

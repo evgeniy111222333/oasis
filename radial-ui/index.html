@@ -383,6 +383,16 @@
   /* in-game preview: hide the prototype-only chrome (dev toolbar + readout) */
   body.ingame .devbar,
   body.ingame .readout { display: none; }
+  /* the palette now lives in the "Материал" sector, so the bottom strip is prototype-only */
+  body.ingame .palette { display: none; }
+
+  .sector__swatch {
+    width: 28px; height: 28px; border-radius: 9px;
+    border: 1px solid rgba(232, 220, 196, 0.32);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 3px 8px rgba(0,0,0,0.35);
+    margin-bottom: 2px;
+  }
+  .ring--inner .sector__swatch { width: 24px; height: 24px; }
 </style>
 </head>
 <body>
@@ -471,8 +481,30 @@
     rotate:  '<path d="M20 8a8 8 0 1 0 1 6"/><path d="M21 3v5h-5"/>',
     mirror:  '<path d="M12 3v18"/><path d="M8 7 3 12l5 5z"/><path d="M16 7l5 5-5 5z"/>',
     on:      '<circle cx="12" cy="12" r="8"/><path d="m9 12 2 2 4-5"/>',
-    off:     '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>'
+    off:     '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>',
+    palette: '<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h6a3 3 0 0 0 3-3 8 8 0 0 0-9-7z"/><circle cx="8" cy="9" r="1.2"/><circle cx="12" cy="7" r="1.2"/><circle cx="16" cy="9" r="1.2"/>',
+    cube:    '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'
   };
+
+  // Shape catalog order must match MicrovoxelShape.Type (wire enum).
+  const SHAPE_NAMES = [
+    "FULL", "SLAB_BOTTOM", "SLAB_TOP", "PANEL_X", "PANEL_Z",
+    "RAMP_S", "RAMP_N", "RAMP_E", "RAMP_W",
+    "BEVEL_SW", "BEVEL_SE", "BEVEL_NW", "BEVEL_NE",
+    "QUARTER_ROUND_SW", "QUARTER_ROUND_SE", "QUARTER_ROUND_NW", "QUARTER_ROUND_NE",
+    "QUARTER_ROUND_XZ_SW", "QUARTER_ROUND_XZ_SE", "QUARTER_ROUND_XZ_NW", "QUARTER_ROUND_XZ_NE"
+  ];
+
+  function shapeIcon(name) {
+    if (name === "FULL") return I.cube;
+    if (name.startsWith("SLAB_BOTTOM")) return '<path d="M3 12h18v8H3z"/>';
+    if (name.startsWith("SLAB_TOP")) return '<path d="M3 4h18v8H3z"/>';
+    if (name.startsWith("PANEL_X")) return '<path d="M9 3h6v18H9z"/>';
+    if (name.startsWith("PANEL_Z")) return '<path d="M3 9h18v6H3z"/>';
+    if (name.startsWith("RAMP")) return '<path d="M3 20 20 3v17z"/>';
+    if (name.startsWith("BEVEL")) return '<path d="M3 21 21 3v18z"/>';
+    return '<circle cx="12" cy="12" r="8"/>';
+  }
   const svg = (name) =>
     '<svg class="sector__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (I[name] || I.on) + '</svg>';
@@ -482,7 +514,8 @@
   const SECTORS = [
     { id: "place",  label: "Поставить", icon: "place" },
     { id: "erase",  label: "Убрать",    icon: "erase" },
-    { id: "shape",  label: "Форма",     icon: "shape" },
+    { id: "shape",  label: "Форма",     icon: "shape", picker: "shape" },
+    { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
     { id: "gen",    label: "Генератор", icon: "gen", children: [
         { id: "gen.ramp",   label: "Рампа",    icon: "ramp" },
         { id: "gen.column", label: "Колонна",  icon: "column" },
@@ -586,34 +619,56 @@
   const angleFor = (index, total) => (360 / total) * index;           // 0° = вгорі
   const angleTo  = (dx, dy) => (Math.atan2(dx, -dy) * 180) / Math.PI; // 0° вгорі, за годинниковою
 
+  /** Options shown in the sub-ring for a sector: static children or a dynamic list. */
+  function optionsFor(parent) {
+    if (!parent) return null;
+    if (parent.dynamic === "materials") {
+      return MATERIALS.slice(0, 9).map((m) => ({
+        id: "material", label: m.name, material: m.id, fragment: !!m.fragment,
+        color: m.color, units: m.units
+      }));
+    }
+    return parent.children || null;
+  }
+
+  const hasOptions = (sector) => !!optionsFor(sector);
+
   function renderInner(parentIndex) {
     ringInner.innerHTML = "";
     innerEls = [];
     selectedOuter = parentIndex;
-    if (parentIndex < 0 || !SECTORS[parentIndex].children) return;
+    if (parentIndex < 0) return;
+    const options = optionsFor(SECTORS[parentIndex]);
+    if (!options || !options.length) return;
 
-    const parent = SECTORS[parentIndex];
     const base = angleFor(parentIndex, SECTORS.length);
-    const n = parent.children.length;
-    const spread = n <= 1 ? 0 : Math.min(92, 30 * (n - 1) + 28);
-    parent.children.forEach((child, i) => {
+    const n = options.length;
+    const spread = n <= 1 ? 0 : Math.min(150, 30 * (n - 1) + 28);
+    options.forEach((child, i) => {
       const offset = n === 1 ? 0 : -spread / 2 + (spread / (n - 1)) * i;
       const el = document.createElement("div");
       el.className = "sector";
       el.dataset.id = child.id;
+      if (child.material) { el.dataset.material = child.material; el.dataset.fragment = child.fragment ? "1" : "0"; }
+      if (child.units != null) el.dataset.units = String(child.units);
       el.style.setProperty("--a", (base + offset) + "deg");
-      el.style.setProperty("--d", (i * 26) + "ms");
+      el.style.setProperty("--d", (i * 24) + "ms");
       // pop in at the final (outer) radius — never overlaps the parent card
-      el.style.setProperty("--s", "0.55");
+      el.style.setProperty("--s", "0.5");
       el.style.opacity = "0";
-      el.style.transitionDelay = (i * 26) + "ms";
-      el.innerHTML = svg(child.icon) + '<span class="sector__label">' + child.label + "</span>";
+      el.style.transitionDelay = (i * 24) + "ms";
+      el.innerHTML = child.material
+        ? '<span class="sector__swatch" style="background:linear-gradient(150deg,'
+            + (child.color || "#8a8a8a") + ',rgba(0,0,0,0.3))"></span>'
+          + '<span class="sector__label">' + child.label + '</span>'
+          + (child.units != null ? '<span class="sector__badge">' + child.units + '</span>' : "")
+        : svg(child.icon) + '<span class="sector__label">' + child.label + "</span>";
       ringInner.appendChild(el);
       innerEls.push(el);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         el.style.removeProperty("--s");
         el.style.opacity = "";
-        setTimeout(() => { el.style.transitionDelay = "0ms"; }, 460);
+        setTimeout(() => { el.style.transitionDelay = "0ms"; }, 440);
       }));
     });
   }
@@ -727,12 +782,12 @@
     } else {
       hotOuter = nearestIndex(ang, SECTORS.length);
       const parent = SECTORS[hotOuter];
-      if (parent.children && selectedOuter !== hotOuter) {
+      if (hasOptions(parent) && selectedOuter !== hotOuter) {
         renderInner(hotOuter);
         root.classList.add("is-animating");
         clearTimeout(animTimer);
         animTimer = setTimeout(() => root.classList.remove("is-animating"), 520);
-      } else if (!parent.children && selectedOuter !== -1) {
+      } else if (!hasOptions(parent) && selectedOuter !== -1) {
         selectedOuter = -1;
         ringInner.innerHTML = "";
         innerEls = [];
@@ -784,12 +839,23 @@
   function confirm() {
     if (!isOpen) return;
     if (hotInner !== -1 && selectedOuter !== -1) {
-      const chosen = SECTORS[selectedOuter].children[hotInner];
-      emit(chosen.id);
+      const el = innerEls[hotInner];
+      if (!el) { close(false); return; }
+      const extra = {};
+      const labelNode = el.querySelector(".sector__label");
+      if (labelNode) extra.label = labelNode.textContent;
+      if (el.dataset.material) {
+        extra.material = el.dataset.material;
+        extra.fragment = el.dataset.fragment === "1";
+        const idx = MATERIALS.findIndex((m) => m.id === el.dataset.material);
+        if (idx >= 0) materialIndex = idx;
+      }
+      if (el.dataset.shapeId) extra.shapeId = parseInt(el.dataset.shapeId, 10);
+      emit(el.dataset.id, extra);
       return;
     }
     const sector = SECTORS[hotOuter];
-    if (sector.children) {
+    if (hasOptions(sector)) {
       renderInner(hotOuter);              // розкрити, не закривати
       hotInner = -1;
       updateHot();
@@ -798,9 +864,9 @@
     emit(sector.id);
   }
 
-  function emit(id) {
+  function emit(id, extra) {
     if (id) {
-      const label = findLabel(id);
+      const label = (extra && extra.label) || findLabel(id);
       readout.textContent = label;
       showToast(label);
     }
@@ -808,11 +874,12 @@
     // Java↔JS bridge: the in-game screen listens on the CEF console message channel.
     try {
       const current = MATERIALS[materialIndex];
-      console.log("@eclipse/radial:" + JSON.stringify({
+      const payload = Object.assign({
         action: id,
         material: current ? current.id : null,
         fragment: current ? !!current.fragment : true
-      }));
+      }, extra || {});
+      console.log("@eclipse/radial:" + JSON.stringify(payload));
     } catch (ignore) {
       // no bridge (plain browser preview) — ignore
     }

@@ -517,6 +517,23 @@ public final class MicrovoxelInteractionController {
      * Generates a default ramp anchored at the looked-at cell, material taken from the held block
      * (G). The server expands it authoritatively as one transaction.
      */
+    /** Applies a specific shape id to the looked-at cell (radial shape picker). */
+    private static void applyShape(Minecraft minecraft, int shapeId) {
+        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        if (hit == null) {
+            minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
+            return;
+        }
+        BlockPos position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
+        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
+        if (cached == null) return;
+        int encoded = MicrovoxelWire.packSetShape(hit.cell(), shapeId);
+        send(minecraft, ACTION_SET_SHAPE, position.getX(), position.getY(), position.getZ(),
+                encoded, cached.volume.revision());
+        minecraft.gui.setOverlayMessage(Component.literal("Форма: "
+                + ua.rp.chat.microvoxel.MicrovoxelShape.byId(shapeId).type().name()), false);
+    }
+
     private static void generateTarget(Minecraft minecraft) {
         generateTarget(minecraft, 0);
     }
@@ -548,11 +565,24 @@ public final class MicrovoxelInteractionController {
      * Dispatches a radial-menu choice to the matching edit action. Same actions the old key bindings
      * used; the radial is now the only way to reach them (Undo stays on its own key).
      */
-    static void handleRadialSelection(String action, String material, boolean fragment) {
+    static void handleRadialSelection(String action, String material, boolean fragment, int shapeId) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.player == null || action == null) return;
         switch (action) {
             case "shape" -> withEditing(minecraft, MicrovoxelInteractionController::cycleShape);
+            case "shape.set" -> {
+                if (shapeId >= 0) withEditing(minecraft, m -> applyShape(m, shapeId));
+            }
+            // Material picked from the palette: swap the active material for the next placement.
+            case "material" -> {
+                selectedMaterialId = material == null ? "" : material;
+                if (!fragment) {
+                    toolActive = false;
+                    conversionTicks = 12;
+                    minecraft.gui.setOverlayMessage(
+                            Component.literal("Конвертация блока в микровоксели…"), false);
+                }
+            }
             case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0));
             case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1));
             case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2));

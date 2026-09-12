@@ -111,6 +111,94 @@ public final class MicrovoxelMaterialEconomy {
         }
     }
 
+    /**
+     * Loose microvoxel matter the player carries, in whole cells: reclaimed fragment units plus
+     * the units already drawn from partially converted blocks. Drives the encumbrance slow-down.
+     */
+    public long carriedMicrovoxelCells(ServerPlayer player) {
+        if (player == null) return 0;
+        long subUnits = 0;
+        var inventory = player.getInventory();
+        int size = inventory.getContainerSize();
+        for (int slot = 0; slot <= size; slot++) {
+            ItemStack stack = slot == size ? player.getOffhandItem() : inventory.getItem(slot);
+            if (stack == null || stack.isEmpty()) continue;
+            CompoundTag tag = customTag(stack);
+            subUnits += (long) tag.getIntOr(RECLAIMED_UNITS_TAG, 0) * stack.getCount();
+            subUnits += tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0);
+        }
+        return subUnits / UNITS_PER_CELL;
+    }
+
+    /**
+     * Right-click on a loose fragment: merge every matching fragment (converting whole blocks of
+     * the total into plain blocks), or split one fragment in half when {@code split} is set.
+     */
+    public boolean consolidateFragments(ServerPlayer player, ItemStack stack, boolean split) {
+        if (player == null || stack == null || stack.isEmpty()) return false;
+        CompoundTag tag = customTag(stack);
+        String material = tag.getStringOr(RECLAIMED_MATERIAL_TAG, "");
+        int perItem = tag.getIntOr(RECLAIMED_UNITS_TAG, 0);
+        if (material.isBlank() || perItem <= 0) return false;
+        return split
+                ? splitFragment(player, stack, material, perItem)
+                : mergeFragments(player, stack, material, perItem);
+    }
+
+    private boolean mergeFragments(ServerPlayer player, ItemStack stack, String material, int perItem) {
+        long total = (long) perItem * stack.getCount();
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack other = inventory.getItem(slot);
+            if (other == stack || other.isEmpty()) continue;
+            CompoundTag otherTag = customTag(other);
+            if (!material.equals(otherTag.getStringOr(RECLAIMED_MATERIAL_TAG, ""))) continue;
+            int otherPer = otherTag.getIntOr(RECLAIMED_UNITS_TAG, 0);
+            if (otherPer <= 0) continue;
+            total += (long) otherPer * other.getCount();
+            other.setCount(0);
+        }
+        stack.setCount(0);
+        Item item = MicrovoxelBlockStates.parseBlockState(material).getBlock().asItem();
+        if (item == Items.AIR) return false;
+        int blocks = (int) (total / UNITS_PER_BLOCK);
+        int remainder = (int) (total % UNITS_PER_BLOCK);
+        for (int done = 0; done < blocks; ) {
+            int give = Math.min(blocks - done, 64);
+            done += give;
+            ItemStack plain = new ItemStack(item, give);
+            if (!inventory.add(plain)) player.drop(plain, false);
+        }
+        if (remainder > 0) {
+            ItemStack fragment = new ItemStack(item);
+            CompoundTag fragmentTag = new CompoundTag();
+            fragmentTag.putInt(RECLAIMED_UNITS_TAG, remainder);
+            fragmentTag.putString(RECLAIMED_MATERIAL_TAG, material);
+            net.minecraft.world.item.component.CustomData.set(
+                    DataComponents.CUSTOM_DATA, fragment, fragmentTag);
+            if (!inventory.add(fragment)) player.drop(fragment, false);
+        }
+        inventory.setChanged();
+        return true;
+    }
+
+    private boolean splitFragment(ServerPlayer player, ItemStack stack, String material, int perItem) {
+        if (perItem <= 1) return false;
+        int half = perItem / 2;
+        int rest = perItem - half;
+        CompoundTag tag = customTag(stack);
+        tag.putInt(RECLAIMED_UNITS_TAG, half);
+        net.minecraft.world.item.component.CustomData.set(DataComponents.CUSTOM_DATA, stack, tag);
+        ItemStack extra = new ItemStack(stack.getItem());
+        CompoundTag extraTag = new CompoundTag();
+        extraTag.putInt(RECLAIMED_UNITS_TAG, rest);
+        extraTag.putString(RECLAIMED_MATERIAL_TAG, material);
+        net.minecraft.world.item.component.CustomData.set(DataComponents.CUSTOM_DATA, extra, extraTag);
+        if (!player.getInventory().add(extra)) player.drop(extra, false);
+        player.getInventory().setChanged();
+        return true;
+    }
+
     /** True when a stack is a block (or a tagged fragment) of the given material. */
     private boolean matchesMaterial(ItemStack stack, String material) {
         if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) return false;

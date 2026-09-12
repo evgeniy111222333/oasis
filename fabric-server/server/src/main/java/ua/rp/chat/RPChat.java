@@ -302,6 +302,11 @@ public class RPChat implements DedicatedServerModInitializer {
             if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
             if (isPendingAuth(serverPlayer)) return InteractionResult.FAIL;
             if (acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
+            // Loose microvoxel fragments: RMB merges matching fragments, Shift+RMB splits one.
+            if (microvoxelManager.consolidateFragments(
+                    serverPlayer, hand, serverPlayer.isShiftKeyDown())) {
+                return InteractionResult.SUCCESS;
+            }
             return staminaManager.onTreat(serverPlayer, hand) ? InteractionResult.SUCCESS : InteractionResult.PASS;
         });
 

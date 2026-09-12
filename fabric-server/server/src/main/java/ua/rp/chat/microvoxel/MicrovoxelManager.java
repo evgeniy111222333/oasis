@@ -360,6 +360,21 @@ public final class MicrovoxelManager {
                     + " store.dirtyRegions=" + runtime.store().dirtyRegionCount()
                     + " store.journalBytes=" + runtime.store().journalSizeBytes());
         }
+        if (tick % 20 == 0) refreshEncumbrance();
+    }
+
+    /** Loose microvoxel matter is heavy: a hidden Slowness refresh once per second. */
+    private static final long ENCUMBRANCE_THRESHOLD_CELLS = 4096L;
+    private static final long ENCUMBRANCE_STEP_CELLS = 4096L;
+
+    private void refreshEncumbrance() {
+        for (ServerPlayer player : plugin.getServer().getPlayerList().getPlayers()) {
+            long cells = economy.carriedMicrovoxelCells(player);
+            if (cells <= ENCUMBRANCE_THRESHOLD_CELLS) continue;
+            int amplifier = (int) Math.min(4L, (cells - ENCUMBRANCE_THRESHOLD_CELLS) / ENCUMBRANCE_STEP_CELLS);
+            player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+                    net.minecraft.world.effect.MobEffects.SLOWNESS, 40, amplifier, false, false));
+        }
     }
 
     public void handleAction(ServerPlayer player, int protocolVersion, long transactionId,
@@ -805,6 +820,12 @@ public final class MicrovoxelManager {
     /** Collision cache for sibling systems committing geometry. */
     public MicrovoxelCollision collision() {
         return collision;
+    }
+
+    /** Merge/split loose microvoxel fragments held in the given hand (RMB behaviour). */
+    public boolean consolidateFragments(ServerPlayer player, net.minecraft.world.InteractionHand hand,
+                                        boolean split) {
+        return economy.consolidateFragments(player, player.getItemInHand(hand), split);
     }
 
     /** Material economy for sibling systems issuing refunds. */

@@ -50,6 +50,7 @@ public final class MicrovoxelServerCoreTest {
         verifyMicrovoxelGenerators();
         verifyPortableGeometryRoundTrip();
         verifyMaterialPalette();
+        verifyVolumeEconomy();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1746,6 +1747,33 @@ public final class MicrovoxelServerCoreTest {
                 "An empty inventory must yield an empty palette");
 
         System.out.println("MicrovoxelMaterialPaletteTest: fragment-first, auto-convert totals and cap passed");
+    }
+
+    /**
+     * Volume economy: a placed cell costs its real occupancy (full cube = one cell, a slab half),
+     * and one full block is exactly 4096 cells.
+     */
+    private static void verifyVolumeEconomy() {
+        int cell = ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL;
+        int block = ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_BLOCK;
+        require(cell == 4096 && block == 4096 * 4096,
+                "The ledger must run in 1/4096-cell units with 4096 cells per block");
+        require(ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cellCost(0) == cell,
+                "A full cube cell must cost exactly one cell");
+        int slab = ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cellCost(
+                MicrovoxelShape.Type.SLAB_BOTTOM.ordinal());
+        require(slab == cell / 2, "A bottom slab must cost half a cell");
+        int ramp = ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cellCost(
+                MicrovoxelShape.Type.RAMP_S.ordinal());
+        require(ramp == MicrovoxelShape.byId(MicrovoxelShape.Type.RAMP_S.ordinal()).solidCells()
+                        && ramp > 0 && ramp < cell,
+                "A ramp must cost its occupancy, between a slab and a full cube");
+        require(ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cells(0) == 0
+                        && ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cells(1) == 1
+                        && ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cells(cell) == 1
+                        && ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.cells(cell + 1) == 2,
+                "Unit-to-cell rounding must be conservative (ceil)");
+        System.out.println("MicrovoxelVolumeEconomyTest: occupancy pricing and unit scale passed");
     }
 
     /**
