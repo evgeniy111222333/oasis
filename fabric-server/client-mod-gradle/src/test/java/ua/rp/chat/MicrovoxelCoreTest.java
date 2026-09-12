@@ -24,7 +24,7 @@ public final class MicrovoxelCoreTest {
     private MicrovoxelCoreTest() {
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         verifyPredictionReplay();
         verifyCavityRaycast();
         verifyDraftMaskedRaycast();
@@ -39,6 +39,7 @@ public final class MicrovoxelCoreTest {
         verifyLightSealingMirror();
         verifyFluidCodecMirror();
         verifyVisualIdentityAndBounds();
+        verifyPortableGeometryCodec();
         require(close(MicrovoxelItemScale.resultingHandFraction(
                                 ItemDisplayContext.FIRST_PERSON_RIGHT_HAND), 0.60f)
                         && close(MicrovoxelItemScale.resultingHandFraction(
@@ -88,6 +89,9 @@ public final class MicrovoxelCoreTest {
                             && Arrays.equals(decoded.cellsCopy(), carvedFixture().cellsCopy()),
                     "Portable item decoding must preserve the exact authored 16^3 geometry");
             byte[] trailing = Arrays.copyOf(portable, portable.length + 1);
+            // The new format ends with an optional geometry section flag; a lone "true" flag with
+            // no length is genuinely malformed and must be rejected.
+            trailing[trailing.length - 1] = 1;
             boolean trailingRejected = false;
             try {
                 MicrovoxelPortableVolume.decode(trailing);
@@ -202,6 +206,52 @@ public final class MicrovoxelCoreTest {
                         && !rejectedRollback.occupied(secondRemoval),
                 "A rejected edit must roll back without discarding later pending work");
         System.out.println("MicrovoxelCoreTest passed");
+    }
+
+    /**
+     * The client portable decoder must match the server writer: a shaped item's geometry survives,
+     * and a legacy payload (no geometry section) still parses.
+     */
+    private static void verifyPortableGeometryCodec() throws Exception {
+        MicrovoxelVolume shaped = MicrovoxelVolume.full("minecraft:stone");
+        shaped.setShape(50, MicrovoxelShape.Type.RAMP_S.ordinal());
+
+        MicrovoxelVolume decoded = ua.rp.chat.microvoxel.MicrovoxelPortableVolume.decode(
+                portableBytes(shaped, true));
+        require(decoded.shapeAt(50) == MicrovoxelShape.Type.RAMP_S.ordinal(),
+                "The client portable decoder must preserve the geometry channel");
+
+        MicrovoxelVolume legacy = ua.rp.chat.microvoxel.MicrovoxelPortableVolume.decode(
+                portableBytes(shaped, false));
+        require(!legacy.hasGeometry() && legacy.occupied(50),
+                "Legacy portable payloads without a geometry section must still parse");
+        System.out.println("MicrovoxelPortableVolumeTest: geometry decode and legacy tolerance passed");
+    }
+
+    /** Encodes the portable payload exactly as the server writer does (geometry section optional). */
+    private static byte[] portableBytes(MicrovoxelVolume volume, boolean withGeometry) throws Exception {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(bos)) {
+            out.writeInt(volume.revision());
+            out.writeByte(volume.palette().size());
+            for (String material : volume.palette()) {
+                byte[] utf8 = material.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                out.writeShort(utf8.length);
+                out.write(utf8);
+            }
+            out.write(volume.cellsCopy());
+            if (withGeometry) {
+                ua.rp.chat.microvoxel.MicrovoxelGeometry geometry = volume.geometryOrNull();
+                boolean has = geometry != null && !geometry.isEmpty();
+                out.writeBoolean(has);
+                if (has) {
+                    byte[] encoded = geometry.encode();
+                    out.writeInt(encoded.length);
+                    out.write(encoded);
+                }
+            }
+        }
+        return bos.toByteArray();
     }
 
     private static void verifyVisualIdentityAndBounds() {

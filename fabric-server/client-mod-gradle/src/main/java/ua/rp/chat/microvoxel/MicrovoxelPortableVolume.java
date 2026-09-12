@@ -52,10 +52,29 @@ public final class MicrovoxelPortableVolume {
             }
 
             byte[] cells = input.readNBytes(MicrovoxelVolume.CELL_COUNT);
-            if (cells.length != MicrovoxelVolume.CELL_COUNT || input.available() != 0) {
-                throw new IOException("Truncated or trailing portable microvoxel cells");
+            if (cells.length != MicrovoxelVolume.CELL_COUNT) {
+                throw new IOException("Truncated portable microvoxel cells");
             }
-            return new MicrovoxelVolume(revision, palette, cells);
+            // Legacy items carry no geometry section; new ones append an optional one. The shape
+            // shown in the hand and the shape placed in the world share this single representation.
+            MicrovoxelGeometry geometry = null;
+            if (input.available() > 0) {
+                if (input.readBoolean()) {
+                    int length = input.readInt();
+                    if (length < 0 || length > MAX_BYTES) {
+                        throw new IOException("Invalid portable microvoxel geometry length");
+                    }
+                    byte[] encoded = input.readNBytes(length);
+                    if (encoded.length != length) {
+                        throw new EOFException("Truncated portable microvoxel geometry");
+                    }
+                    geometry = MicrovoxelGeometry.decode(encoded);
+                }
+            }
+            if (input.available() != 0) {
+                throw new IOException("Trailing portable microvoxel bytes");
+            }
+            return new MicrovoxelVolume(revision, palette, cells, geometry);
         } catch (IllegalArgumentException error) {
             throw new IOException("Invalid portable microvoxel volume", error);
         }
