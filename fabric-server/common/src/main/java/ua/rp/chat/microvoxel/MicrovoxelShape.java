@@ -318,9 +318,20 @@ public final class MicrovoxelShape {
      */
     public MicrovoxelRaycaster.Hit raycast(double ox, double oy, double oz,
                                            double dx, double dy, double dz, double maxDistance) {
-        return MicrovoxelRaycaster.cast(ox, oy, oz, dx, dy, dz, maxDistance,
-                List.of(new MicrovoxelRaycaster.Entry(0, 0, 0, shapeVolume())));
+        List<MicrovoxelRaycaster.Entry> entries = raycastEntries;
+        if (entries == null) {
+            synchronized (this) {
+                entries = raycastEntries;
+                if (entries == null) {
+                    entries = List.of(new MicrovoxelRaycaster.Entry(0, 0, 0, shapeVolume()));
+                    raycastEntries = entries;
+                }
+            }
+        }
+        return MicrovoxelRaycaster.cast(ox, oy, oz, dx, dy, dz, maxDistance, entries);
     }
+
+    private volatile List<MicrovoxelRaycaster.Entry> raycastEntries;
 
     private static int computeFaceFullMask(long[] mask) {
         int result = 0;

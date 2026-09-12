@@ -142,7 +142,9 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             return;
         }
         List<MicrovoxelGreedyMesher.Face> mesh = geometryProvider.meshFor(pos);
-        if (mesh.isEmpty()) {
+        boolean hasGeometry = cached.volume.hasGeometry();
+        // A fully shaped volume has no full-cube faces, but its shape channel still renders.
+        if (mesh.isEmpty() && !hasGeometry) {
             return;
         }
 
@@ -175,7 +177,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
         // Geometry channel: shaped cells emit their own sub-voxel mesh.
         MicrovoxelGeometry geometry = cached.volume.geometryOrNull();
         if (geometry != null) {
-            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
+            for (int cell : geometry.shapedCellIndex()) {
                 int shapeId = geometry.shapeAt(cell);
                 if (shapeId == 0) continue;
                 int material = cached.volume.materialIndex(cell);
@@ -276,6 +278,34 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
         float x1 = ox + face.maxX() / 256.0f;
         float y1 = oy + face.maxY() / 256.0f;
         float z1 = oz + face.maxZ() / 256.0f;
+        // Nudge every face slightly outward along its normal so a face flush with a neighbouring
+        // full cell (or real block) wins the depth test instead of z-fighting its coplanar plane.
+        switch (face.direction()) {
+            case WEST -> {
+                x0 -= SHAPE_EPS;
+                x1 -= SHAPE_EPS;
+            }
+            case EAST -> {
+                x0 += SHAPE_EPS;
+                x1 += SHAPE_EPS;
+            }
+            case DOWN -> {
+                y0 -= SHAPE_EPS;
+                y1 -= SHAPE_EPS;
+            }
+            case UP -> {
+                y0 += SHAPE_EPS;
+                y1 += SHAPE_EPS;
+            }
+            case NORTH -> {
+                z0 -= SHAPE_EPS;
+                z1 -= SHAPE_EPS;
+            }
+            case SOUTH -> {
+                z0 += SHAPE_EPS;
+                z1 += SHAPE_EPS;
+            }
+        }
         switch (face.direction()) {
             case NORTH -> positions(emitter, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
             case SOUTH -> positions(emitter, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
@@ -321,6 +351,8 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
 
     /** Outward inflation of the crack cube so it never z-fights the cell's material faces. */
     private static final float CRACK_INFLATE = 0.001f;
+    /** Tiny outward nudge of shape faces to avoid z-fighting a flush full neighbour. */
+    private static final float SHAPE_EPS = 0.0005f;
 
     private static volatile net.minecraft.client.renderer.texture.TextureAtlas destroyStagesAtlas;
     private static volatile net.minecraft.client.resources.model.sprite.Material.Baked[] destroyStages;

@@ -29,6 +29,8 @@ public final class MicrovoxelGeometry {
     private int[] palette;
     private byte[] cells;
     private int shapedCells;
+    /** Lazily built list of shaped cell indices; nulled on every mutation. */
+    private transient volatile int[] shapedIndex;
 
     private MicrovoxelGeometry(int[] palette, byte[] cells, int shapedCells) {
         this.palette = palette;
@@ -73,6 +75,7 @@ public final class MicrovoxelGeometry {
         if (shapeId == 0) {
             cells[cell] = 0;
             shapedCells--;
+            shapedIndex = null;
             compactIfPossible();
             return true;
         }
@@ -88,7 +91,34 @@ public final class MicrovoxelGeometry {
         }
         if (previousShape == 0) shapedCells++;
         cells[cell] = (byte) index;
+        shapedIndex = null;
         return true;
+    }
+
+    /**
+     * Shaped cell indices, cached and rebuilt on mutation. The renderer iterates this instead of
+     * scanning all 4096 cells per section compile, so a shaped volume costs only its real cells.
+     */
+    public int[] shapedCellIndex() {
+        int[] index = shapedIndex;
+        if (index == null) {
+            synchronized (this) {
+                index = shapedIndex;
+                if (index == null) {
+                    int[] built = new int[shapedCells];
+                    int cursor = 0;
+                    for (int cell = 0; cell < CELL_COUNT && cursor < built.length; cell++) {
+                        int paletteIndex = cells[cell] & 0xFF;
+                        if (paletteIndex < palette.length && palette[paletteIndex] != 0) {
+                            built[cursor++] = cell;
+                        }
+                    }
+                    index = cursor == built.length ? built : Arrays.copyOf(built, cursor);
+                    shapedIndex = index;
+                }
+            }
+        }
+        return index;
     }
 
     private int indexOfShape(int shapeId) {

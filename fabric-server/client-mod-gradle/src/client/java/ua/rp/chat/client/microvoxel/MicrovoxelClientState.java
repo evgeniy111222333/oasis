@@ -625,6 +625,12 @@ public final class MicrovoxelClientState {
         public List<MicrovoxelGreedyMesher.Face> meshFor(BlockPos position) {
             CachedVolume cached = VOLUMES.get(position.immutable());
             if (cached == null) return List.of();
+            if (cached.volume.hasGeometry()) {
+                // Shaped cells are rendered by the section model, not the full-cube greedy mesh,
+                // so a shaped volume always uses its exact stride-1 mesh and ignores LOD tiers to
+                // avoid a coarse full-cube mesh double-drawing the shapes.
+                return cached.mesh;
+            }
             int revision = cached.volume.revision();
             if (cached.lodTier == ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.FAR
                     && cached.farMesh != null && cached.farMeshRevision == revision) {
@@ -1558,7 +1564,7 @@ public final class MicrovoxelClientState {
             ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier want =
                     ua.rp.chat.microvoxel.MicrovoxelLodTiers.wantTier(
                             distanceSquared, cached.lodTier);
-            if (hero != null && hero.equals(cached.position)) {
+            if (cached.volume.hasGeometry() || (hero != null && hero.equals(cached.position))) {
                 want = ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.NEAR;
             }
             if (want != cached.lodTier) {
@@ -1645,7 +1651,8 @@ public final class MicrovoxelClientState {
         CachedVolume center = VOLUMES.get(immutablePos);
         if (center == null) return;
 
-        int stride = ua.rp.chat.microvoxel.MicrovoxelLodTiers.strideFor(center.lodTier);
+        int stride = center.volume.hasGeometry()
+                ? 1 : ua.rp.chat.microvoxel.MicrovoxelLodTiers.strideFor(center.lodTier);
         MeshJob job = new MeshJob(stateGeneration, center.volume.revision(), stride);
         if (MESHING_JOBS.putIfAbsent(immutablePos, job) != null) {
             MESH_DIRTY_DURING_BUILD.add(immutablePos);
@@ -1714,8 +1721,10 @@ public final class MicrovoxelClientState {
                     }
                     return neighbourSolid ? 1 : 0;
                 };
-                List<MicrovoxelGreedyMesher.Face> mesh =
-                        MicrovoxelGreedyMesher.build(centerVol, neighbours, jobStride);
+                List<MicrovoxelGreedyMesher.Face> mesh = center.volume.hasGeometry()
+                        ? MicrovoxelGreedyMesher.build(centerVol, neighbours,
+                                cell -> centerVol.shapeAt(cell) != 0)
+                        : MicrovoxelGreedyMesher.build(centerVol, neighbours, jobStride);
                 MicrovoxelClientMetrics.inc("mesh.jobs");
                 MicrovoxelClientMetrics.add("mesh.us", (System.nanoTime() - meshStart) / 1000L);
 

@@ -1756,6 +1756,16 @@ public final class MicrovoxelServerCoreTest {
                 "RAMP_S must miss a low ray travelling north");
         require(ramp.raycast(0.5, 0.5, 0.2, 0, 0, 1, 2.0) != null,
                 "RAMP_S must hit a low ray travelling south");
+
+        // The full-cube mesh must be able to exclude shaped cells, so the renderer draws the shape
+        // instead of a cube (hiding the cell opens a cavity, raising the face count).
+        MicrovoxelVolume shapedVolume = MicrovoxelVolume.full("minecraft:stone");
+        shapedVolume.setShape(MicrovoxelVolume.index(8, 8, 8), ramp.id());
+        int plainFaces = MicrovoxelGreedyMesher.build(shapedVolume, shapedVolume::materialAt).size();
+        int hiddenFaces = MicrovoxelGreedyMesher.build(shapedVolume, shapedVolume::materialAt,
+                cell -> shapedVolume.shapeAt(cell) != 0).size();
+        require(plainFaces == 6 && hiddenFaces > 6,
+                "Hiding shaped cells must exclude them from the full-cube greedy mesh");
         System.out.println("MicrovoxelShapeTest: catalog occupancy, faces and fractions passed");
     }
 

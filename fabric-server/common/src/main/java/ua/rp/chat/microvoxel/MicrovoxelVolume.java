@@ -38,11 +38,16 @@ public final class MicrovoxelVolume {
 
     public MicrovoxelVolume(int revision, List<String> palette, byte[] cells,
                             MicrovoxelGeometry geometry) {
+        this(revision, palette, cells, geometry, true);
+    }
+
+    private MicrovoxelVolume(int revision, List<String> palette, byte[] cells,
+                             MicrovoxelGeometry geometry, boolean validate) {
         this.revision = Math.max(1, revision);
         this.palette = new ArrayList<>(palette);
         this.cells = cells.clone();
         this.geometry = geometry == null || geometry.isEmpty() ? null : geometry.copy();
-        validate();
+        if (validate) validate();
     }
 
     public static MicrovoxelVolume full(String blockData) {
@@ -68,7 +73,8 @@ public final class MicrovoxelVolume {
     }
 
     public MicrovoxelVolume copy() {
-        return new MicrovoxelVolume(revision, palette, cells, geometry);
+        // The source is already validated, so the copy skips the 4096-cell validation scan.
+        return new MicrovoxelVolume(revision, palette, cells, geometry, false);
     }
 
     /** True when at least one cell carries a non-full shape. */
