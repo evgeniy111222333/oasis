@@ -2089,27 +2089,44 @@ public final class MicrovoxelClientState {
 
     private static VoxelShape buildShape(MicrovoxelVolume volume) {
         MicrovoxelVolume.CollisionPlan plan = volume.collisionPlan();
+        VoxelShape base;
         if (plan.backend() == MicrovoxelVolume.CollisionBackend.GRID) {
             BitSetDiscreteVoxelShape discrete = new BitSetDiscreteVoxelShape(
                     MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION);
             for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
-                if (volume.occupied(cell)) {
+                // Shaped cells are collided by shapeBoxes below, never as a full 1/16 cube.
+                if (volume.occupied(cell) && volume.shapeAt(cell) == 0) {
                     discrete.fill(MicrovoxelVolume.x(cell), MicrovoxelVolume.y(cell), MicrovoxelVolume.z(cell));
                 }
             }
-            return CubeVoxelShapeInvoker.eclipse$create(discrete);
+            base = CubeVoxelShapeInvoker.eclipse$create(discrete);
+        } else {
+            List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
+            if (cuboids.isEmpty()) {
+                base = Shapes.empty();
+            } else {
+                VoxelShape[] parts = new VoxelShape[cuboids.size()];
+                for (int index = 0; index < cuboids.size(); index++) {
+                    MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
+                    parts[index] = Shapes.box(
+                            cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
+                            cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
+                }
+                base = combineShapes(parts, 0, parts.length).optimize();
+            }
         }
 
-        List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
-        if (cuboids.isEmpty()) return Shapes.empty();
-        VoxelShape[] parts = new VoxelShape[cuboids.size()];
-        for (int index = 0; index < cuboids.size(); index++) {
-            MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
+        List<MicrovoxelVolume.SubBox> shaped = volume.shapeBoxes();
+        if (shaped.isEmpty()) return base;
+        VoxelShape[] parts = new VoxelShape[shaped.size()];
+        for (int index = 0; index < shaped.size(); index++) {
+            MicrovoxelVolume.SubBox box = shaped.get(index);
+            double scale = 1.0 / MicrovoxelVolume.SUB_BLOCK_UNITS;
             parts[index] = Shapes.box(
-                    cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
-                    cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
+                    box.minX() * scale, box.minY() * scale, box.minZ() * scale,
+                    box.maxX() * scale, box.maxY() * scale, box.maxZ() * scale);
         }
-        return combineShapes(parts, 0, parts.length).optimize();
+        return Shapes.or(base, combineShapes(parts, 0, parts.length)).optimize();
     }
 
     private static BlockPos readPosition(DataInputStream input) throws IOException {

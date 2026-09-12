@@ -11,6 +11,8 @@ public final class MicrovoxelVolume {
     public static final int CELL_COUNT = RESOLUTION * RESOLUTION * RESOLUTION;
     public static final int MAX_PALETTE = 32;
     public static final int SIMPLE_COLLISION_CUBOID_LIMIT = 64;
+    /** Sub-cell units per block: {@link #RESOLUTION} cells times {@link MicrovoxelShape#SUB} per cell. */
+    public static final int SUB_BLOCK_UNITS = RESOLUTION * MicrovoxelShape.SUB;
 
     private int revision;
     private final List<String> palette;
@@ -23,6 +25,8 @@ public final class MicrovoxelVolume {
     private MicrovoxelGeometry geometry;
     private transient volatile List<Cuboid> collisionCuboids;
     private transient volatile CollisionPlan collisionPlan;
+    /** Sub-cell colliders of shaped cells, in 1/256-block units; null until first requested. */
+    private transient volatile List<SubBox> shapeBoxes;
     /**
      * Publication flag. Once the store owns this instance it is immutable: the persistence
      * worker reads the live cells concurrently with the server thread, so mutating a published
@@ -528,6 +532,11 @@ public final class MicrovoxelVolume {
         return count;
     }
 
+    /**
+     * Merged full-cube colliders in 1/16-block units (0..16). Shaped cells are deliberately left
+     * out: their collision comes from {@link #shapeBoxes()} at 1/256 precision instead, so a shaped
+     * cell is never a full block. An all-cube volume is unaffected and keeps its merged colliders.
+     */
     public List<Cuboid> collisionCuboids() {
         List<Cuboid> existing = collisionCuboids;
         if (existing != null) return existing;
@@ -536,6 +545,44 @@ public final class MicrovoxelVolume {
         List<Cuboid> result = buildCuboids(Integer.MAX_VALUE);
         collisionCuboids = result;
         return result;
+    }
+
+    /**
+     * Sub-cell colliders of the shaped cells, merged to AABBs in 1/256-block units (0..256), cached.
+     * A shaped cell contributes the merged collision cuboids of its {@link MicrovoxelShape} offset
+     * into the cell, so a slab collides as a slab and a ramp as a ramp. Empty (and zero-cost) when
+     * the volume has no geometry.
+     */
+    public List<SubBox> shapeBoxes() {
+        if (geometry == null) return List.of();
+        List<SubBox> cached = shapeBoxes;
+        if (cached == null) {
+            synchronized (this) {
+                cached = shapeBoxes;
+                if (cached == null) {
+                    cached = buildShapeBoxes();
+                    shapeBoxes = cached;
+                }
+            }
+        }
+        return cached;
+    }
+
+    private List<SubBox> buildShapeBoxes() {
+        List<SubBox> result = new ArrayList<>();
+        for (int cell : geometry.shapedCellIndex()) {
+            int shapeId = geometry.shapeAt(cell);
+            if (shapeId == 0) continue;
+            int baseX = x(cell) * RESOLUTION;
+            int baseY = y(cell) * RESOLUTION;
+            int baseZ = z(cell) * RESOLUTION;
+            for (Cuboid cuboid : MicrovoxelShape.byId(shapeId).collisionCuboids()) {
+                result.add(new SubBox(
+                        baseX + cuboid.minX(), baseY + cuboid.minY(), baseZ + cuboid.minZ(),
+                        baseX + cuboid.maxX(), baseY + cuboid.maxY(), baseZ + cuboid.maxZ()));
+            }
+        }
+        return List.copyOf(result);
     }
 
     /**
@@ -552,7 +599,7 @@ public final class MicrovoxelVolume {
         for (int y = 0; y < RESOLUTION; y++) {
             for (int z = 0; z < RESOLUTION; z++) {
                 for (int x = 0; x < RESOLUTION; x++) {
-                    if (cells[index(x, y, z)] == 0) continue;
+                    if (!collisionCell(index(x, y, z))) continue;
                     xLines[(y << 4) | z] |= (short) (1 << x);
                     yLines[(z << 4) | x] |= (short) (1 << y);
                     zLines[(y << 4) | x] |= (short) (1 << z);
@@ -577,7 +624,7 @@ public final class MicrovoxelVolume {
             for (int z = 0; z < RESOLUTION; z++) {
                 for (int x = 0; x < RESOLUTION; x++) {
                     int start = index(x, y, z);
-                    if (cells[start] == 0 || used[start]) continue;
+                    if (!collisionCell(start) || used[start]) continue;
                     int maxX = x + 1;
                     while (maxX < RESOLUTION && canExtendX(used, maxX, y, z)) maxX++;
                     int maxZ = z + 1;
@@ -599,13 +646,13 @@ public final class MicrovoxelVolume {
 
     private boolean canExtendX(boolean[] used, int x, int y, int z) {
         int cell = index(x, y, z);
-        return cells[cell] != 0 && !used[cell];
+        return collisionCell(cell) && !used[cell];
     }
 
     private boolean canExtendZ(boolean[] used, int minX, int maxX, int y, int z) {
         for (int x = minX; x < maxX; x++) {
             int cell = index(x, y, z);
-            if (cells[cell] == 0 || used[cell]) return false;
+            if (!collisionCell(cell) || used[cell]) return false;
         }
         return true;
     }
@@ -614,16 +661,25 @@ public final class MicrovoxelVolume {
         for (int z = minZ; z < maxZ; z++) {
             for (int x = minX; x < maxX; x++) {
                 int cell = index(x, y, z);
-                if (cells[cell] == 0 || used[cell]) return false;
+                if (!collisionCell(cell) || used[cell]) return false;
             }
         }
         return true;
+    }
+
+    /**
+     * Whether a cell contributes a full-cube collider. A shaped cell is occupied but is collided
+     * through {@link #shapeBoxes()} instead, so it must never widen a merged full-cube box.
+     */
+    private boolean collisionCell(int cell) {
+        return cells[cell] != 0 && (geometry == null || geometry.shapeAt(cell) == 0);
     }
 
     private void changed() {
         revision = MicrovoxelRevision.next(revision);
         collisionCuboids = null;
         collisionPlan = null;
+        shapeBoxes = null;
     }
 
     private void validate() {
@@ -681,6 +737,14 @@ public final class MicrovoxelVolume {
     }
 
     public record Cuboid(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    }
+
+    /**
+     * An axis-aligned collider in 1/256-block units (0..256), used only by shaped cells. The finer
+     * scale is what lets a slab stop the player at half a block and a ramp at every sub-cell step;
+     * full-cube cells keep the cheaper 1/16 {@link Cuboid} representation.
+     */
+    public record SubBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
     }
 
     public enum CollisionBackend { CUBOIDS, GRID }

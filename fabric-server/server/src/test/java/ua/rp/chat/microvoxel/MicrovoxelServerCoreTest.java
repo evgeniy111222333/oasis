@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import ua.rp.chat.interaction.ItemPickupRules;
+import ua.rp.chat.microvoxel.collision.MicrovoxelCollision;
 import ua.rp.chat.microvoxel.fluid.FluidSim;
 import ua.rp.chat.microvoxel.fluid.FluidStore;
 import ua.rp.chat.interaction.ItemPickupManager;
@@ -43,6 +44,7 @@ public final class MicrovoxelServerCoreTest {
         verifyMicrovoxelShapes();
         verifyMicrovoxelGeometryChannel();
         verifyVolumeGeometryIntegration();
+        verifyShapeCollisionAndRaycast();
         verifyGeometryPersistence();
         verifyEditHistoryGeometryEquality();
         verifyMicrovoxelGenerators();
@@ -1700,6 +1702,67 @@ public final class MicrovoxelServerCoreTest {
         }
         require(rejected, "An unknown shape id must fail closed");
         System.out.println("MicrovoxelVolumeGeometryTest: channel integration, copy-on-write and clear passed");
+    }
+
+    /**
+     * The geometry layer must actually drive collision and targeting: a shaped cell is excluded from
+     * the merged full-cube colliders, exposes 1/256-block sub-cell boxes, contributes those to the
+     * native VoxelShape, and the DDA ray stops on the partial surface instead of the whole cell.
+     */
+    private static void verifyShapeCollisionAndRaycast() {
+        MicrovoxelVolume slabVolume = MicrovoxelVolume.empty();
+        slabVolume.put(0, "minecraft:stone");
+        slabVolume.setShape(0, MicrovoxelShape.Type.SLAB_BOTTOM.ordinal());
+
+        require(slabVolume.collisionCuboids().isEmpty(),
+                "A shaped cell must be excluded from the merged full-cube colliders");
+        List<MicrovoxelVolume.SubBox> boxes = slabVolume.shapeBoxes();
+        require(boxes.size() == 1 && boxes.getFirst().maxY() == 8
+                        && boxes.getFirst().maxX() == MicrovoxelVolume.RESOLUTION
+                        && boxes.getFirst().maxZ() == MicrovoxelVolume.RESOLUTION,
+                "A bottom slab must expose one sub-cell collider eight sub-units tall");
+
+        VoxelShape nativeShape = MicrovoxelCollision.buildNativeShape(slabVolume);
+        boolean halfHeight = nativeShape.toAabbs().stream()
+                .anyMatch(box -> Math.abs(box.maxY - 0.03125) < 1.0E-4
+                        && Math.abs(box.maxX - 0.0625) < 1.0E-4);
+        require(halfHeight,
+                "The native shape must collide the slab at half-cell height, not the full cell");
+
+        List<MicrovoxelRaycaster.Entry> entries = List.of(
+                new MicrovoxelRaycaster.Entry(0, 0, 0, slabVolume));
+        MicrovoxelRaycaster.Hit lower = MicrovoxelRaycaster.cast(
+                -0.5, 0.015625, 0.03125, 1, 0, 0, 4.0, entries);
+        require(lower != null && Math.abs(lower.distance() - 0.5) < 1.0E-4,
+                "A ray through the solid half of a bottom slab must stop at the cell face");
+        MicrovoxelRaycaster.Hit upper = MicrovoxelRaycaster.cast(
+                -0.5, 0.046875, 0.03125, 1, 0, 0, 4.0, entries);
+        require(upper == null,
+                "A ray through the empty half of a bottom slab must pass through untouched");
+
+        MicrovoxelRaycaster.Hit fromAbove = MicrovoxelRaycaster.cast(
+                0.03125, 1.0, 0.03125, 0, -1, 0, 4.0, entries);
+        require(fromAbove != null && Math.abs(fromAbove.distance() - 0.96875) < 1.0E-4
+                        && fromAbove.face() == MicrovoxelGreedyMesher.Direction.UP,
+                "A ray from above must land on the slab's top surface, not the cell top");
+
+        // A fragmented volume on the compact grid backend must still drop a cell that becomes shaped,
+        // both from the discrete mask and from the merged colliders, falling back to its sub-cell box.
+        byte[] checkerCells = new byte[MicrovoxelVolume.CELL_COUNT];
+        for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+            if (((x + y + z) & 1) == 0) checkerCells[MicrovoxelVolume.index(x, y, z)] = 1;
+        }
+        MicrovoxelVolume gridded = MicrovoxelVolume.restore(
+                1, List.of("", "minecraft:iron_bars"), checkerCells);
+        require(gridded.collisionPlan().backend() == MicrovoxelVolume.CollisionBackend.GRID,
+                "The checkerboard must keep the grid collision backend");
+        gridded.setShape(MicrovoxelVolume.index(0, 0, 0), MicrovoxelShape.Type.SLAB_BOTTOM.ordinal());
+        require((gridded.collisionPlan().xMask(0, 0) & 1) == 0,
+                "The grid mask must drop a cell that became shaped");
+        require(gridded.shapeBoxes().size() == 1 && gridded.shapeBoxes().getFirst().maxY() == 8,
+                "The shaped grid cell must fall back to a sub-cell collider");
+
+        System.out.println("MicrovoxelShapeCollisionTest: sub-cell colliders, native shape and raycast passed");
     }
 
     /**

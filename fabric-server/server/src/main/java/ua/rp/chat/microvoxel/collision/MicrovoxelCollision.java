@@ -96,6 +96,13 @@ public final class MicrovoxelCollision {
                             clipped = clipAgainst(player, obstacle, clipped, axis);
                         }
                     }
+                    for (MicrovoxelVolume.SubBox box : volume.shapeBoxes()) {
+                        double subScale = 1.0 / MicrovoxelVolume.SUB_BLOCK_UNITS;
+                        AABB obstacle = new AABB(
+                                x + box.minX() * subScale, y + box.minY() * subScale, z + box.minZ() * subScale,
+                                x + box.maxX() * subScale, y + box.maxY() * subScale, z + box.maxZ() * subScale);
+                        clipped = clipAgainst(player, obstacle, clipped, axis);
+                    }
                 }
             }
         }
@@ -379,36 +386,53 @@ public final class MicrovoxelCollision {
 
     public static VoxelShape buildNativeShape(MicrovoxelVolume volume) {
         MicrovoxelVolume.CollisionPlan plan = volume.collisionPlan();
+        VoxelShape base;
         if (plan.backend() == MicrovoxelVolume.CollisionBackend.GRID) {
             BitSetDiscreteVoxelShape discrete = new BitSetDiscreteVoxelShape(
                     MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION);
             for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
-                if (volume.occupied(cell)) {
+                // Shaped cells are collided by shapeBoxes below, never as a full 1/16 cube.
+                if (volume.occupied(cell) && volume.shapeAt(cell) == 0) {
                     discrete.fill(MicrovoxelVolume.x(cell), MicrovoxelVolume.y(cell), MicrovoxelVolume.z(cell));
                 }
             }
-            return CubeVoxelShapeInvoker.eclipse$create(discrete);
-        }
-
-        List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
-        if (cuboids.isEmpty()) return Shapes.empty();
-        if (cuboids.size() == 1) {
-            MicrovoxelVolume.Cuboid only = cuboids.getFirst();
-            if (only.minX() == 0 && only.minY() == 0 && only.minZ() == 0
-                    && only.maxX() == MicrovoxelVolume.RESOLUTION
-                    && only.maxY() == MicrovoxelVolume.RESOLUTION
-                    && only.maxZ() == MicrovoxelVolume.RESOLUTION) {
-                return Shapes.block();
+            base = CubeVoxelShapeInvoker.eclipse$create(discrete);
+        } else {
+            List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
+            if (cuboids.isEmpty()) {
+                base = Shapes.empty();
+            } else if (cuboids.size() == 1 && coversWholeVolume(cuboids.getFirst())) {
+                base = Shapes.block();
+            } else {
+                VoxelShape[] parts = new VoxelShape[cuboids.size()];
+                for (int index = 0; index < cuboids.size(); index++) {
+                    MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
+                    parts[index] = Shapes.box(
+                            cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
+                            cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
+                }
+                base = combineShapes(parts, 0, parts.length).optimize();
             }
         }
-        VoxelShape[] parts = new VoxelShape[cuboids.size()];
-        for (int index = 0; index < cuboids.size(); index++) {
-            MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
+
+        List<MicrovoxelVolume.SubBox> shaped = volume.shapeBoxes();
+        if (shaped.isEmpty()) return base;
+        VoxelShape[] parts = new VoxelShape[shaped.size()];
+        for (int index = 0; index < shaped.size(); index++) {
+            MicrovoxelVolume.SubBox box = shaped.get(index);
+            double scale = 1.0 / MicrovoxelVolume.SUB_BLOCK_UNITS;
             parts[index] = Shapes.box(
-                    cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
-                    cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
+                    box.minX() * scale, box.minY() * scale, box.minZ() * scale,
+                    box.maxX() * scale, box.maxY() * scale, box.maxZ() * scale);
         }
-        return combineShapes(parts, 0, parts.length).optimize();
+        return Shapes.or(base, combineShapes(parts, 0, parts.length)).optimize();
+    }
+
+    private static boolean coversWholeVolume(MicrovoxelVolume.Cuboid cuboid) {
+        return cuboid.minX() == 0 && cuboid.minY() == 0 && cuboid.minZ() == 0
+                && cuboid.maxX() == MicrovoxelVolume.RESOLUTION
+                && cuboid.maxY() == MicrovoxelVolume.RESOLUTION
+                && cuboid.maxZ() == MicrovoxelVolume.RESOLUTION;
     }
 
     private static VoxelShape combineShapes(VoxelShape[] shapes, int start, int end) {

@@ -65,7 +65,15 @@ public final class MicrovoxelRaycaster {
             // through it and can strike the wall of the cavity one layer further in.
             if (entry.volume.materialAt(x, y, z) != 0
                     && (hidden == null || !hidden.hidden(entry, cell))) {
-                return new Hit(entry, cell, enteredFace, t);
+                int shapeId = entry.volume.shapeAt(cell);
+                if (shapeId == 0) {
+                    return new Hit(entry, cell, enteredFace, t);
+                }
+                // A shaped cell only stops the ray where the shape actually is: aim through the
+                // empty half of a slab or over a ramp and the walk continues past the cell.
+                Hit shaped = castShape(entry, cell, x, y, z, ox, oy, oz, dx, dy, dz,
+                        t, maxDistance, shapeId);
+                if (shaped != null) return shaped;
             }
             double tx = nextBoundary(t, ox, dx, entry.x + (dx > 0 ? (x + 1) / 16.0 : x / 16.0));
             double ty = nextBoundary(t, oy, dy, entry.y + (dy > 0 ? (y + 1) / 16.0 : y / 16.0));
@@ -90,6 +98,24 @@ public final class MicrovoxelRaycaster {
             if (!MicrovoxelVolume.inside(x, y, z)) return null;
         }
         return null;
+    }
+
+    /**
+     * Exact ray-vs-shape test inside one occupied, shaped cell. The shape is itself a 16³ mini-volume,
+     * so its own DDA runs in cell-local units and the hit is mapped back to a whole-volume distance.
+     * Null means the ray missed the partial shape and should keep stepping through the cell.
+     */
+    private static Hit castShape(Entry entry, int cell, int x, int y, int z,
+                                 double ox, double oy, double oz, double dx, double dy, double dz,
+                                 double cellEnter, double maxDistance, int shapeId) {
+        double remaining = (maxDistance - cellEnter) * 16.0;
+        if (remaining <= 0.0) return null;
+        double px = (ox + dx * cellEnter - entry.x) * 16.0 - x;
+        double py = (oy + dy * cellEnter - entry.y) * 16.0 - y;
+        double pz = (oz + dz * cellEnter - entry.z) * 16.0 - z;
+        Hit local = MicrovoxelShape.byId(shapeId).raycast(px, py, pz, dx, dy, dz, remaining);
+        if (local == null) return null;
+        return new Hit(entry, cell, local.face(), cellEnter + local.distance() / 16.0);
     }
 
     private static double nextBoundary(double current, double origin, double direction, double boundary) {
