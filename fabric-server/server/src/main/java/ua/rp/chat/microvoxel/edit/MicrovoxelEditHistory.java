@@ -173,8 +173,17 @@ public final class MicrovoxelEditHistory {
     public static boolean sameVolume(MicrovoxelVolume left, MicrovoxelVolume right) {
         if (left == right) return true;
         if (left == null || right == null) return false;
-        return left.palette().equals(right.palette())
-                && java.util.Arrays.equals(left.cellsCopy(), right.cellsCopy());
+        if (!left.palette().equals(right.palette())
+                || !java.util.Arrays.equals(left.cellsCopy(), right.cellsCopy())) {
+            return false;
+        }
+        // Geometry is part of the observable state: a shape-only change must be historical too.
+        ua.rp.chat.microvoxel.MicrovoxelGeometry leftGeometry = left.geometryOrNull();
+        ua.rp.chat.microvoxel.MicrovoxelGeometry rightGeometry = right.geometryOrNull();
+        if (leftGeometry == null || rightGeometry == null) {
+            return leftGeometry == rightGeometry;
+        }
+        return java.util.Arrays.equals(leftGeometry.encode(), rightGeometry.encode());
     }
 
     record EditChange(MicrovoxelKey key, MicrovoxelVolume before, MicrovoxelVolume after) {

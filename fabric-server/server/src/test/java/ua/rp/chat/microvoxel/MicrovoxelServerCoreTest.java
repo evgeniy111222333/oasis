@@ -44,6 +44,7 @@ public final class MicrovoxelServerCoreTest {
         verifyMicrovoxelGeometryChannel();
         verifyVolumeGeometryIntegration();
         verifyGeometryPersistence();
+        verifyEditHistoryGeometryEquality();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1496,6 +1497,22 @@ public final class MicrovoxelServerCoreTest {
         require(!FluidSim.acceptsRain(false, FluidVolume.empty(FluidVolume.Kind.LAVA)),
                 "Rain must never top a lava basin or waterlog it");
         System.out.println("MicrovoxelFluidHardeningTest: orientation and rain gate passed");
+    }
+
+    /** A shape-only change must count as an edit, so undo/redo and conflict checks see it. */
+    private static void verifyEditHistoryGeometryEquality() {
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        MicrovoxelVolume a = MicrovoxelVolume.full("minecraft:stone");
+        MicrovoxelVolume b = a.copy();
+        require(ua.rp.chat.microvoxel.edit.MicrovoxelEditHistory.sameVolume(a, b),
+                "Identical volumes must compare equal");
+        b.setShape(7, ramp);
+        require(!ua.rp.chat.microvoxel.edit.MicrovoxelEditHistory.sameVolume(a, b),
+                "A shape-only change must be observable as an edit");
+        b.setShape(7, 0);
+        require(ua.rp.chat.microvoxel.edit.MicrovoxelEditHistory.sameVolume(a, b),
+                "Clearing the shape must restore equality");
+        System.out.println("MicrovoxelEditHistoryGeometryTest: shape-only edits are historical");
     }
 
     /** The geometry channel must survive the v3 region store, and all-cube volumes stay lean. */

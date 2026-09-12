@@ -32,6 +32,7 @@ public final class MicrovoxelInteractionController {
     public static final int ACTION_BRUSH_ADD = 11;
     public static final int ACTION_COPY = 12;
     public static final int ACTION_PASTE = 13;
+    public static final int ACTION_SET_SHAPE = 16;
     private static KeyMapping modeKey;
     private static KeyMapping convertKey;
     private static KeyMapping undoKey;
@@ -61,6 +62,7 @@ public final class MicrovoxelInteractionController {
     private static int brushRadius = 1;
     private static int clipboardRotation;
     private static boolean clipboardMirror;
+    private static KeyMapping shapeKey;
 
     private MicrovoxelInteractionController() {
     }
@@ -99,6 +101,9 @@ public final class MicrovoxelInteractionController {
         mirrorKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.microvoxel_mirror", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_N, KeyMapping.Category.GAMEPLAY));
+        shapeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.eclipseclient.microvoxel_shape", InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_H, KeyMapping.Category.GAMEPLAY));
     }
 
     public static void tick(Minecraft minecraft) {
@@ -154,6 +159,7 @@ public final class MicrovoxelInteractionController {
             clipboardMirror = !clipboardMirror;
             showClipboardTransform(minecraft);
         }
+        while (editing && shapeKey != null && shapeKey.consumeClick()) cycleShape(minecraft);
         // End of the 50ms coalescing window: lone clicks keep single-packet latency,
         // bursts leave as one batch packet per 16 entries.
         MicrovoxelActionBatcher.flush(minecraft);
@@ -537,6 +543,25 @@ public final class MicrovoxelInteractionController {
     }
 
     public record PreviewCell(BlockPos position, int cell) {
+    }
+
+    /** Cycles the looked-at occupied cell through the shape catalog (H). The server authorises it. */
+    private static void cycleShape(Minecraft minecraft) {
+        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        if (hit == null) {
+            minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
+            return;
+        }
+        BlockPos position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
+        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
+        if (cached == null) return;
+        int current = cached.volume.shapeAt(hit.cell());
+        int next = (current + 1) % ua.rp.chat.microvoxel.MicrovoxelShape.count();
+        int encoded = (hit.cell() & 0x0FFF) | (next << 12);
+        send(minecraft, ACTION_SET_SHAPE, position.getX(), position.getY(), position.getZ(),
+                encoded, cached.volume.revision());
+        minecraft.gui.setOverlayMessage(Component.literal("Форма: "
+                + ua.rp.chat.microvoxel.MicrovoxelShape.byId(next).type().name()), false);
     }
 
     private static void send(Minecraft minecraft, int action, int x, int y, int z, int cell, int revision) {

@@ -101,6 +101,7 @@ public final class MicrovoxelEditEngine {
                     action.clientLook(), action.clientEye());
             case MicrovoxelProtocol.ACTION_CARVE_STANDARD -> carveStandardBlock(player, action.transactionId(),
                     action.key(), action.cell(), action.clientLook(), action.clientEye());
+            case MicrovoxelProtocol.ACTION_SET_SHAPE -> setShape(player, action);
             default -> context.sync().trace(player, "ACTION_REJECT unknown-action=" + action.type());
         }
         MicrovoxelVolume after = MicrovoxelEditHistory.copyOrNull(
@@ -122,7 +123,8 @@ public final class MicrovoxelEditEngine {
                 || action == MicrovoxelProtocol.ACTION_BRUSH_REMOVE
                 || action == MicrovoxelProtocol.ACTION_PASTE
                 || action == MicrovoxelProtocol.ACTION_CONVERT
-                || action == MicrovoxelProtocol.ACTION_CARVE_STANDARD;
+                || action == MicrovoxelProtocol.ACTION_CARVE_STANDARD
+                || action == MicrovoxelProtocol.ACTION_SET_SHAPE;
     }
 
     /** Strictly-increasing per-player transaction ids: the anti-replay boundary. */
@@ -545,6 +547,52 @@ public final class MicrovoxelEditEngine {
         context.sync().broadcastUpsert(key, volume);
         context.sync().trace(player, "ACTION_APPLIED carve-standard cell=" + cell
                 + " revision=" + volume.revision());
+    }
+
+    /**
+     * Sets (or clears) the geometry shape of one occupied cell through the same authority gate as
+     * every other edit: second raycast, stale-revision rejection and protection (checked by the
+     * caller). Shape changes are geometry-only, so no material is consumed — the cell's material
+     * was already paid for when it was placed. A full upsert is broadcast because geometry rides
+     * the volume body.
+     */
+    private void setShape(ServerPlayer player, QueuedAction action) {
+        int cell = action.cell() & 0x0FFF;
+        int shapeId = (action.cell() >>> 12) & 0xFFFF;
+        if (shapeId >= ua.rp.chat.microvoxel.MicrovoxelShape.count()) {
+            context.sync().feedback(player, "Неизвестная форма микровокселя.");
+            return;
+        }
+        MicrovoxelVolume volume = context.runtime().store().get(action.key());
+        ServerMicrovoxelRaycaster.Hit hit = validatedHit(player, action.key(), cell,
+                action.clientLook(), action.clientEye(), true);
+        if (volume == null || !volume.occupied(cell)) {
+            context.sync().trace(player, "ACTION_REJECT set-shape-cell-empty");
+            context.sync().sendEditResult(player, action.transactionId(), false, action.key(), volume);
+            context.sync().feedback(player, "Эта ячейка недоступна для формы.");
+            return;
+        }
+        if (hit == null || !hit.key().equals(action.key()) || hit.cell() != cell) {
+            context.sync().trace(player, "ACTION_REJECT set-shape-raycast-mismatch");
+            context.sync().sendEditResult(player, action.transactionId(), false, action.key(), volume);
+            context.sync().feedback(player, "Цель изменилась. Наведитесь на ячейку ещё раз.");
+            return;
+        }
+        if (!validRevision(player, action.key(), volume, action.expectedRevision())) {
+            context.sync().sendEditResult(player, action.transactionId(), false, action.key(), volume);
+            return;
+        }
+        MicrovoxelVolume updated = volume.copy();
+        if (!updated.setShape(cell, shapeId)) {
+            context.sync().sendEditResult(player, action.transactionId(), false, action.key(), volume);
+            return;
+        }
+        context.collision().invalidate(action.key());
+        context.runtime().projection().materialize(action.key(), updated);
+        context.sync().broadcastUpsert(action.key(), updated);
+        context.sync().sendEditResult(player, action.transactionId(), true, action.key(), updated);
+        ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied.shape");
+        context.sync().trace(player, "ACTION_APPLIED shape cell=" + cell + " shape=" + shapeId);
     }
 
     private void convert(ServerPlayer player, MicrovoxelKey key) {

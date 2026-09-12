@@ -71,6 +71,31 @@ tasks.register("verifyMicrovoxelCrackBroadcast") {
     }
 }
 
+tasks.register("verifyMicrovoxelGeometryEdit") {
+    group = "verification"
+    description = "Checks the SET_SHAPE edit path is authoritative, replay-shielded and historical."
+    def engine = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/edit/MicrovoxelEditEngine.java")
+    def manager = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def history = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/edit/MicrovoxelEditHistory.java")
+    inputs.files(engine, manager, history)
+    doLast {
+        def engineText = engine.asFile.getText("UTF-8")
+        assert engineText.contains("ACTION_SET_SHAPE") && engineText.contains("setShape(player, action)")
+                && engineText.contains("updated.setShape(cell, shapeId)")
+                && engineText.contains("broadcastUpsert(action.key(), updated)"):
+                "SET_SHAPE must run through the authoritative edit path"
+        def managerText = manager.asFile.getText("UTF-8")
+        assert managerText.contains("action == MicrovoxelProtocol.ACTION_SET_SHAPE"):
+                "SET_SHAPE must be treated as a packed-cell action"
+        def historyText = history.asFile.getText("UTF-8")
+        assert historyText.contains("leftGeometry") && historyText.contains("rightGeometry"):
+                "History equality must include the geometry channel"
+    }
+}
+
 tasks.register("verifyMicrovoxelEmptyShellRecovery") {
     group = "verification"
     description = "Checks empty/orphan markers are never projected and can always be cleared."
@@ -779,6 +804,7 @@ tasks.named("check") {
     dependsOn tasks.named("verifyMicrovoxelHardening")
     dependsOn tasks.named("verifyMicrovoxelCrackBroadcast")
     dependsOn tasks.named("verifyMicrovoxelEmptyShellRecovery")
+    dependsOn tasks.named("verifyMicrovoxelGeometryEdit")
     dependsOn tasks.named("verifyArrowImpactPhysics")
     dependsOn tasks.named("verifyFabricParity")
     dependsOn tasks.named("verifyChunkLoadMarkerSafety")

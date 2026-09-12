@@ -59,5 +59,6 @@
   "key.eclipseclient.microvoxel_copy": "Копіювати вокселі",
   "key.eclipseclient.microvoxel_paste": "Вставити вокселі",
   "key.eclipseclient.microvoxel_rotate": "Повернути буфер",
-  "key.eclipseclient.microvoxel_mirror": "Віддзеркалити буфер"
+  "key.eclipseclient.microvoxel_mirror": "Віддзеркалити буфер",
+  "key.eclipseclient.microvoxel_shape": "Форма комірки"
 }
