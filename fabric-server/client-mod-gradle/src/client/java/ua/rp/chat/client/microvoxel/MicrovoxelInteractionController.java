@@ -57,9 +57,10 @@ public final class MicrovoxelInteractionController {
     private static boolean clipboardMirror;
     /** Material chosen in the radial palette; sent with place/brush actions so the server can source it. */
     private static String selectedMaterialId = "";
-    /** Pending raw-block conversion: a short client-side pause before the placement is sent. */
+    /** True while a radial-chosen tool is engaged: LMB erases, RMB places continuously. */
+    private static boolean toolActive;
+    /** One-time raw-block conversion pause before the tool engages (~0.6 s at 20 tps). */
     private static int conversionTicks;
-    private static java.util.function.Consumer<Minecraft> conversionAction;
     private static KeyMapping radialKey;
 
     private MicrovoxelInteractionController() {
@@ -84,14 +85,16 @@ public final class MicrovoxelInteractionController {
             MicrovoxelActionBatcher.clear();
             return;
         }
-        // No free-standing edit mode: the radial menu (G, only inside a Carver session) is the
-        // control surface. Direct click editing stays off so it never fights the Carver chisel.
-        editing = false;
-        if (conversionTicks > 0 && --conversionTicks == 0 && conversionAction != null) {
-            java.util.function.Consumer<Minecraft> action = conversionAction;
-            conversionAction = null;
-            withEditing(minecraft, action);
-        }
+        // The radial menu (G, only inside a Carver session) chooses the tool; while it is engaged
+        // LMB erases and RMB places continuously, exactly like the old click-edit mode but without
+        // fighting the Carver chisel (which lives inside its own design screen).
+        if (!CarverClientState.inSession()) toolActive = false;
+        if (conversionTicks > 0 && --conversionTicks == 0) toolActive = true;
+        editing = toolActive
+                && CarverClientState.inSession()
+                && ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE);
+        currentHit = editing ? raycast(minecraft) : null;
+        currentStandardTarget = editing && currentHit == null ? standardTarget(minecraft) : null;
         currentHit = null;
         currentStandardTarget = null;
         while (undoKey != null && undoKey.consumeClick()) {
@@ -553,13 +556,20 @@ public final class MicrovoxelInteractionController {
             case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0));
             case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1));
             case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2));
-            // Fragments (reclaimed voxels) place instantly; a raw block must convert first.
+            // Fragments (reclaimed voxels) place instantly; a raw block converts once (~0.6 s),
+            // then the tool stays engaged for continuous LMB/RMB building.
             case "place" -> {
                 selectedMaterialId = material == null ? "" : material;
-                if (fragment) withEditing(minecraft, MicrovoxelInteractionController::handleUse);
-                else scheduleConversion(minecraft, MicrovoxelInteractionController::handleUse);
+                if (fragment) {
+                    toolActive = true;
+                } else {
+                    toolActive = false;
+                    conversionTicks = 12;
+                    minecraft.gui.setOverlayMessage(
+                            Component.literal("Конвертация блока в микровоксели…"), false);
+                }
             }
-            case "erase" -> withEditing(minecraft, MicrovoxelInteractionController::handleAttack);
+            case "erase" -> toolActive = true;
             case "clip.copy" -> withEditing(minecraft, MicrovoxelInteractionController::copyTarget);
             case "clip.paste" -> withEditing(minecraft, MicrovoxelInteractionController::pasteTarget);
             case "clip.rotate" -> withEditing(minecraft, m -> {
@@ -570,35 +580,32 @@ public final class MicrovoxelInteractionController {
                 clipboardMirror = !clipboardMirror;
                 showClipboardTransform(m);
             });
-            case "brush.single" -> withEditing(minecraft, m -> {
+            case "brush.single" -> {
                 brushShape = MicrovoxelBrush.SINGLE;
-                showBrush(m);
-            });
-            case "brush.line" -> withEditing(minecraft, m -> {
+                toolActive = true;
+                showBrush(minecraft);
+            }
+            case "brush.line" -> {
                 brushShape = MicrovoxelBrush.PLANE;
-                showBrush(m);
-            });
-            case "brush.square" -> withEditing(minecraft, m -> {
+                toolActive = true;
+                showBrush(minecraft);
+            }
+            case "brush.square" -> {
                 brushShape = MicrovoxelBrush.BOX;
-                showBrush(m);
-            });
-            case "brush.circle" -> withEditing(minecraft, m -> {
+                toolActive = true;
+                showBrush(minecraft);
+            }
+            case "brush.circle" -> {
                 brushShape = MicrovoxelBrush.SPHERE;
-                showBrush(m);
-            });
+                toolActive = true;
+                showBrush(minecraft);
+            }
             case "history.undo" -> send(minecraft, ACTION_UNDO, 0, 0, 0, 0, 0);
             case "history.redo" -> send(minecraft, ACTION_REDO, 0, 0, 0, 0, 0);
             default -> {
                 // place/erase/material/close with no handler: nothing to do
             }
         }
-    }
-
-    /** Queues a raw-block "conversion" pause before the placement runs (~0.6 s at 20 tps). */
-    private static void scheduleConversion(Minecraft minecraft, java.util.function.Consumer<Minecraft> action) {
-        conversionAction = action;
-        conversionTicks = 12;
-        minecraft.gui.setOverlayMessage(Component.literal("Конвертация блока в микровоксели…"), false);
     }
 
     /** Runs a hit-driven edit action with the click-edit gate temporarily open. */

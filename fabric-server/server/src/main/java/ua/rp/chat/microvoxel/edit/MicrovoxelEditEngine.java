@@ -51,6 +51,8 @@ public final class MicrovoxelEditEngine {
     private final MicrovoxelEditHistory history;
     private final Map<UUID, Long> lastEditTransactions = new ConcurrentHashMap<>();
     private final Map<UUID, ClipboardVolume> clipboards = new HashMap<>();
+    /** Throttle so continuous building does not machine-gun place/remove sounds. */
+    private final Map<UUID, Long> lastFeedbackNanos = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MicrovoxelEditEngine(
             MicrovoxelContext context,
@@ -140,6 +142,26 @@ public final class MicrovoxelEditEngine {
     }
 
     /**
+     * Per-voxel feedback: the material's own place/break sound (so stone, wood and wool all read
+     * right) plus a small dust puff, throttled per player. {@code volume} scales for shaped cells.
+     */
+    private void playVoxelFeedback(ServerPlayer player, BlockPos pos, BlockState state,
+                                   boolean placing, float volume) {
+        long now = System.nanoTime();
+        Long last = lastFeedbackNanos.get(player.getUUID());
+        if (last != null && now - last < 55_000_000L) return;
+        lastFeedbackNanos.put(player.getUUID(), now);
+        ServerLevel level = (ServerLevel) player.level();
+        var sound = state.getSoundType();
+        level.playSound(null, pos, placing ? sound.getPlaceSound() : sound.getBreakSound(),
+                net.minecraft.sounds.SoundSource.BLOCKS, 0.32f * volume, placing ? 1.15f : 0.9f);
+        level.sendParticles(new net.minecraft.core.particles.BlockParticleOption(
+                        net.minecraft.core.particles.ParticleTypes.BLOCK, state),
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 4,
+                0.3, 0.3, 0.3, 0.0);
+    }
+
+    /**
      * Material source for an action: the radial-chosen material when the client supplied one
      * (fragment first, else a convertible block), otherwise the classic held-block source.
      */
@@ -147,6 +169,11 @@ public final class MicrovoxelEditEngine {
         if (chosen != null && !chosen.isBlank()) {
             MicrovoxelMaterialEconomy.SelectedMaterial found = economy.findByMaterial(player, chosen);
             if (found != null) return found;
+            // Creative may place any chosen material without owning it.
+            if (player.gameMode.getGameModeForPlayer() == net.minecraft.world.level.GameType.CREATIVE) {
+                MicrovoxelMaterialEconomy.SelectedMaterial synthetic = economy.syntheticFor(chosen);
+                if (synthetic != null) return synthetic;
+            }
         }
         return economy.selectedMaterial(player);
     }
@@ -278,6 +305,8 @@ public final class MicrovoxelEditEngine {
                     return;
                 }
                 volume.put(target.cell(), material);
+                playVoxelFeedback(player, new BlockPos(key.x(), key.y(), key.z()),
+                        MicrovoxelBlockStates.parseBlockState(material), true, 0.8f);
             } else {
                 if (!volume.occupied(target.cell())) continue;
                 int removeCost = MicrovoxelMaterialEconomy.cellCost(volume.shapeAt(target.cell()));
@@ -700,6 +729,8 @@ public final class MicrovoxelEditEngine {
             }
             volume.update(localCell, material);
             volume.setShape(localCell, placement.shapeId());
+            playVoxelFeedback(player, new BlockPos(key.x(), key.y(), key.z()),
+                    selected.state(), true, 0.6f);
         }
         working.entrySet().removeIf(entry ->
                 MicrovoxelEditHistory.sameVolume(before.get(entry.getKey()), entry.getValue()));
@@ -814,6 +845,8 @@ public final class MicrovoxelEditEngine {
         MicrovoxelVolume beforeRemove = volume;
         MicrovoxelVolume updated = volume.copy();
         updated.remove(cell);
+        playVoxelFeedback(player, new BlockPos(key.x(), key.y(), key.z()),
+                MicrovoxelBlockStates.parseBlockState(removedMaterial), false, 1.0f);
         economy.refundMaterialUnits(player, removedMaterial, removedCost);
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied");
         ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeRemove, updated);
@@ -898,6 +931,7 @@ public final class MicrovoxelEditEngine {
         }
         MicrovoxelVolume beforeAdd = creatingVolume ? null : volume;
         context.runtime().projection().materialize(key, updated);
+        playVoxelFeedback(player, new BlockPos(key.x(), key.y(), key.z()), material, true, 1.0f);
         economy.consumeMaterialUnits(player, selected, MicrovoxelMaterialEconomy.UNITS_PER_CELL);
         if (creatingVolume || paletteCompacted) {
             context.sync().broadcastUpsert(key, updated);

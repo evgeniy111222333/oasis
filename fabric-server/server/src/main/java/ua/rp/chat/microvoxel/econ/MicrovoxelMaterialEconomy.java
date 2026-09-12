@@ -95,6 +95,22 @@ public final class MicrovoxelMaterialEconomy {
         return fallback;
     }
 
+    /**
+     * A source-less material handle for creative mode: any chosen material can be placed without
+     * owning it. The ledger is exempt in creative, so only the block state is actually used.
+     */
+    public SelectedMaterial syntheticFor(String material) {
+        if (material == null || material.isBlank()) return null;
+        try {
+            BlockState state = MicrovoxelBlockStates.parseBlockState(material);
+            Item item = state.getBlock().asItem();
+            if (item == Items.AIR) return null;
+            return new SelectedMaterial(state, new ItemStack(item), InteractionHand.MAIN_HAND);
+        } catch (RuntimeException unparsable) {
+            return null;
+        }
+    }
+
     /** True when a stack is a block (or a tagged fragment) of the given material. */
     private boolean matchesMaterial(ItemStack stack, String material) {
         if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) return false;
