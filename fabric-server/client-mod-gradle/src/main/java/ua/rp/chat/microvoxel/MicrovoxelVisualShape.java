@@ -32,7 +32,9 @@ public final class MicrovoxelVisualShape {
                 ? new Bounds(0, 0, 0, 0, 0, 0)
                 : new Bounds(unit(minX), unit(minY), unit(minZ),
                         unit(maxX + 1), unit(maxY + 1), unit(maxZ + 1));
-        return new Snapshot(new Key(volume.palette(), cells), bounds);
+        MicrovoxelGeometry geometry = volume.geometryOrNull();
+        return new Snapshot(new Key(volume.palette(), cells,
+                geometry == null || geometry.isEmpty() ? null : geometry.encode()), bounds);
     }
 
     private static float unit(int cellCoordinate) {
@@ -50,25 +52,30 @@ public final class MicrovoxelVisualShape {
      * Content-exact GUI/cache key.
      *
      * <p>A pair of 32-bit hashes is insufficient here: a collision would make the GUI atlas or
-     * mesh cache show a different carved object. Equality therefore checks the complete palette
-     * and all 4096 material cells while retaining a cached hash for normal map performance.</p>
+     * mesh cache show a different carved object. Equality therefore checks the complete palette,
+     * all 4096 material cells and the optional geometry channel, while retaining a cached hash for
+     * normal map performance.</p>
      */
     public static final class Key {
         private final List<String> palette;
         private final byte[] cells;
+        private final byte[] geometry;
         private final int hashCode;
 
-        private Key(List<String> palette, byte[] cells) {
+        private Key(List<String> palette, byte[] cells, byte[] geometry) {
             this.palette = List.copyOf(palette);
             this.cells = cells.clone();
-            this.hashCode = 31 * this.palette.hashCode() + Arrays.hashCode(this.cells);
+            this.geometry = geometry == null ? null : geometry.clone();
+            this.hashCode = 31 * (31 * this.palette.hashCode() + Arrays.hashCode(this.cells))
+                    + (this.geometry == null ? 0 : Arrays.hashCode(this.geometry));
         }
 
         @Override
         public boolean equals(Object other) {
             if (this == other) return true;
             if (!(other instanceof Key key)) return false;
-            return palette.equals(key.palette) && Arrays.equals(cells, key.cells);
+            return palette.equals(key.palette) && Arrays.equals(cells, key.cells)
+                    && Arrays.equals(geometry, key.geometry);
         }
 
         @Override

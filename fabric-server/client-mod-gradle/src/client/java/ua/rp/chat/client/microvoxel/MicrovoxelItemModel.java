@@ -7,7 +7,9 @@ import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.core.Direction;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
+import ua.rp.chat.microvoxel.MicrovoxelGeometry;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVisualShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 
@@ -87,8 +89,11 @@ public final class MicrovoxelItemModel {
 
     private static CompiledItem build(MicrovoxelVolume volume,
                                       MicrovoxelVisualShape.Snapshot visual) {
-        List<MicrovoxelGreedyMesher.Face> faces =
-                MicrovoxelGreedyMesher.build(volume, volume::materialAt);
+        MicrovoxelGeometry geometry = volume.geometryOrNull();
+        List<MicrovoxelGreedyMesher.Face> faces = geometry != null
+                ? MicrovoxelGreedyMesher.build(volume, volume::materialAt,
+                        cell -> volume.shapeAt(cell) != 0)
+                : MicrovoxelGreedyMesher.build(volume, volume::materialAt);
         List<BakedQuad> quads = new ArrayList<>(Math.min(faces.size() * 2, MAX_GENERATED_QUADS));
         Material.Baked particle = null;
 
@@ -110,6 +115,31 @@ public final class MicrovoxelItemModel {
                     break;
                 }
                 quads.add(remap(source, face, direction));
+            }
+        }
+
+        // Shaped cells are excluded from the cube mesh above; emit their sub-voxel geometry here.
+        if (geometry != null) {
+            for (int cell : geometry.shapedCellIndex()) {
+                int shapeId = geometry.shapeAt(cell);
+                if (shapeId == 0) continue;
+                String material = volume.material(cell);
+                MicrovoxelSectionModel.MaterialFaces resolved =
+                        MicrovoxelSectionModel.materialFaces(material);
+                if (particle == null) particle = resolved.model().particleMaterial();
+                MicrovoxelShape shape = MicrovoxelShape.byId(shapeId);
+                int cellX = MicrovoxelVolume.x(cell);
+                int cellY = MicrovoxelVolume.y(cell);
+                int cellZ = MicrovoxelVolume.z(cell);
+                for (MicrovoxelGreedyMesher.Face shapeFace : shape.greedyFaces()) {
+                    Direction direction = Direction.valueOf(shapeFace.direction().name());
+                    List<BakedQuad> sources = resolved.faces().get(direction);
+                    if (sources == null || sources.isEmpty()) continue;
+                    for (BakedQuad source : sources) {
+                        if (quads.size() >= MAX_GENERATED_QUADS) break;
+                        quads.add(remapShape(source, shapeFace, direction, cellX, cellY, cellZ));
+                    }
+                }
             }
         }
         Vector3fc[] corners = corners(visual.bounds());
@@ -154,6 +184,65 @@ public final class MicrovoxelItemModel {
         return new BakedQuad(
                 positions[0], positions[1], positions[2], positions[3],
                 uv[0], uv[1], uv[2], uv[3], direction, material);
+    }
+
+    /** Shape face to a baked quad: sub-cell positions with per-cell UVs (mirrors the section model). */
+    private static BakedQuad remapShape(BakedQuad source, MicrovoxelGreedyMesher.Face face,
+                                        Direction direction, int cellX, int cellY, int cellZ) {
+        Vector3f[] positions = shapePositions(face, cellX, cellY, cellZ);
+        float minU = Float.POSITIVE_INFINITY;
+        float maxU = Float.NEGATIVE_INFINITY;
+        float minV = Float.POSITIVE_INFINITY;
+        float maxV = Float.NEGATIVE_INFINITY;
+        for (int index = 0; index < 4; index++) {
+            long packed = source.packedUV(index);
+            float u = Float.intBitsToFloat((int) (packed >>> 32));
+            float v = Float.intBitsToFloat((int) packed);
+            minU = Math.min(minU, u);
+            maxU = Math.max(maxU, u);
+            minV = Math.min(minV, v);
+            maxV = Math.max(maxV, v);
+        }
+        long[] uv = new long[4];
+        float ox = cellX / 16.0f;
+        float oy = cellY / 16.0f;
+        float oz = cellZ / 16.0f;
+        for (int index = 0; index < 4; index++) {
+            Vector3f position = positions[index];
+            float localX = (position.x - ox) * 16.0f;
+            float localY = (position.y - oy) * 16.0f;
+            float localZ = (position.z - oz) * 16.0f;
+            float u = MicrovoxelSectionModel.localU(face.direction(), localX, localY, localZ);
+            float v = MicrovoxelSectionModel.localV(face.direction(), localX, localY, localZ);
+            uv[index] = packUv(minU + u * (maxU - minU), minV + v * (maxV - minV));
+        }
+        BakedQuad.MaterialInfo sourceInfo = source.materialInfo();
+        BakedQuad.MaterialInfo material = new BakedQuad.MaterialInfo(
+                sourceInfo.sprite(), sourceInfo.layer(), sourceInfo.itemRenderType(),
+                -1, sourceInfo.shade(), sourceInfo.lightEmission());
+        return new BakedQuad(positions[0], positions[1], positions[2], positions[3],
+                uv[0], uv[1], uv[2], uv[3], direction, material);
+    }
+
+    private static Vector3f[] shapePositions(MicrovoxelGreedyMesher.Face face,
+                                             int cellX, int cellY, int cellZ) {
+        float ox = cellX / 16.0f;
+        float oy = cellY / 16.0f;
+        float oz = cellZ / 16.0f;
+        float x0 = ox + face.minX() / 256.0f;
+        float y0 = oy + face.minY() / 256.0f;
+        float z0 = oz + face.minZ() / 256.0f;
+        float x1 = ox + face.maxX() / 256.0f;
+        float y1 = oy + face.maxY() / 256.0f;
+        float z1 = oz + face.maxZ() / 256.0f;
+        return switch (face.direction()) {
+            case NORTH -> vertices(x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
+            case SOUTH -> vertices(x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+            case WEST -> vertices(x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+            case EAST -> vertices(x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1);
+            case UP -> vertices(x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);
+            case DOWN -> vertices(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+        };
     }
 
     private static Vector3f[] positions(MicrovoxelGreedyMesher.Face face) {

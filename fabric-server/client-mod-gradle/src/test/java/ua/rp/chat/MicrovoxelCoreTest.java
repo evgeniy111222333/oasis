@@ -10,6 +10,7 @@ import ua.rp.chat.microvoxel.MicrovoxelPrediction;
 import ua.rp.chat.microvoxel.MicrovoxelPortableVolume;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.MicrovoxelRevision;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVisualShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -225,6 +226,15 @@ public final class MicrovoxelCoreTest {
         different.update(MicrovoxelVolume.index(8, 9, 12), "minecraft:white_wool");
         require(!firstVisual.key().equals(MicrovoxelVisualShape.snapshot(different).key()),
                 "Different carved contents must never share a GUI-atlas identity");
+
+        // A shape-only change must also change the visual identity, or the mesh/atlas cache would
+        // serve the cube mesh for a shaped item.
+        MicrovoxelVolume shaped = first.copy();
+        shaped.setShape(MicrovoxelVolume.index(4, 3, 2), MicrovoxelShape.Type.RAMP_S.ordinal());
+        require(!firstVisual.key().equals(MicrovoxelVisualShape.snapshot(shaped).key()),
+                "A shape-only change must change the GUI-atlas identity");
+        require(firstVisual.key().equals(MicrovoxelVisualShape.snapshot(first.copy()).key()),
+                "An all-cube visual identity must stay stable");
 
         MicrovoxelVisualShape.Bounds bounds = firstVisual.bounds();
         require(close(bounds.minX(), 4.0f / 16.0f)

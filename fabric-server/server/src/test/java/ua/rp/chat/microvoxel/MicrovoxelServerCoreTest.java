@@ -46,6 +46,7 @@ public final class MicrovoxelServerCoreTest {
         verifyGeometryPersistence();
         verifyEditHistoryGeometryEquality();
         verifyMicrovoxelGenerators();
+        verifyPortableGeometryRoundTrip();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1498,6 +1499,25 @@ public final class MicrovoxelServerCoreTest {
         require(!FluidSim.acceptsRain(false, FluidVolume.empty(FluidVolume.Kind.LAVA)),
                 "Rain must never top a lava basin or waterlog it");
         System.out.println("MicrovoxelFluidHardeningTest: orientation and rain gate passed");
+    }
+
+    /** A picked-up shaped volume must survive the portable item codec, and legacy items still read. */
+    private static void verifyPortableGeometryRoundTrip() throws Exception {
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        MicrovoxelVolume shaped = MicrovoxelVolume.full("minecraft:stone");
+        shaped.setShape(123, ramp);
+
+        byte[] encoded = MicrovoxelManager.serializeVolume(shaped);
+        MicrovoxelVolume decoded = MicrovoxelManager.deserializeVolume(encoded);
+        require(decoded.shapeAt(123) == ramp && decoded.shapeAt(0) == 0,
+                "A portable item must preserve the geometry channel across serialize/deserialize");
+
+        MicrovoxelVolume plain = MicrovoxelVolume.full("minecraft:stone");
+        MicrovoxelVolume plainDecoded = MicrovoxelManager.deserializeVolume(
+                MicrovoxelManager.serializeVolume(plain));
+        require(!plainDecoded.hasGeometry(),
+                "An all-cube portable item must stay lean");
+        System.out.println("MicrovoxelPortableGeometryTest: item codec preserves shapes");
     }
 
     /** Generators turn a parameter set into deterministic shaped-cell placements. */

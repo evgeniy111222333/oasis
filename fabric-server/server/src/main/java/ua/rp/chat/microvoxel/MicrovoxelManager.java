@@ -766,7 +766,8 @@ public final class MicrovoxelManager {
         try {
             MicrovoxelVolume volume = deserializeVolume(bytes);
             validatePortableVolume(volume, level, pos);
-            MicrovoxelVolume copy = MicrovoxelVolume.restore(1, volume.palette(), volume.cellsCopy());
+            MicrovoxelVolume copy = MicrovoxelVolume.restore(1, volume.palette(), volume.cellsCopy(),
+                    volume.geometryOrNull());
             runtime.projection().materialize(key, copy);
             sync.broadcastUpsert(key, copy);
             if (player.gameMode.getGameModeForPlayer() != GameType.CREATIVE) {
@@ -1218,7 +1219,7 @@ public final class MicrovoxelManager {
         }
     }
 
-    private byte[] serializeVolume(MicrovoxelVolume volume) throws IOException {
+    static byte[] serializeVolume(MicrovoxelVolume volume) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try (DataOutputStream dos = new DataOutputStream(bos)) {
             dos.writeInt(volume.revision());
@@ -1229,11 +1230,20 @@ public final class MicrovoxelManager {
                 dos.write(utf8);
             }
             dos.write(volume.cellsCopy());
+            // Optional geometry section so a picked-up shaped volume keeps its shapes.
+            MicrovoxelGeometry geometry = volume.geometryOrNull();
+            boolean hasGeometry = geometry != null && !geometry.isEmpty();
+            dos.writeBoolean(hasGeometry);
+            if (hasGeometry) {
+                byte[] encoded = geometry.encode();
+                dos.writeInt(encoded.length);
+                dos.write(encoded);
+            }
         }
         return bos.toByteArray();
     }
 
-    private MicrovoxelVolume deserializeVolume(byte[] bytes) throws IOException {
+    static MicrovoxelVolume deserializeVolume(byte[] bytes) throws IOException {
         if (bytes == null || bytes.length < MicrovoxelVolume.CELL_COUNT + 5
                 || bytes.length > 1_048_576) {
             throw new IOException("Invalid portable volume size");
@@ -1256,8 +1266,19 @@ public final class MicrovoxelManager {
             if (cells.length != MicrovoxelVolume.CELL_COUNT) {
                 throw new java.io.EOFException("Truncated portable volume");
             }
+            // Legacy items carry no geometry section; new ones always do.
+            MicrovoxelGeometry geometry = null;
+            if (dis.available() > 0) {
+                if (dis.readBoolean()) {
+                    int length = dis.readInt();
+                    if (length < 0 || length > 1_048_576) throw new IOException("Invalid portable geometry length");
+                    byte[] encoded = dis.readNBytes(length);
+                    if (encoded.length != length) throw new java.io.EOFException("Truncated portable geometry");
+                    geometry = MicrovoxelGeometry.decode(encoded);
+                }
+            }
             if (dis.read() != -1) throw new IOException("Trailing portable volume bytes");
-            return MicrovoxelVolume.restore(revision, palette, cells);
+            return MicrovoxelVolume.restore(revision, palette, cells, geometry);
         }
     }
 
