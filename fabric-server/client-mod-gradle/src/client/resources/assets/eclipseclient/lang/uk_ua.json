@@ -49,7 +49,7 @@
   "item.eclipseclient.microvoxel_workpiece": "Заготовка: %s",
   "item.eclipseclient.microvoxel_incomplete_measure": "Неповна міра: %s",
   "item.eclipseclient.microvoxel_small_measure": "Мала міра: %s",
-  "key.eclipseclient.microvoxel_mode": "Режим вокселів",
+  "key.eclipseclient.microvoxel_radial": "Меню мікровокселів",
   "key.eclipseclient.microvoxel_convert": "Блок у вокселі",
   "key.eclipseclient.microvoxel_undo": "Скасувати правку",
   "key.eclipseclient.microvoxel_redo": "Повернути правку",

@@ -12,6 +12,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
+import ua.rp.chat.client.carver.CarverClientState;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 import ua.rp.chat.microvoxel.MicrovoxelBrush;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
@@ -35,17 +36,7 @@ public final class MicrovoxelInteractionController {
     public static final int ACTION_PASTE = MicrovoxelWire.ACTION_PASTE;
     public static final int ACTION_SET_SHAPE = MicrovoxelWire.ACTION_SET_SHAPE;
     public static final int ACTION_GENERATE = MicrovoxelWire.ACTION_GENERATE;
-    private static KeyMapping modeKey;
-    private static KeyMapping convertKey;
     private static KeyMapping undoKey;
-    private static KeyMapping redoKey;
-    private static KeyMapping brushKey;
-    private static KeyMapping radiusDownKey;
-    private static KeyMapping radiusUpKey;
-    private static KeyMapping copyKey;
-    private static KeyMapping pasteKey;
-    private static KeyMapping rotateKey;
-    private static KeyMapping mirrorKey;
     private static boolean editing;
     private static MicrovoxelRaycaster.Hit currentHit;
     private static StandardTarget currentStandardTarget;
@@ -64,51 +55,21 @@ public final class MicrovoxelInteractionController {
     private static int brushRadius = 1;
     private static int clipboardRotation;
     private static boolean clipboardMirror;
-    private static KeyMapping shapeKey;
-    private static KeyMapping generateKey;
+    /** Pending raw-block conversion: a short client-side pause before the placement is sent. */
+    private static int conversionTicks;
+    private static java.util.function.Consumer<Minecraft> conversionAction;
+    private static KeyMapping radialKey;
 
     private MicrovoxelInteractionController() {
     }
 
     public static void register() {
-        modeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_mode", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_M, KeyMapping.Category.GAMEPLAY));
-        convertKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_convert", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_C, KeyMapping.Category.GAMEPLAY));
+        // Only Undo survives as a plain binding; everything else lives in the radial menu.
         undoKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.microvoxel_undo", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_Z, KeyMapping.Category.GAMEPLAY));
-        redoKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_redo", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_Y, KeyMapping.Category.GAMEPLAY));
-        brushKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_brush", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_B, KeyMapping.Category.GAMEPLAY));
-        radiusDownKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_radius_down", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_LEFT_BRACKET, KeyMapping.Category.GAMEPLAY));
-        radiusUpKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_radius_up", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_RIGHT_BRACKET, KeyMapping.Category.GAMEPLAY));
-        copyKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_copy", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_K, KeyMapping.Category.GAMEPLAY));
-        pasteKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_paste", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_V, KeyMapping.Category.GAMEPLAY));
-        rotateKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_rotate", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_R, KeyMapping.Category.GAMEPLAY));
-        mirrorKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_mirror", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_N, KeyMapping.Category.GAMEPLAY));
-        shapeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_shape", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_H, KeyMapping.Category.GAMEPLAY));
-        generateKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.eclipseclient.microvoxel_generate", InputConstants.Type.KEYSYM,
+        radialKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.eclipseclient.microvoxel_radial", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_G, KeyMapping.Category.GAMEPLAY));
     }
 
@@ -121,52 +82,27 @@ public final class MicrovoxelInteractionController {
             MicrovoxelActionBatcher.clear();
             return;
         }
-        while (modeKey != null && modeKey.consumeClick()) {
-            if (!editing && !ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE)) {
-                trace("MODE_REJECTED channel-unavailable");
-                minecraft.gui.setOverlayMessage(Component.literal(
-                        "Сервер не поддерживает редактирование микровокселей или канал ещё не готов."), false);
-                continue;
-            }
-            editing = !editing;
-            trace("MODE " + (editing ? "enabled" : "disabled"));
-            minecraft.gui.setOverlayMessage(Component.literal(editing
-                    ? "Режим микровокселей включён: C — преобразовать, ЛКМ/ПКМ — убрать/добавить"
-                    : "Режим микровокселей выключен"), false);
+        // No free-standing edit mode: the radial menu (G, only inside a Carver session) is the
+        // control surface. Direct click editing stays off so it never fights the Carver chisel.
+        editing = false;
+        if (conversionTicks > 0 && --conversionTicks == 0 && conversionAction != null) {
+            java.util.function.Consumer<Minecraft> action = conversionAction;
+            conversionAction = null;
+            withEditing(minecraft, action);
         }
-        currentHit = editing ? raycast(minecraft) : null;
-        currentStandardTarget = editing && currentHit == null ? standardTarget(minecraft) : null;
-        while (editing && convertKey != null && convertKey.consumeClick()) convertTarget(minecraft);
-        while (editing && undoKey != null && undoKey.consumeClick()) {
+        currentHit = null;
+        currentStandardTarget = null;
+        while (undoKey != null && undoKey.consumeClick()) {
             send(minecraft, ACTION_UNDO, 0, 0, 0, 0, 0);
         }
-        while (editing && redoKey != null && redoKey.consumeClick()) {
-            send(minecraft, ACTION_REDO, 0, 0, 0, 0, 0);
+        while (radialKey != null && radialKey.consumeClick()) {
+            if (CarverClientState.inSession()) {
+                minecraft.setScreen(new MicrovoxelRadialScreen(MicrovoxelInteractionController::handleRadialSelection));
+            } else {
+                minecraft.gui.setOverlayMessage(Component.literal(
+                        "Сначала возьмите свиток архитектора и войдите в режим."), false);
+            }
         }
-        while (editing && brushKey != null && brushKey.consumeClick()) {
-            brushShape = (brushShape + 1) % 4;
-            showBrush(minecraft);
-        }
-        while (editing && radiusDownKey != null && radiusDownKey.consumeClick()) {
-            brushRadius = Math.max(1, brushRadius - 1);
-            showBrush(minecraft);
-        }
-        while (editing && radiusUpKey != null && radiusUpKey.consumeClick()) {
-            brushRadius = Math.min(MicrovoxelBrush.MAX_RADIUS, brushRadius + 1);
-            showBrush(minecraft);
-        }
-        while (editing && copyKey != null && copyKey.consumeClick()) copyTarget(minecraft);
-        while (editing && pasteKey != null && pasteKey.consumeClick()) pasteTarget(minecraft);
-        while (editing && rotateKey != null && rotateKey.consumeClick()) {
-            clipboardRotation = (clipboardRotation + 1) & 3;
-            showClipboardTransform(minecraft);
-        }
-        while (editing && mirrorKey != null && mirrorKey.consumeClick()) {
-            clipboardMirror = !clipboardMirror;
-            showClipboardTransform(minecraft);
-        }
-        while (editing && shapeKey != null && shapeKey.consumeClick()) cycleShape(minecraft);
-        while (editing && generateKey != null && generateKey.consumeClick()) generateTarget(minecraft);
         // End of the 50ms coalescing window: lone clicks keep single-packet latency,
         // bursts leave as one batch packet per 16 entries.
         MicrovoxelActionBatcher.flush(minecraft);
@@ -576,6 +512,10 @@ public final class MicrovoxelInteractionController {
      * (G). The server expands it authoritatively as one transaction.
      */
     private static void generateTarget(Minecraft minecraft) {
+        generateTarget(minecraft, 0);
+    }
+
+    private static void generateTarget(Minecraft minecraft, int type) {
         MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
@@ -587,10 +527,89 @@ public final class MicrovoxelInteractionController {
         net.minecraft.world.phys.Vec3 look = minecraft.player == null
                 ? net.minecraft.world.phys.Vec3.ZERO : minecraft.player.getViewVector(1.0f);
         int facing = Math.abs(look.x) > Math.abs(look.z) ? (look.x > 0 ? 2 : 3) : (look.z > 0 ? 0 : 1);
-        int encoded = MicrovoxelWire.packGenerate(hit.cell(), 0, facing, 5, 3, 1);
+        int encoded = MicrovoxelWire.packGenerate(hit.cell(), type, facing, 5, 3, 1);
         send(minecraft, ACTION_GENERATE, position.getX(), position.getY(), position.getZ(),
                 encoded, cached.volume.revision());
-        minecraft.gui.setOverlayMessage(Component.literal("Генератор: рампа"), false);
+        String label = switch (type) {
+            case 1 -> "колонна";
+            case 2 -> "крыша";
+            default -> "рампа";
+        };
+        minecraft.gui.setOverlayMessage(Component.literal("Генератор: " + label), false);
+    }
+
+    /**
+     * Dispatches a radial-menu choice to the matching edit action. Same actions the old key bindings
+     * used; the radial is now the only way to reach them (Undo stays on its own key).
+     */
+    static void handleRadialSelection(String action, String material, boolean fragment) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || action == null) return;
+        switch (action) {
+            case "shape" -> withEditing(minecraft, MicrovoxelInteractionController::cycleShape);
+            case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0));
+            case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1));
+            case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2));
+            // Fragments (reclaimed voxels) place instantly; a raw block must convert first.
+            case "place" -> {
+                if (fragment) withEditing(minecraft, MicrovoxelInteractionController::handleUse);
+                else scheduleConversion(minecraft, MicrovoxelInteractionController::handleUse);
+            }
+            case "erase" -> withEditing(minecraft, MicrovoxelInteractionController::handleAttack);
+            case "clip.copy" -> withEditing(minecraft, MicrovoxelInteractionController::copyTarget);
+            case "clip.paste" -> withEditing(minecraft, MicrovoxelInteractionController::pasteTarget);
+            case "clip.rotate" -> withEditing(minecraft, m -> {
+                clipboardRotation = (clipboardRotation + 1) & 3;
+                showClipboardTransform(m);
+            });
+            case "clip.mirror" -> withEditing(minecraft, m -> {
+                clipboardMirror = !clipboardMirror;
+                showClipboardTransform(m);
+            });
+            case "brush.single" -> withEditing(minecraft, m -> {
+                brushShape = MicrovoxelBrush.SINGLE;
+                showBrush(m);
+            });
+            case "brush.line" -> withEditing(minecraft, m -> {
+                brushShape = MicrovoxelBrush.PLANE;
+                showBrush(m);
+            });
+            case "brush.square" -> withEditing(minecraft, m -> {
+                brushShape = MicrovoxelBrush.BOX;
+                showBrush(m);
+            });
+            case "brush.circle" -> withEditing(minecraft, m -> {
+                brushShape = MicrovoxelBrush.SPHERE;
+                showBrush(m);
+            });
+            case "history.undo" -> send(minecraft, ACTION_UNDO, 0, 0, 0, 0, 0);
+            case "history.redo" -> send(minecraft, ACTION_REDO, 0, 0, 0, 0, 0);
+            default -> {
+                // place/erase/material/close with no handler: nothing to do
+            }
+        }
+    }
+
+    /** Queues a raw-block "conversion" pause before the placement runs (~0.6 s at 20 tps). */
+    private static void scheduleConversion(Minecraft minecraft, java.util.function.Consumer<Minecraft> action) {
+        conversionAction = action;
+        conversionTicks = 12;
+        minecraft.gui.setOverlayMessage(Component.literal("Конвертация блока в микровоксели…"), false);
+    }
+
+    /** Runs a hit-driven edit action with the click-edit gate temporarily open. */
+    private static void withEditing(Minecraft minecraft, java.util.function.Consumer<Minecraft> action) {
+        boolean previous = editing;
+        editing = true;
+        try {
+            currentHit = raycast(minecraft);
+            currentStandardTarget = currentHit == null ? standardTarget(minecraft) : null;
+            action.accept(minecraft);
+        } finally {
+            editing = previous;
+            currentHit = null;
+            currentStandardTarget = null;
+        }
     }
 
     private static void send(Minecraft minecraft, int action, int x, int y, int z, int cell, int revision) {

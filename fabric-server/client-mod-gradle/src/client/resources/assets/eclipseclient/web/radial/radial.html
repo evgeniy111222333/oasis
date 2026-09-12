@@ -807,8 +807,12 @@
     onSelectListeners.forEach((cb) => cb(id));
     // Java↔JS bridge: the in-game screen listens on the CEF console message channel.
     try {
-      const material = MATERIALS[materialIndex] ? MATERIALS[materialIndex].id : null;
-      console.log("@eclipse/radial:" + JSON.stringify({ action: id, material }));
+      const current = MATERIALS[materialIndex];
+      console.log("@eclipse/radial:" + JSON.stringify({
+        action: id,
+        material: current ? current.id : null,
+        fragment: current ? !!current.fragment : true
+      }));
     } catch (ignore) {
       // no bridge (plain browser preview) — ignore
     }
