@@ -22,6 +22,8 @@ import java.util.List;
  */
 public final class CarverDustStorm {
     private static volatile FabricSpriteSet sprites;
+    /** Hard cap on live swirl particles, so a long job can never flood the particle engine. */
+    private static final int MAX_SWIRLS = 180;
 
     // Luminous clean cloud whites and subtle natural cloud tones (never biome green!)
     private static final int[] CLOUD_TONES = {
@@ -69,44 +71,28 @@ public final class CarverDustStorm {
         FabricSpriteSet set = sprites;
         if (set == null || set.getSprites().isEmpty()) return;
 
-        // Clean up any stale particles from previous sessions
-        finish(minecraft, pos);
+        // Drop the previous session's swirls (without the completion pop).
+        dissipateActive();
+        pruneActive();
 
         RandomSource random = RandomSource.create(System.nanoTime() ^ pos.asLong());
         double cx = pos.getX() + 0.5;
         double cy = pos.getY() + 0.5;
         double cz = pos.getZ() + 0.5;
 
-        for (int i = 0; i < 6; i++) {
-            TextureAtlasSprite sprite = set.get(0, 8);
-            double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.18 + random.nextDouble() * 0.18;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.05 + random.nextDouble() * 0.04);
-            double targetY = 0.10 + random.nextDouble() * 0.28;
-            float size = 0.30f + random.nextFloat() * 0.16f;
-            int life = 22 + random.nextInt(10);
-            int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
-
-            CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
-                    radius, angle, speed, targetY, size, life, tone, sprite, set);
-            minecraft.particleEngine.add(p);
-            activeSwirls.add(new WeakReference<>(p));
+        // Dense volumetric cocoon: a tight core, a wide shell that reaches past the artisan, and
+        // a few large seal puffs that close the gaps between billboards.
+        for (int i = 0; i < 16; i++) {
+            spawnSwirl(minecraft, level, random, cx, cy, cz,
+                    0.25, 0.75, 0.05, 0.65, 0.50f, 0.70f, color, set);
         }
-
+        for (int i = 0; i < 22; i++) {
+            spawnSwirl(minecraft, level, random, cx, cy, cz,
+                    0.80, 1.90, -0.25, 1.75, 0.85f, 1.30f, color, set);
+        }
         for (int i = 0; i < 8; i++) {
-            TextureAtlasSprite sprite = set.get(0, 8);
-            double angle = random.nextDouble() * Math.PI * 2.0;
-            double radius = 0.42 + random.nextDouble() * 0.22;
-            double speed = (random.nextBoolean() ? 1 : -1) * (0.06 + random.nextDouble() * 0.05);
-            double targetY = -0.05 + random.nextDouble() * 0.35;
-            float size = 0.32f + random.nextFloat() * 0.16f;
-            int life = 24 + random.nextInt(10);
-            int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
-
-            CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
-                    radius, angle, speed, targetY, size, life, tone, sprite, set);
-            minecraft.particleEngine.add(p);
-            activeSwirls.add(new WeakReference<>(p));
+            spawnSwirl(minecraft, level, random, cx, cy, cz,
+                    0.90, 1.60, 0.10, 1.10, 1.20f, 1.70f, color, set);
         }
     }
 
@@ -147,25 +133,52 @@ public final class CarverDustStorm {
         if (set == null || set.getSprites().isEmpty()) return;
 
         pruneActive();
+        if (activeSwirls.size() >= MAX_SWIRLS) return;
 
         RandomSource random = RandomSource.create(System.nanoTime() ^ level.getGameTime());
         double cx = pos.getX() + 0.5;
         double cy = pos.getY() + 0.5;
         double cz = pos.getZ() + 0.5;
 
+        // Keep the cocoon dense for the whole job: several fresh billows at varied radii/heights.
+        for (int i = 0; i < 6; i++) {
+            spawnSwirl(minecraft, level, random, cx, cy, cz,
+                    0.35, 1.80, -0.25, 1.70, 0.55f, 1.10f, color, set);
+        }
+    }
+
+    /** Spawns one orbiting cloud billow and remembers it for rapid dissipation. */
+    private static void spawnSwirl(Minecraft minecraft, ClientLevel level, RandomSource random,
+                                   double cx, double cy, double cz,
+                                   double radiusMin, double radiusMax,
+                                   double yMin, double yMax,
+                                   float sizeMin, float sizeMax,
+                                   int color, FabricSpriteSet set) {
+        if (activeSwirls.size() >= MAX_SWIRLS) return;
         TextureAtlasSprite sprite = set.get(0, 8);
         double angle = random.nextDouble() * Math.PI * 2.0;
-        double radius = 0.20 + random.nextDouble() * 0.18;
-        double speed = (random.nextBoolean() ? 1 : -1) * (0.06 + random.nextDouble() * 0.04);
-        double targetY = 0.12 + random.nextDouble() * 0.25;
-        float size = 0.30f + random.nextFloat() * 0.14f;
-        int life = 22 + random.nextInt(8);
+        double radius = radiusMin + random.nextDouble() * (radiusMax - radiusMin);
+        double speed = (random.nextBoolean() ? 1 : -1) * (0.05 + random.nextDouble() * 0.05);
+        double targetY = yMin + random.nextDouble() * (yMax - yMin);
+        float size = sizeMin + random.nextFloat() * (sizeMax - sizeMin);
+        int life = 24 + random.nextInt(12);
         int tone = color == 0xFFFFFF ? randomCloudTone(random) : color;
 
         CarverDustParticle p = new CarverDustParticle(level, cx, cy, cz,
                 radius, angle, speed, targetY, size, life, tone, sprite, set);
         minecraft.particleEngine.add(p);
         activeSwirls.add(new WeakReference<>(p));
+    }
+
+    /** Dissipates every live swirl without spawning the completion pop. */
+    private static void dissipateActive() {
+        for (var ref : activeSwirls) {
+            CarverDustParticle p = ref.get();
+            if (p != null && p.isAlive()) {
+                p.dissipate();
+            }
+        }
+        activeSwirls.clear();
     }
 
     /**

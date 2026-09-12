@@ -101,6 +101,19 @@ public final class CarverCameraRig {
     private static float workPitchFrom;
     private static double workDistFrom;
 
+    // Work-phase camera director: slow handheld drift between sharp montage cuts.
+    private static final java.util.Random DIRECTOR_RANDOM = new java.util.Random();
+    private static boolean cutActive;
+    private static int cutTick;
+    private static float cutFromYaw;
+    private static float cutToYaw;
+    private static float cutFromPitch;
+    private static float cutToPitch;
+    private static double cutFromDist;
+    private static double cutToDist;
+    private static int directorCooldown;
+    private static int directorPrevShot = -1;
+
     public static void beginWork(BlockPos focusBlock) {
         if (mode == Mode.IDLE) {
             beginDesign(focusBlock);
@@ -116,6 +129,10 @@ public final class CarverCameraRig {
         mode = Mode.WORK;
         dragVelYaw = 0.0;
         dragVelPitch = 0.0;
+        cutActive = false;
+        cutTick = 0;
+        directorPrevShot = -1;
+        directorCooldown = CarverCameraMath.nextCutCooldown(DIRECTOR_RANDOM);
     }
 
     public static void end() {
@@ -123,6 +140,8 @@ public final class CarverCameraRig {
         focus = null;
         flyTick = 0;
         shakeTrauma = 0.0;
+        cutActive = false;
+        directorPrevShot = -1;
     }
 
     /** Impact kick; decays every tick and offsets the pose by the square. */
@@ -204,14 +223,14 @@ public final class CarverCameraRig {
             }
         } else if (mode == Mode.WORK) {
             workTick++;
-            double t = Math.min(1.0, workTick / (double) CarverCameraMath.WORK_FLY_TICKS);
-            double[] framing = CarverCameraMath.workFraming(workPitchFrom, workDistFrom, t);
-            orbitPitch = framing[0];
-            orbitDist = framing[1];
-            // A slow handheld drift keeps the work camera alive instead of locked on rails.
-            orbitYaw += Math.sin(workTick * 0.035) * 0.0009;
-            orbitPitch = CarverCameraMath.clampPitch(
-                    (float) (orbitPitch + Math.cos(workTick * 0.027) * 0.0006));
+            if (workTick <= CarverCameraMath.WORK_FLY_TICKS) {
+                double t = Math.min(1.0, workTick / (double) CarverCameraMath.WORK_FLY_TICKS);
+                double[] framing = CarverCameraMath.workFraming(workPitchFrom, workDistFrom, t);
+                orbitPitch = framing[0];
+                orbitDist = framing[1];
+            } else {
+                tickWorkDirector();
+            }
             if (Math.abs(dragVelYaw) > 0.01 || Math.abs(dragVelPitch) > 0.01) {
                 orbitYaw += dragVelYaw;
                 orbitPitch = CarverCameraMath.clampPitch((float) (orbitPitch + dragVelPitch));
@@ -268,10 +287,61 @@ public final class CarverCameraRig {
         return socketCenter();
     }
 
-    /** Work framing anchor: socket center plus the wider, lower work orbit offset. */
+    /**
+     * Work-phase camera director: a slow handheld drift with occasional sharp cuts to a new
+     * shot (another side, higher or lower, closer or wider). Manual right-drag pauses the
+     * montage so the artisan keeps full control; the lookAt target never moves, so every cut
+     * keeps the workpiece centred and reads as a clean edit instead of a lost aim.
+     */
+    private static void tickWorkDirector() {
+        boolean dragging = Math.abs(dragVelYaw) > 0.05 || Math.abs(dragVelPitch) > 0.05;
+        if (cutActive) {
+            cutTick++;
+            float t = Math.min(1.0f, cutTick / (float) CarverCameraMath.WORK_CUT_TICKS);
+            float eased = (float) CarverCameraMath.smoothStep(t);
+            orbitYaw = CarverCameraMath.lerpAngle(cutFromYaw, cutToYaw, eased);
+            orbitPitch = CarverCameraMath.clampPitch(
+                    cutFromPitch + (cutToPitch - cutFromPitch) * eased);
+            orbitDist = CarverCameraMath.clampDist(
+                    cutFromDist + (cutToDist - cutFromDist) * eased);
+            if (t >= 1.0f) {
+                cutActive = false;
+                directorCooldown = CarverCameraMath.nextCutCooldown(DIRECTOR_RANDOM);
+            }
+            return;
+        }
+        if (dragging) {
+            return;
+        }
+        // Living handheld drift between cuts.
+        orbitYaw += Math.sin(workTick * 0.03) * CarverCameraMath.WORK_DRIFT_YAW;
+        orbitPitch = CarverCameraMath.clampPitch((float)
+                (orbitPitch + Math.cos(workTick * 0.021) * CarverCameraMath.WORK_DRIFT_PITCH));
+        if (directorCooldown > 0) {
+            directorCooldown--;
+        }
+        if (directorCooldown <= 0) {
+            startWorkCut();
+        }
+    }
+
+    private static void startWorkCut() {
+        int shotIndex = CarverCameraMath.nextWorkShot(DIRECTOR_RANDOM, directorPrevShot);
+        directorPrevShot = shotIndex;
+        CarverCameraMath.WorkShot shot = CarverCameraMath.workShot(shotIndex);
+        cutFromYaw = (float) orbitYaw;
+        cutToYaw = (float) (orbitYaw + shot.yawDeltaDeg());
+        cutFromPitch = (float) orbitPitch;
+        cutToPitch = CarverCameraMath.clampPitch(shot.pitchDeg());
+        cutFromDist = orbitDist;
+        cutToDist = CarverCameraMath.clampDist(shot.dist());
+        cutTick = 0;
+        cutActive = true;
+    }
+
+    /** Work framing anchor: socket center plus the live work orbit offset. */
     private static Vec3 workAnchor() {
-        double[] offset = CarverCameraMath.orbitOffset(
-                orbitYaw, CarverCameraMath.WORK_PITCH, CarverCameraMath.WORK_DIST);
+        double[] offset = CarverCameraMath.orbitOffset(orbitYaw, orbitPitch, orbitDist);
         Vec3 socket = socketCenter();
         return new Vec3(socket.x + offset[0], socket.y + offset[1], socket.z + offset[2]);
     }

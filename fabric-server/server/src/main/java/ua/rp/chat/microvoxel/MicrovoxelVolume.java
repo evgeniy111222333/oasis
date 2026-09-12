@@ -17,6 +17,14 @@ public final class MicrovoxelVolume {
     private final byte[] cells;
     private transient volatile List<Cuboid> collisionCuboids;
     private transient volatile CollisionPlan collisionPlan;
+    /**
+     * Publication flag. Once the store owns this instance it is immutable: the persistence
+     * worker reads the live cells concurrently with the server thread, so mutating a published
+     * volume would tear the bytes it serialises. Every state change must publish a fresh
+     * {@link #copy()} instead. Derived transient caches (collision plan/cuboids) stay writable —
+     * they are never serialised and never affect the published state.
+     */
+    private boolean frozen;
 
     private MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
         this.revision = Math.max(1, revision);
@@ -44,6 +52,26 @@ public final class MicrovoxelVolume {
 
     public MicrovoxelVolume copy() {
         return new MicrovoxelVolume(revision, palette, cells);
+    }
+
+    /** True once this instance has been published to the store and may no longer be mutated. */
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    /**
+     * Marks this instance immutable for publication. Package-private: only the store publishes
+     * volumes, so the single-writer boundary stays in one place.
+     */
+    void freeze() {
+        frozen = true;
+    }
+
+    private void requireMutable() {
+        if (frozen) {
+            throw new IllegalStateException(
+                    "Frozen microvoxel volume is immutable; copy() before mutating");
+        }
     }
 
     public int revision() {
@@ -76,6 +104,7 @@ public final class MicrovoxelVolume {
     }
 
     public boolean remove(int cell) {
+        requireMutable();
         requireCell(cell);
         if (cells[cell] == 0) {
             return false;
@@ -86,6 +115,7 @@ public final class MicrovoxelVolume {
     }
 
     public boolean put(int cell, String blockData) {
+        requireMutable();
         requireCell(cell);
         if (blockData == null || blockData.isBlank()) {
             throw new IllegalArgumentException("Block data cannot be empty");
@@ -107,6 +137,7 @@ public final class MicrovoxelVolume {
     }
 
     public void update(int cell, String blockData) {
+        requireMutable();
         requireCell(cell);
         if (blockData == null || blockData.isBlank()) {
             cells[cell] = 0;
@@ -125,6 +156,7 @@ public final class MicrovoxelVolume {
     }
 
     public void setRevision(int revision) {
+        requireMutable();
         this.revision = revision;
     }
 
@@ -133,6 +165,7 @@ public final class MicrovoxelVolume {
      * revision. Callers must send a full upsert before any later delta because indices may move.
      */
     public boolean compactPalette() {
+        requireMutable();
         boolean[] used = new boolean[palette.size()];
         used[0] = true;
         for (byte cell : cells) used[Byte.toUnsignedInt(cell)] = true;

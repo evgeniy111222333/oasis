@@ -67,6 +67,9 @@ public final class MicrovoxelStore {
     public synchronized void put(MicrovoxelKey key, MicrovoxelVolume volume) {
         RegionKey regionKey = RegionKey.of(key);
         RegionData region = ensureRegionLoaded(regionKey);
+        // Publish immutably (I1): after this point the volume is read by the persistence worker
+        // concurrently with the server thread, so it must never be mutated again.
+        volume.freeze();
         MicrovoxelVolume previous = volumes.put(key, volume);
         region.keys.add(key);
         if (previous == null) {
@@ -245,27 +248,61 @@ public final class MicrovoxelStore {
         return loaded;
     }
 
+    /**
+     * Point-in-time snapshot. Published volumes are frozen (I1), so the returned entries are
+     * safe to read from any thread without copying.
+     */
     public synchronized Snapshot snapshot() {
         List<Map.Entry<MicrovoxelKey, MicrovoxelVolume>> entries = new ArrayList<>();
         for (RegionKey key : regions.keySet()) {
             RegionData region = ensureRegionLoaded(key);
             for (MicrovoxelKey volumeKey : region.keys) {
                 MicrovoxelVolume volume = volumes.get(volumeKey);
-                if (volume != null) entries.add(Map.entry(volumeKey, volume.copy()));
+                if (volume != null) entries.add(Map.entry(volumeKey, volume));
             }
         }
         return new Snapshot(List.copyOf(entries));
     }
 
     public synchronized DirtyBatch snapshotDirty() {
-        if (dirty.isEmpty()) return new DirtyBatch(List.of());
-        List<DirtyEntry> entries = new ArrayList<>(dirty.size());
-        for (Map.Entry<MicrovoxelKey, DirtyState> entry : dirty.entrySet()) {
+        return snapshotDirty(Integer.MAX_VALUE, Long.MAX_VALUE);
+    }
+
+    /**
+     * Bounded dirty capture for the persistence worker. The batch is capped by entry count and
+     * estimated encoded bytes so a large burst can never build a single oversized journal frame
+     * (which used to throw and livelock the worker). Oldest edits first keeps every slice making
+     * forward progress. Entries hold frozen references (I1), so no volume is copied here.
+     */
+    public synchronized DirtyBatch snapshotDirty(int maxEntries, long maxBytes) {
+        if (dirty.isEmpty() || maxEntries <= 0 || maxBytes <= 0L) {
+            return new DirtyBatch(List.of());
+        }
+        List<Map.Entry<MicrovoxelKey, DirtyState>> ordered = new ArrayList<>(dirty.entrySet());
+        ordered.sort(Comparator.comparingLong(entry -> entry.getValue().sequence()));
+        List<DirtyEntry> entries = new ArrayList<>(Math.min(maxEntries, ordered.size()));
+        long bytes = 0L;
+        for (Map.Entry<MicrovoxelKey, DirtyState> entry : ordered) {
+            if (entries.size() >= maxEntries) break;
             MicrovoxelVolume volume = volumes.get(entry.getKey());
-            entries.add(new DirtyEntry(entry.getKey(), volume == null ? null : volume.copy(),
-                    entry.getValue().sequence()));
+            long estimate = estimateDirtyBytes(volume);
+            if (!entries.isEmpty() && bytes + estimate > maxBytes) break;
+            entries.add(new DirtyEntry(entry.getKey(), volume, entry.getValue().sequence()));
+            bytes += estimate;
         }
         return new DirtyBatch(List.copyOf(entries));
+    }
+
+    /** Worst-case encoded size of one journal entry (header + palette + raw cells). */
+    static long estimateDirtyBytes(MicrovoxelVolume volume) {
+        if (volume == null) {
+            return 64L;
+        }
+        long paletteBytes = 8L;
+        for (String material : volume.palette()) {
+            paletteBytes += 2L + material.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        }
+        return 64L + paletteBytes + MicrovoxelVolume.CELL_COUNT;
     }
 
     public synchronized void acknowledge(DirtyBatch batch) {
@@ -330,23 +367,18 @@ public final class MicrovoxelStore {
         }
     }
 
-    public void save() throws IOException {
-        save(new Snapshot(List.of()));
-    }
-
-    public synchronized void save(Snapshot snapshot) throws IOException {
-        save(Integer.MAX_VALUE);
-    }
-
     /**
-     * Persists journaled state, flushing at most {@code maxRegions} region files. Callers loop
-     * until {@link #dirtyRegionCount()} reaches zero; each slice is crash-safe on its own
-     * because the journal is only deleted after the slice it covers is durable... note the
-     * journal delete below covers the whole journal, so incremental callers must only delete
-     * once the final slice lands — see {@link #saveIncrementalSlice(int)}.
+     * Full durable flush: writes every dirty region, publishes FORMAT and drops the journal.
+     * The journal is deleted only here and in {@link #finishIncrementalSave()} — never from an
+     * incremental slice, which only covers part of the journaled state.
      */
-    public synchronized void save(int maxRegions) throws IOException {
-        flushDirtyRegions(maxRegions);
+    public synchronized void save() throws IOException {
+        flushDirtyRegions(Integer.MAX_VALUE);
+        publish();
+    }
+
+    /** Publishes a fully-flushed store: FORMAT marker, journal drop, cache eviction. */
+    private void publish() throws IOException {
         Files.createDirectories(regionDirectory);
         Files.writeString(regionDirectory.resolve("FORMAT"),
                 "eclipse-microvoxel-regions-v2\n",
@@ -358,9 +390,9 @@ public final class MicrovoxelStore {
 
     /**
      * One incremental compaction slice: writes up to {@code maxRegions} dirty regions WITHOUT
-     * deleting the journal (unflushed tail may still reference it). Returns true when fully
-     * clean; the finalizer must then call {@link #finishIncrementalSave()} to publish FORMAT,
-     * drop the journal and evict.
+     * touching the journal (the unflushed tail may still reference it). Returns true when every
+     * dirty region is durable; the caller must then call {@link #finishIncrementalSave()} to
+     * publish FORMAT, drop the journal and evict.
      */
     public synchronized boolean saveIncrementalSlice(int maxRegions) throws IOException {
         flushDirtyRegions(maxRegions);
@@ -368,15 +400,9 @@ public final class MicrovoxelStore {
         return dirtyRegions.isEmpty();
     }
 
-    /** Publishes an incremental compaction: FORMAT marker, journal drop, cache eviction. */
+    /** Publishes a fully-flushed incremental compaction (delegates to {@link #publish()}). */
     public synchronized void finishIncrementalSave() throws IOException {
-        Files.createDirectories(regionDirectory);
-        Files.writeString(regionDirectory.resolve("FORMAT"),
-                "eclipse-microvoxel-regions-v2\n",
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        loadedFromBackup = false;
-        Files.deleteIfExists(journalFile());
-        evictCleanRegions();
+        publish();
     }
 
     /**

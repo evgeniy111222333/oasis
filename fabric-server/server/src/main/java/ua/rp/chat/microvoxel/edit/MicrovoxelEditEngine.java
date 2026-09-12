@@ -569,22 +569,24 @@ public final class MicrovoxelEditEngine {
             return;
         }
         String removedMaterial = volume.material(cell);
-        MicrovoxelVolume beforeRemove = volume.copy();
-        volume.remove(cell);
+        // Published volumes are frozen: mutate a copy and publish that (store.put freezes it).
+        MicrovoxelVolume beforeRemove = volume;
+        MicrovoxelVolume updated = volume.copy();
+        updated.remove(cell);
         economy.refundMaterialUnit(player, removedMaterial);
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied");
-        ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeRemove, volume);
-        if (volume.occupiedCount() == 0) {
+        ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeRemove, updated);
+        if (updated.occupiedCount() == 0) {
             context.collision().invalidate(key);
             context.runtime().projection().dematerialize(key);
             context.sync().broadcastRemoveExcept(key, player);
             context.sync().sendEditResult(player, transactionId, true, key, null);
         } else {
-            context.runtime().projection().materialize(key, volume);
-            context.sync().broadcastDeltaExcept(key, volume, cell, "", player);
-            context.sync().sendEditResult(player, transactionId, true, key, volume);
+            context.runtime().projection().materialize(key, updated);
+            context.sync().broadcastDeltaExcept(key, updated, cell, "", player);
+            context.sync().sendEditResult(player, transactionId, true, key, updated);
         }
-        context.sync().trace(player, "ACTION_APPLIED remove cell=" + cell + " revision=" + volume.revision());
+        context.sync().trace(player, "ACTION_APPLIED remove cell=" + cell + " revision=" + updated.revision());
     }
 
     private void addCell(ServerPlayer player, MicrovoxelKey key, int cell, int expectedRevision,
@@ -647,7 +649,7 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "В этом микровоксельном блоке достигнут лимит материалов.");
             return;
         }
-        MicrovoxelVolume beforeAdd = creatingVolume ? null : volume.copy();
+        MicrovoxelVolume beforeAdd = creatingVolume ? null : volume;
         context.runtime().projection().materialize(key, updated);
         economy.consumeMaterialUnit(player, selected);
         if (creatingVolume || paletteCompacted) {

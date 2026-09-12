@@ -1,1 +1,12 @@
-[17:51:56] [main/INFO]: [STDOUT]: MicrovoxelServerCoreTest passed
+[14:49:48] [main/INFO]: [STDOUT]: MicrovoxelSnapshotPaginationTest: page order, budget and density passed
+[14:49:48] [main/INFO]: [STDOUT]: MicrovoxelFlagsAndEventsTest: persistence, fail-open and isolation passed
+[14:49:48] [main/INFO]: [STDOUT]: MicrovoxelLoadStandTest: 4873 volumes, 25 pages, 163 batch packets, sort 0ms, paginate 0ms
+[14:49:48] [main/INFO]: [STDOUT]: MicrovoxelEditAlgebraTest: history identity, brush cap and palette limit passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelCollisionBackendTest: selection and 60-seed sweep fuzz passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelLightSealingTest: sealed faces and fractional emission passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelFluidTest: basin, levels, conservation and store passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelFluidGuardTest: protection flag contract passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelFluidLateralTest: flow, rain and quanta passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelLavaEngineTest: kinds, migration, crust and glow passed
+[14:49:49] [main/INFO]: [STDOUT]: MicrovoxelFluidFrostTest: crust placement passed
+[14:49:50] [main/INFO]: [STDOUT]: MicrovoxelServerCoreTest passed

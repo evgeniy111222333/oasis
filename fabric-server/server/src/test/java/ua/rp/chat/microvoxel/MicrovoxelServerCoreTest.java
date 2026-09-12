@@ -38,6 +38,10 @@ public final class MicrovoxelServerCoreTest {
         verifyFluidLateral();
         verifyLavaEngine();
         verifyFluidFrost();
+        verifyPublicationImmutability();
+        verifyBoundedJournalSlicing();
+        verifyConcurrentPersistenceSnapshotIsolation();
+        verifyFluidSnapshotIsolation();
         requireSnapshotEnvelope(MicrovoxelProtocol.snapshotBegin(41L),
                 MicrovoxelProtocol.SNAPSHOT_BEGIN, 41L);
         requireSnapshotEnvelope(MicrovoxelProtocol.snapshotEnd(41L),
@@ -198,11 +202,13 @@ public final class MicrovoxelServerCoreTest {
 
         Path journalBase = directory.resolve("journal-microvoxels.dat");
         MicrovoxelStore journalStore = new MicrovoxelStore(journalBase);
-        MicrovoxelVolume journalVolume = MicrovoxelVolume.full("minecraft:stone");
-        journalStore.put(key, journalVolume);
+        journalStore.put(key, MicrovoxelVolume.full("minecraft:stone"));
         journalStore.save();
         int journalRemoved = MicrovoxelVolume.index(4, 5, 6);
+        // Published volumes are frozen: mutate a copy and republish it (store.put re-freezes).
+        MicrovoxelVolume journalVolume = journalStore.get(key).copy();
         journalVolume.remove(journalRemoved);
+        journalStore.put(key, journalVolume);
         journalStore.markDirty(key);
         MicrovoxelStore.DirtyBatch firstJournalBatch = journalStore.snapshotDirty();
         journalStore.appendJournal(firstJournalBatch);
@@ -527,6 +533,211 @@ public final class MicrovoxelServerCoreTest {
     private static String readWireString(DataInputStream input) throws Exception {
         int length = MicrovoxelProtocol.readVarInt(input);
         return new String(input.readNBytes(length), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Publication immutability (I1): a volume handed to the store is frozen, mutating it throws,
+     * edits publish fresh copies, and the dirty/snapshot captures hand out frozen references
+     * instead of copying 4 KB per entry.
+     */
+    private static void verifyPublicationImmutability() throws Exception {
+        Path directory = Files.createTempDirectory("microvoxel-immutability-test");
+        UUID world = UUID.randomUUID();
+        MicrovoxelKey key = new MicrovoxelKey(world, 3, 70, 5);
+        MicrovoxelStore store = new MicrovoxelStore(directory.resolve("immutability.dat"));
+        MicrovoxelVolume published = MicrovoxelVolume.full("minecraft:stone");
+        store.put(key, published);
+        require(published.isFrozen(), "The store must freeze a published volume");
+        require(store.get(key) == published, "The store must serve the exact frozen instance");
+
+        requireThrows(() -> published.remove(MicrovoxelVolume.index(1, 1, 1)),
+                "Mutating a frozen published volume must throw");
+        requireThrows(() -> published.put(MicrovoxelVolume.index(1, 1, 1), "minecraft:dirt"),
+                "Adding to a frozen published volume must throw");
+        requireThrows(() -> published.compactPalette(),
+                "Compacting a frozen published volume must throw");
+
+        // Copy-on-write: edit a copy, publish it, and the previous instance must stay untouched.
+        MicrovoxelVolume edited = published.copy();
+        require(!edited.isFrozen(), "A copy must be mutable");
+        int cell = MicrovoxelVolume.index(4, 5, 6);
+        require(edited.remove(cell), "The copy must accept the edit");
+        store.put(key, edited);
+        require(store.get(key) == edited && edited.isFrozen(),
+                "The store must publish the edited copy and freeze it");
+        require(published.occupied(cell), "The previously published instance must stay unchanged");
+
+        // Dirty and snapshot captures must hand out frozen references, never copies.
+        store.markDirty(key);
+        MicrovoxelStore.DirtyBatch batch = store.snapshotDirty();
+        require(batch.entries().size() == 1, "One dirty volume must produce one entry");
+        require(batch.entries().get(0).volume() == edited,
+                "Dirty capture must hand the frozen reference to the worker, not a copy");
+        require(batch.entries().get(0).volume().isFrozen(), "Dirty entries must be frozen");
+        for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : store.snapshot().entries()) {
+            require(entry.getValue().isFrozen(), "Snapshots must expose only frozen volumes");
+        }
+
+        // A large palette no longer blows the journal frame cap: estimate stays realistic.
+        require(MicrovoxelStore.estimateDirtyBytes(edited) >= MicrovoxelVolume.CELL_COUNT,
+                "Dirty byte estimate must include the full cell array");
+    }
+
+    /**
+     * Journal slicing (I4): a dirty burst larger than one frame drains through bounded slices
+     * instead of building one oversized batch (which used to throw and livelock the worker).
+     */
+    private static void verifyBoundedJournalSlicing() throws Exception {
+        Path directory = Files.createTempDirectory("microvoxel-journal-slice-test");
+        UUID world = UUID.randomUUID();
+        Path base = directory.resolve("slice.dat");
+        MicrovoxelStore store = new MicrovoxelStore(base);
+        int count = 200;
+        for (int index = 0; index < count; index++) {
+            MicrovoxelKey key = new MicrovoxelKey(world, index, 64, 0);
+            MicrovoxelVolume volume = MicrovoxelVolume.full("minecraft:stone");
+            volume.remove(MicrovoxelVolume.index(index % 16, (index / 16) % 16, 3));
+            store.put(key, volume);
+            store.markDirty(key);
+        }
+        int maxEntries = 16;
+        long maxBytes = 70_000L;
+        int slices = 0;
+        while (store.hasDirtyEntries()) {
+            MicrovoxelStore.DirtyBatch batch = store.snapshotDirty(maxEntries, maxBytes);
+            require(!batch.entries().isEmpty(), "A non-empty dirty set must slice into a batch");
+            require(batch.entries().size() <= maxEntries, "Slices must respect the entry cap");
+            if (batch.entries().size() > 1) {
+                long bytes = 0L;
+                for (MicrovoxelStore.DirtyEntry entry : batch.entries()) {
+                    bytes += MicrovoxelStore.estimateDirtyBytes(entry.volume());
+                }
+                require(bytes <= maxBytes, "Slices must respect the byte cap, got " + bytes);
+            }
+            store.appendJournal(batch);
+            store.acknowledge(batch);
+            slices++;
+            require(slices <= count + 1, "Bounded slicing must drain the dirty set, not livelock");
+        }
+        require(slices >= 2, "A 200-volume burst must split across several slices");
+        MicrovoxelStore reloaded = new MicrovoxelStore(base);
+        reloaded.load();
+        require(reloaded.size() == count, "Every sliced edit must be replayable from the journal");
+    }
+
+    /**
+     * Tear-freedom (I2): with copy-on-write publication, a worker thread that serialises the
+     * store's volume concurrently with edits can only ever observe one published state, never a
+     * mixed one. The old in-place mutation produced torn signatures; this is the regression guard.
+     */
+    private static void verifyConcurrentPersistenceSnapshotIsolation() throws Exception {
+        Path directory = Files.createTempDirectory("microvoxel-concurrency-test");
+        UUID world = UUID.randomUUID();
+        MicrovoxelKey key = new MicrovoxelKey(world, 8, 64, 8);
+        MicrovoxelStore store = new MicrovoxelStore(directory.resolve("concurrency.dat"));
+        MicrovoxelVolume first = MicrovoxelVolume.full("minecraft:stone");
+        int cell = MicrovoxelVolume.index(2, 3, 4);
+        first.remove(cell);
+        store.put(key, first);
+        MicrovoxelVolume second = first.copy();
+        second.put(cell, "minecraft:diamond_block");
+        long signatureFirst = signature(first);
+        long signatureSecond = signature(second);
+
+        java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(true);
+        java.util.concurrent.atomic.AtomicReference<String> failure =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            while (running.get()) {
+                MicrovoxelVolume volume = store.get(key);
+                if (volume == null) continue;
+                long signature = signature(volume);
+                if (signature != signatureFirst && signature != signatureSecond) {
+                    failure.compareAndSet(null,
+                            "Snapshot writer observed a torn volume signature " + signature);
+                    return;
+                }
+            }
+        }, "microvoxel-tear-check");
+        writer.start();
+        for (int index = 0; index < 5_000; index++) {
+            store.put(key, (index & 1) == 0 ? second : first);
+        }
+        running.set(false);
+        writer.join(5_000);
+        require(!writer.isAlive(), "The snapshot writer must stop");
+        require(failure.get() == null, failure.get() == null ? "no tear" : failure.get());
+    }
+
+    /**
+     * Fluid snapshot isolation (I2): the persistence snapshot is a deep copy taken on the server
+     * thread, so later in-place sim edits never reach the bytes the worker writes. The dirty flag
+     * is cleared by sequence, so an ack of an older capture cannot drop a newer edit.
+     */
+    private static void verifyFluidSnapshotIsolation() throws Exception {
+        Path directory = Files.createTempDirectory("microvoxel-fluid-snapshot-test");
+        Path file = directory.resolve("fluids.dat");
+        FluidStore store = new FluidStore();
+        UUID world = UUID.randomUUID();
+        MicrovoxelKey key = new MicrovoxelKey(world, 1, 64, 1);
+        FluidVolume fluid = FluidVolume.empty();
+        int wetCell = FluidVolume.index(2, 3, 4);
+        int laterCell = FluidVolume.index(5, 5, 5);
+        fluid.setLevel(wetCell, 7);
+        store.put(key, fluid);
+
+        FluidStore.PersistSnapshot snapshot = store.capturePersistSnapshot();
+        require(snapshot.entries().size() == 1, "Capture must see every fluid volume");
+        byte[] captured = snapshot.entries().get(0).levels();
+        require(Byte.toUnsignedInt(captured[wetCell]) == 7, "Capture must hold the pre-edit levels");
+
+        // Sim-style in-place mutation after the capture must not reach the snapshot.
+        fluid.levelsDirect()[wetCell] = 16;
+        fluid.levelsDirect()[laterCell] = 3;
+        require(Byte.toUnsignedInt(captured[wetCell]) == 7,
+                "A captured snapshot must be immune to later sim edits");
+        require(Byte.toUnsignedInt(captured[laterCell]) == 0,
+                "A captured snapshot must not observe later sim edits");
+
+        FluidStore.writeSnapshot(file, snapshot);
+        FluidStore reloaded = new FluidStore();
+        reloaded.load(file);
+        FluidVolume restored = reloaded.get(key);
+        require(restored != null
+                        && Byte.toUnsignedInt(restored.levelsDirect()[wetCell]) == 7,
+                "The persisted file must contain the captured state, not the live mutation");
+
+        // Sequence-gated dirty clear.
+        store.markDirty();
+        store.acknowledgePersisted(snapshot.sequence());
+        require(store.isDirty(), "An ack for an older capture must not clear a newer edit");
+        FluidStore.PersistSnapshot fresh = store.capturePersistSnapshot();
+        store.acknowledgePersisted(fresh.sequence());
+        require(!store.isDirty(), "An ack for the latest capture must clear the dirty flag");
+    }
+
+    private interface ThrowingAction {
+        void run();
+    }
+
+    private static void requireThrows(ThrowingAction action, String message) {
+        try {
+            action.run();
+        } catch (IllegalStateException expected) {
+            return;
+        }
+        throw new AssertionError(message);
+    }
+
+    private static long signature(MicrovoxelVolume volume) {
+        long hash = 1125899906842597L;
+        for (byte cell : volume.cellsCopy()) {
+            hash = 31L * hash + cell;
+        }
+        for (String material : volume.palette()) {
+            hash = 31L * hash + material.hashCode();
+        }
+        return hash;
     }
 
     private static void require(boolean condition, String message) {

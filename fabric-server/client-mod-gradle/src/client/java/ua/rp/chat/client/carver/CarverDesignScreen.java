@@ -42,6 +42,8 @@ public class CarverDesignScreen extends Screen {
     private int[] dragStart;
     private int[] dragNow;
     private final List<UiButton> buttons = new ArrayList<>();
+    /** One-shot pick diagnostics: logs the first few cursor resolves of each drafting session. */
+    private static int pickDiag;
     private UiButton peelButton;
     private UiButton isolateButton;
     private UiButton boxButton;
@@ -53,6 +55,7 @@ public class CarverDesignScreen extends Screen {
 
     @Override
     protected void init() {
+        pickDiag = 0;
         buttons.clear();
         int right = width - PANEL_W - 10;
         int top = 20;
@@ -159,76 +162,13 @@ public class CarverDesignScreen extends Screen {
                     button.x + button.w / 2, button.y + 5,
                     hovered || toggled ? 0xFFFFF4DE : 0xFFE3C099);
         }
-        // Phase 0 material readout, upper left, clear of the drafting panel on the right.
-        drawInspection(graphics);
-        // One compact hint line centred just above the hotbar: the block readout and
-        // the estimate panel are gone, the drafting view stays clean.
+        // One compact hint line centred just above the hotbar: the drafting view stays clean.
         String hint = Component.translatable("screen.eclipse.carver_hint").getString();
         int hintWidth = font.width(hint);
         int hintX = Math.max(4, (width - hintWidth) / 2);
         int hintY = height - 58;
         graphics.fill(hintX - 6, hintY - 4, hintX + hintWidth + 6, hintY + 13, 0xA812100E);
         graphics.text(font, hint, hintX, hintY, 0xFFB0B0B0);
-    }
-
-    /** Phase 0 readout: material class, grain and the derived physical properties. */
-    private void drawInspection(GuiGraphicsExtractor graphics) {
-        ua.rp.chat.carver.CarverMaterialView.Readout readout = CarverInspection.readout();
-        if (readout == null) return;
-        int x = 8;
-        int y = 8;
-        int w = 196;
-        int h = 126;
-        graphics.fill(x - 4, y - 4, x + w, y + h, 0xD812100E);
-        graphics.fill(x - 4, y - 4, x - 2, y + h, 0xFFE3C099);
-        graphics.text(font, "Осмотр · " + readout.name(), x, y, 0xFFE3C099);
-        graphics.text(font, "Класс: "
-                        + ua.rp.chat.carver.CarverMaterialView.materialLabel(readout.material()),
-                x, y + 12, 0xFFB0A8A0);
-        String grainLine = "Зерно: "
-                + ua.rp.chat.carver.CarverMaterialView.grainLabel(readout.grain());
-        ua.rp.chat.carver.CarverGrainField.Field grainField = CarverInspection.field();
-        if (grainField != null && grainField.hasGrain()) {
-            double respect = ua.rp.chat.carver.CarverGrainMechanics.draftRespect(
-                    CarverClientState.draft(), grainField);
-            grainLine += " · резьба " + Math.round(respect * 100.0) + "%"
-                    + (respect >= 0.70 ? " по слою" : respect <= 0.45 ? " поперёк" : "");
-        }
-        graphics.text(font, grainLine, x, y + 24, 0xFF9FC3C4);
-        readoutBar(graphics, x, y + 40, w - 10, "Твёрдость",
-                Math.min(1.0f, readout.hardness() / 10.0f), 0xFFE3C099);
-        readoutBar(graphics, x, y + 52, w - 10, "Обрабатываемость",
-                (float) readout.workability(), 0xFF8FBF9F);
-        readoutBar(graphics, x, y + 64, w - 10, "Хрупкость",
-                (float) readout.brittleness(), 0xFFD08A6A);
-        readoutBar(graphics, x, y + 76, w - 10, "Теплопроводность",
-                (float) readout.conductivity(), 0xFF7FA8DC);
-        int rare = 0;
-        for (ua.rp.chat.carver.CarverInclusionField.Structure structure
-                : CarverInspection.structures()) {
-            if (structure.tier() == ua.rp.chat.carver.CarverInclusionField.Tier.RARE) rare++;
-        }
-        graphics.text(font, "Включения: " + CarverInspection.structures().size()
-                + (rare > 0 ? "   (редких: " + rare + ")" : ""), x, y + 90, 0xFF9A9A9A);
-        String sonarState = CarverInspection.sonarActive() ? "скан"
-                : CarverInspection.sonarCooldown01() > 0.0 ? "перезарядка" : "готов";
-        graphics.text(font, "[G] сонар: " + sonarState
-                + "   [V] " + (CarverInspection.enabled() ? "вкл" : "выкл"),
-                x, y + 102, 0xFF9A9A9A);
-        graphics.text(font, "[L] зерно-линза: " + (CarverInspection.lensActive() ? "вкл" : "выкл")
-                + "   [H] стрілки зерна: " + (CarverInspection.grainArrows() ? "вкл" : "выкл"),
-                x, y + 114, 0xFF9A9A9A);
-    }
-
-    /** One labelled 0..1 bar in the inspection readout. */
-    private void readoutBar(GuiGraphicsExtractor graphics, int x, int y, int w,
-                            String label, float value, int color) {
-        graphics.text(font, label, x, y, 0xFFCFC7BE);
-        int barX = x + 96;
-        int barW = Math.max(8, w - 96);
-        graphics.fill(barX, y + 1, barX + barW, y + 7, 0x50000000);
-        int filled = Math.round(Math.max(0.0f, Math.min(1.0f, value)) * barW);
-        graphics.fill(barX, y + 1, barX + filled, y + 7, color);
     }
 
     private String fit(String value, int maxWidth) {
@@ -330,22 +270,6 @@ public class CarverDesignScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int code = event.key();
-        if (CarverKeybinds.inspect.matches(event)) {
-            CarverInspection.toggle();
-            return true;
-        }
-        if (CarverKeybinds.sonar.matches(event)) {
-            CarverInspection.triggerSonar();
-            return true;
-        }
-        if (CarverKeybinds.lens.matches(event)) {
-            CarverInspection.toggleLens();
-            return true;
-        }
-        if (CarverKeybinds.grainGuide.matches(event)) {
-            CarverInspection.toggleGrainArrows();
-            return true;
-        }
         if (isCtrlDown() && CarverKeybinds.undo.matches(event)) {
             CarverClientState.sendUndo();
             return true;
@@ -436,10 +360,17 @@ public class CarverDesignScreen extends Screen {
         if (focus == null || !CarverClientState.designing()) return null;
         net.minecraft.client.Camera camera = minecraft.gameRenderer.getMainCamera();
         net.minecraft.world.phys.Vec3 pos = camera.position();
-        float fov = 70.0f;
-        try {
-            fov = (float) minecraft.options.fov().get().intValue();
-        } catch (RuntimeException ignored) {
+        // Use the exact FOV the frame was projected with. The projection is built from
+        // Camera.getFov() (base option * fovModifier), so reading the option directly made
+        // the pick drift whenever the modifier was not 1 (sprint/fly/fluid): the cursor and
+        // the selected voxel diverged further from the screen centre the further you clicked.
+        float fov = camera.getFov();
+        if (!(fov > 1.0f) || !Float.isFinite(fov)) {
+            try {
+                fov = (float) minecraft.options.fov().get().intValue();
+            } catch (RuntimeException ignored) {
+                fov = 70.0f;
+            }
         }
         double lift = CarverHologram.visualLift();
         double offX = CarverHologram.offsetX();
@@ -447,14 +378,23 @@ public class CarverDesignScreen extends Screen {
         // Carved volumes pick through the live voxel raycast at the hologram
         // anchor: cavities see through to inner walls, removed cells never hit.
         // Fresh sockets fall back to the full-cube slab below.
-        CarverCursorPick.Hit carved = pickVolume(pos, camera, fov, mouseX, mouseY,
+        CarverCursorPick.Hit result = pickVolume(pos, camera, fov, mouseX, mouseY,
                 focus, lift, offX, offZ);
-        if (carved != null) return carved;
-        if (hasCarvedVolume(focus)) return null;
-        return CarverCursorPick.pick(pos.x, pos.y, pos.z,
-                camera.yRot(), camera.xRot(), fov, width, height,
-                mouseX, mouseY, focus.getX(), focus.getY() + lift, focus.getZ(),
-                offX, offZ);
+        if (result == null && !hasCarvedVolume(focus)) {
+            result = CarverCursorPick.pick(pos.x, pos.y, pos.z,
+                    camera.yRot(), camera.xRot(), fov, width, height,
+                    mouseX, mouseY, focus.getX(), focus.getY() + lift, focus.getZ(),
+                    offX, offZ);
+        }
+        if (pickDiag < 4) {
+            pickDiag++;
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-PICK] mouse=" + mouseX + "," + mouseY
+                    + " fov=" + fov + " cam=" + pos
+                    + " yaw=" + camera.yRot() + " pitch=" + camera.xRot()
+                    + " lift=" + lift + " hit=" + (result == null ? "null"
+                            : (result.cell() + "/" + result.face())));
+        }
+        return result;
     }
 
     private CarverCursorPick.Hit pickVolume(net.minecraft.world.phys.Vec3 pos,

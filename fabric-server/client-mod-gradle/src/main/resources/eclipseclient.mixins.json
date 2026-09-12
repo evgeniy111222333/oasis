@@ -10,6 +10,7 @@
     "CubeVoxelShapeInvoker",
     "chat.ChatComponentMixin",
     "render.EntityRenderDispatcherMixin",
+    "render.GuiMixin",
     "fluid.CameraFluidRefineMixin",
     "camera.EntityEyePositionMixin",
     "fluid.EntityFluidRefineMixin",

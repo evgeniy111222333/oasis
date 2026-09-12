@@ -50,10 +50,6 @@ public final class DraftSession {
      * cancellation and fresh design entries.
      */
     private boolean autowalk;
-    /** Draft-time grain respect 0..1, or -1 when the stock is grainless. */
-    private double grainRespect = -1.0;
-    /** Tool-wear multiplier from fighting the grain, 1.0 neutral. */
-    private double grainWear = 1.0;
 
     public State state() {
         return state;
@@ -188,28 +184,6 @@ public final class DraftSession {
         }
     }
 
-    /** Draft-time grain respect 0..1, or -1 when the stock carries no grain. */
-    public double grainRespect() {
-        return grainRespect;
-    }
-
-    public void setGrainRespect(double value) {
-        if (Double.isFinite(value)) {
-            grainRespect = Math.max(-1.0, Math.min(1.0, value));
-        }
-    }
-
-    /** Tool-wear multiplier driven by the grain fight; clamped to a safe band. */
-    public double grainWear() {
-        return grainWear;
-    }
-
-    public void setGrainWear(double value) {
-        if (value > 0.0 && Double.isFinite(value)) {
-            grainWear = Math.max(0.5, Math.min(3.0, value));
-        }
-    }
-
     public double workProgress() {
         return DraftEstimate.progress(workDoneTicks, workTotalTicks);
     }
@@ -232,8 +206,6 @@ public final class DraftSession {
         workTotalTicks = 0;
         workDoneTicks = 0;
         autowalk = false;
-        grainRespect = -1.0;
-        grainWear = 1.0;
         return true;
     }
 
@@ -290,7 +262,5 @@ public final class DraftSession {
         designTicks = 0;
         workTotalTicks = 0;
         workDoneTicks = 0;
-        grainRespect = -1.0;
-        grainWear = 1.0;
     }
 }

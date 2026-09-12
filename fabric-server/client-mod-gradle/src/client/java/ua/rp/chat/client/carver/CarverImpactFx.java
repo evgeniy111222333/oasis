@@ -63,6 +63,7 @@ public final class CarverImpactFx {
         double prev = LAST_PULSE.getOrDefault(key, 0.0);
         LAST_PULSE.put(key, pulse);
         if (!shouldFire(prev, pulse)) return false;
+        CarverDustCore.onStrike();
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.level == null) return false;
         try {

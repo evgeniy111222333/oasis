@@ -16,13 +16,28 @@ public final class CarverWorkFx {
     }
 
     public static void tick(Minecraft minecraft) {
+        CarverDustScreen.clientTick();
+        CarverDustCore.tick();
         if (minecraft.level == null || minecraft.player == null) return;
         tickCounter++;
-        if (!CarverClientState.working() || CarverClientState.focus() == null) return;
-        if (tickCounter % 6 != 0) return;
-        BlockPos focus = CarverClientState.focus();
-        int tint = stormTint(minecraft, focus);
-        CarverDustStorm.trickle(minecraft, focus, tint);
+        if (tickCounter % 4 != 0) return;
+        if (CarverClientState.working() && CarverClientState.focus() != null) {
+            BlockPos focus = CarverClientState.focus();
+            CarverDustStorm.trickle(minecraft, focus, stormTint(minecraft, focus));
+        }
+        // Everyone sees the storm: nearby artisans get their own cocoon around the workpiece.
+        for (CarverClientState.ObservedWork observed : CarverClientState.observedWorks()) {
+            if (observed == null || observed.focus() == null) continue;
+            CarverDustStorm.trickle(minecraft, observed.focus(),
+                    stormTint(minecraft, observed.focus()));
+        }
+    }
+
+    /** Material-biased dust tint of a focus block, for the screen veil. */
+    public static int stormTintFor(BlockPos focus) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.level == null || focus == null) return 0xFFFFFF;
+        return stormTint(minecraft, focus);
     }
 
     public static void burst(BlockPos focus) {

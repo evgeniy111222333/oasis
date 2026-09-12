@@ -105,9 +105,29 @@ public final class MicrovoxelManager {
         this.fluidTuning = new FluidTuning();
         this.fluidTuning.reload(plugin.getConfig());
         this.fluidSim = new FluidSim(runtime, fluidTuning);
-        // Fluid rewrites ride the coalesced microvoxel worker: crash windows shrink from
-        // minutes to one edit burst at zero extra wakeups. The periodic backstop stays.
-        this.persistence.setOverflowSave(() -> saveFluids("coalesced"));
+        // Fluid rewrites ride the coalesced microvoxel worker. The snapshot is deep-copied here
+        // on the server thread (capture) and only the immutable bytes are written by the worker,
+        // so the sim mutating live fluid arrays can never tear the file. Periodic backstop stays.
+        this.persistence.setOverflowStore(new MicrovoxelPersistence.OverflowStore() {
+            @Override
+            public MicrovoxelPersistence.OverflowStore.Pending capture() {
+                Path file = fluidFile;
+                if (file == null || !fluidStore.isDirty()) return null;
+                FluidStore.PersistSnapshot snapshot = fluidStore.capturePersistSnapshot();
+                return new MicrovoxelPersistence.OverflowStore.Pending() {
+                    @Override
+                    public void write() throws IOException {
+                        FluidStore.writeSnapshot(file, snapshot);
+                    }
+
+                    @Override
+                    public void acknowledge() {
+                        fluidStore.acknowledgePersisted(snapshot.sequence());
+                        MicrovoxelMetrics.inc("fluid.saves");
+                    }
+                };
+            }
+        });
         this.history = new MicrovoxelEditHistory(context);
         this.engine = new MicrovoxelEditEngine(context, economy, history);
         this.environment = new MicrovoxelEnvironmentSim(context);
@@ -322,7 +342,12 @@ public final class MicrovoxelManager {
         // reloads on the same cadence, so /rpreload retunes a running server.
         if (tick % 1200 == 0) {
             fluidTuning.reload(plugin.getConfig());
-            plugin.getLogger().info(MicrovoxelMetrics.summarize());
+            // Persistence backlog is the backpressure signal: dirty volumes awaiting the worker,
+            // dirty regions awaiting compaction, and the journal size that drives compaction.
+            plugin.getLogger().info(MicrovoxelMetrics.summarize()
+                    + " store.dirty=" + runtime.store().dirtyCount()
+                    + " store.dirtyRegions=" + runtime.store().dirtyRegionCount()
+                    + " store.journalBytes=" + runtime.store().journalSizeBytes());
         }
     }
 
@@ -1034,16 +1059,19 @@ public final class MicrovoxelManager {
         if (fluid == null) return;
         boolean[] solid = FluidSim.solidScratch(volume);
         java.util.List<Integer> crusted = FluidVolume.freezeTopCells(fluid.levelsDirect(), solid);
+        if (crusted.isEmpty()) return;
+        // Published volumes are frozen: crust a copy and publish that (store.put freezes it).
+        MicrovoxelVolume updated = volume.copy();
         int placed = 0;
         for (int cell : crusted) {
-            if (volume.put(cell, "minecraft:cobblestone")) placed++;
+            if (updated.put(cell, "minecraft:cobblestone")) placed++;
         }
         if (placed == 0) return;
         fluid.setRevision(fluid.revision() + 1);
         fluidStore.markDirty();
-        runtime.projection().materialize(key, volume);
+        runtime.projection().materialize(key, updated);
         for (ServerPlayer observer : sync.nearbyPlayers(key)) {
-            sync.sendUpsert(observer, key, volume);
+            sync.sendUpsert(observer, key, updated);
             sync.sendFluidUpsert(observer, key, fluid.revision(),
                     fluid.kind().code(), fluid.levelsCopy());
         }

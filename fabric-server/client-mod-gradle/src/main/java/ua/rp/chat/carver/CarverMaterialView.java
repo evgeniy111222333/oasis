@@ -2,15 +2,14 @@ package ua.rp.chat.carver;
 
 /**
  * Human-facing inspection readout for a carvable block: the display name, the material class
- * and the derived physical properties the Phase 0 panel shows. A pure table over material
+ * and the derived physical properties the inspection panel shows. A pure table over material
  * class and vanilla hardness, so the panel never has to touch the world or the registry.
  *
  * <p>Mirror contract: client-only helper, no server copy exists by design.</p>
  */
 public final class CarverMaterialView {
     public record Readout(String name, CarverWorkAnim.Material material, float hardness,
-                          double workability, double brittleness, double conductivity,
-                          CarverGrainField.GrainType grain, double inclusionChance) {
+                          double workability, double brittleness, double conductivity) {
     }
 
     public static Readout of(String blockId, float hardness) {
@@ -32,9 +31,7 @@ public final class CarverMaterialView {
             case WOOD -> 0.12;
             default -> 0.25;
         };
-        return new Readout(shortName(blockId), material, hard, workability, brittleness,
-                conductivity, CarverGrainField.typeFor(material),
-                CarverInclusionField.baseChance(material));
+        return new Readout(shortName(blockId), material, hard, workability, brittleness, conductivity);
     }
 
     /** Short class label used by the panel. */
@@ -47,18 +44,6 @@ public final class CarverMaterialView {
             case GLASS -> "Стекло";
             case CLOTH -> "Ткань";
             default -> "Прочее";
-        };
-    }
-
-    /** Short grain label used by the panel. */
-    public static String grainLabel(CarverGrainField.GrainType grain) {
-        return switch (grain) {
-            case LAYERS -> "Слои";
-            case RINGS -> "Кольца";
-            case FIBERS -> "Волокна";
-            case CRYSTALS -> "Кристаллы";
-            case WOVEN -> "Плетение";
-            default -> "Аморфное";
         };
     }
 

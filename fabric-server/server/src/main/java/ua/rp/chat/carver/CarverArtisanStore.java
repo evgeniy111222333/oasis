@@ -15,9 +15,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Persistent artisan progression: mastery points, reputation, finished-piece count, best score
- * and the geology codex (which grain families this artisan has discovered). A tiny JSON ledger
- * written atomically next to the other RPChat config, keyed by player UUID.
+ * Persistent artisan progression: mastery points, reputation, finished-piece count and best
+ * score. A tiny JSON ledger written atomically next to the other RPChat config, keyed by player
+ * UUID.
  */
 public final class CarverArtisanStore {
     /** Per-player progression. Fields are public for the JSON writer only. */
@@ -26,7 +26,6 @@ public final class CarverArtisanStore {
         public int reputation;
         public int pieces;
         public double bestScore;
-        public final java.util.LinkedHashSet<String> codex = new java.util.LinkedHashSet<>();
 
         /** Mastery rank derived from accumulated points. */
         public String rank() {
@@ -50,16 +49,14 @@ public final class CarverArtisanStore {
         return profiles.computeIfAbsent(playerId.toString(), key -> new Profile());
     }
 
-    /** Records one finished piece; returns the codex key when a new grain family is discovered. */
-    public String record(UUID playerId, CarverEvaluation.Result result, CarverGrainField.GrainType grain) {
+    /** Records one finished piece. */
+    public void record(UUID playerId, CarverEvaluation.Result result) {
         Profile profile = profile(playerId);
         profile.pieces++;
         profile.mastery += result.mastery();
         profile.reputation += (int) Math.round(result.score() * 12.0);
         if (result.score() > profile.bestScore) profile.bestScore = result.score();
-        boolean fresh = grain != null && profile.codex.add(grain.name());
         save();
-        return fresh ? grain.name() : null;
     }
 
     private synchronized void load() {
@@ -75,11 +72,6 @@ public final class CarverArtisanStore {
                 profile.reputation = intOr(node, "reputation", 0);
                 profile.pieces = intOr(node, "pieces", 0);
                 profile.bestScore = node.has("bestScore") ? node.get("bestScore").getAsDouble() : 0.0;
-                if (node.has("codex") && node.get("codex").isJsonArray()) {
-                    for (JsonElement element : node.getAsJsonArray("codex")) {
-                        profile.codex.add(element.getAsString());
-                    }
-                }
                 profiles.put(entry.getKey(), profile);
             }
         } catch (RuntimeException | IOException ignored) {
@@ -100,9 +92,6 @@ public final class CarverArtisanStore {
                 node.addProperty("reputation", profile.reputation);
                 node.addProperty("pieces", profile.pieces);
                 node.addProperty("bestScore", profile.bestScore);
-                var codex = new com.google.gson.JsonArray();
-                for (String key : profile.codex) codex.add(key);
-                node.add("codex", codex);
                 root.add(entry.getKey(), node);
             }
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");

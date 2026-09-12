@@ -1036,11 +1036,7 @@ public final class MicrovoxelClientState {
         if (cached != null) {
             // Placement is infrequent. This bounded synchronous mesh makes the first section
             // compilation exact; the normal queued job subsequently adds neighbour culling.
-            ua.rp.chat.carver.CarverGrainField.Field grain =
-                    MicrovoxelGrain.fieldFor(immutable, volume);
-            ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.RegionLookup region = grain == null
-                    ? null : (x, y, z) -> grain.domain(x | (z << 4) | (y << 8));
-            cached.mesh = MicrovoxelGreedyMesher.build(volume, volume::materialAt, null, region);
+            cached.mesh = MicrovoxelGreedyMesher.build(volume, volume::materialAt);
             cached.meshRevision = volume.revision();
             cached.renderFlags = computeRenderFlags(volume);
             queueChunkBatch(immutable);
@@ -1555,20 +1551,8 @@ public final class MicrovoxelClientState {
                     }
                     return neighbourSolid ? 1 : 0;
                 };
-                // Banded geology survives greedy merging only on the near tier: the grain domain
-                // gates merging so each band / ring / facet keeps its own quad. LOD tiers stay
-                // plain (detail is lost at distance anyway) and keep their vertex budget.
-                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.RegionLookup region = null;
-                if (jobStride == 1) {
-                    ua.rp.chat.carver.CarverGrainField.Field grainField =
-                            MicrovoxelGrain.fieldFor(immutablePos, centerVol);
-                    if (grainField != null) {
-                        region = (x, y, z) -> grainField.domain(x | (z << 4) | (y << 8));
-                    }
-                }
-                List<MicrovoxelGreedyMesher.Face> mesh = jobStride == 1
-                        ? MicrovoxelGreedyMesher.build(centerVol, neighbours, null, region)
-                        : MicrovoxelGreedyMesher.build(centerVol, neighbours, jobStride);
+                List<MicrovoxelGreedyMesher.Face> mesh =
+                        MicrovoxelGreedyMesher.build(centerVol, neighbours, jobStride);
                 MicrovoxelClientMetrics.inc("mesh.jobs");
                 MicrovoxelClientMetrics.add("mesh.us", (System.nanoTime() - meshStart) / 1000L);
 

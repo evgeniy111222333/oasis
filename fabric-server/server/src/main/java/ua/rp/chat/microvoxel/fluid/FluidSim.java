@@ -381,7 +381,12 @@ public final class FluidSim {
         // Order matters: the drain hole sees a level surface, not a stale pile.
         relaxLocalWater(key, micro, fluid);
         freezeSurface(level, key, micro, fluid);
+        // Ice/frost publishes a fresh volume; re-read so later steps see the current geometry.
+        micro = runtime.store().get(key);
+        if (micro == null) return;
         crustAgainstVanilla(level, key, micro, fluid);
+        micro = runtime.store().get(key);
+        if (micro == null) return;
         equalizeWithNeighbors(level, key, fluid);
         feedFromVanilla(level, key, micro, fluid);
         drainDownwardOpenings(level, key, micro, fluid);
@@ -406,7 +411,12 @@ public final class FluidSim {
         // Volume-volume crusting is owned by the lava side only, so one pair never
         // petrifies twice per tick; vanilla contact crusts from whichever side is visited.
         crustWithNeighbors(level, key, micro, fluid);
+        // Crusting publishes fresh volumes; re-read so later steps see the current geometry.
+        micro = runtime.store().get(key);
+        if (micro == null) return;
         crustAgainstVanilla(level, key, micro, fluid);
+        micro = runtime.store().get(key);
+        if (micro == null) return;
         equalizeWithNeighbors(level, key, fluid);
         feedFromVanilla(level, key, micro, fluid);
         drainDownwardOpenings(level, key, micro, fluid);
@@ -466,17 +476,19 @@ public final class FluidSim {
         boolean[] solid = solidScratch(micro);
         java.util.List<Integer> frozen = FluidVolume.freezeTopCells(fluid.levelsDirect(), solid);
         if (frozen.isEmpty()) return;
+        // Published volumes are frozen: ice goes into a copy that is published here.
+        MicrovoxelVolume updated = micro.copy();
         int placed = 0;
         for (int cell : frozen) {
-            if (micro.put(cell, "minecraft:ice")) placed++;
+            if (updated.put(cell, "minecraft:ice")) placed++;
         }
         if (placed == 0) return;
         fluid.setRevision(fluid.revision() + 1);
         fluids().markDirty();
-        runtime.projection().materialize(key, micro);
+        runtime.projection().materialize(key, updated);
         if (runtime.sync() != null) {
             for (net.minecraft.server.level.ServerPlayer player : runtime.sync().nearbyPlayers(key)) {
-                runtime.sync().sendUpsert(player, key, micro);
+                runtime.sync().sendUpsert(player, key, updated);
             }
         }
         MicrovoxelMetrics.add("fluid.frozen", placed);
@@ -636,6 +648,9 @@ public final class FluidSim {
                                     MicrovoxelVolume micro, FluidVolume fluid) {
         UUID worldId = key.worldId();
         int crusted = 0;
+        // Published volumes are frozen: rocks are written into per-key working copies that are
+        // materialised once below, so the store's live volumes are never mutated in place.
+        Map<MicrovoxelKey, MicrovoxelVolume> working = new HashMap<>();
         for (int dir = 0; dir < DIRECTIONS.length && crusted < CRUST_PER_VISIT; dir++) {
             int[] offset = DIRECTIONS[dir];
             MicrovoxelKey neighborKey = new MicrovoxelKey(worldId,
@@ -659,12 +674,19 @@ public final class FluidSim {
                 int theirLevel = Byte.toUnsignedInt(theirs[theirCell]);
                 if (mineLevel <= 0 || theirLevel <= 0) continue;
                 // The rock forms where the lava was; water side only boils off.
-                MicrovoxelVolume lavaMicro = lavaMine ? micro : neighborMicro;
+                MicrovoxelKey rockKey = lavaMine ? key : neighborKey;
+                MicrovoxelVolume base = lavaMine ? micro : neighborMicro;
+                MicrovoxelVolume lavaWorking = working.getOrDefault(rockKey, base);
                 int lavaCell = lavaMine ? mineCell : theirCell;
                 String rock = crustMaterial(
                         lavaMine ? mineLevel : theirLevel, lavaMine ? theirLevel : mineLevel);
-                if (!lavaMicro.occupied(lavaCell) && putRock(lavaMine ? key : neighborKey,
-                        lavaMicro, lavaCell, rock)) {
+                if (lavaWorking.occupied(lavaCell)) continue;
+                MicrovoxelVolume target = working.get(rockKey);
+                if (target == null) {
+                    target = base.copy();
+                    working.put(rockKey, target);
+                }
+                if (target.put(lavaCell, rock)) {
                     int cooled = Math.min(4, mineLevel);
                     int boiled = Math.min(4, theirLevel);
                     mine[mineCell] = (byte) (mineLevel - (lavaMine ? cooled : boiled));
@@ -679,6 +701,15 @@ public final class FluidSim {
             }
         }
         if (crusted > 0) {
+            for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : working.entrySet()) {
+                runtime.projection().materialize(entry.getKey(), entry.getValue());
+                if (runtime.sync() != null) {
+                    for (net.minecraft.server.level.ServerPlayer player
+                            : runtime.sync().nearbyPlayers(entry.getKey())) {
+                        runtime.sync().sendUpsert(player, entry.getKey(), entry.getValue());
+                    }
+                }
+            }
             fluids().markDirty();
             syncFluid(key, fluid);
             MicrovoxelMetrics.add("fluid.crusted", crusted);
@@ -693,6 +724,9 @@ public final class FluidSim {
     private void crustAgainstVanilla(ServerLevel level, MicrovoxelKey key,
                                      MicrovoxelVolume micro, FluidVolume fluid) {
         int crusted = 0;
+        // Published volumes are frozen: the first rock copies the volume, then all rocks land on
+        // that copy, which is published once at the end.
+        MicrovoxelVolume updated = null;
         for (int dir = 0; dir < DIRECTIONS.length && crusted < CRUST_PER_VISIT; dir++) {
             int[] offset = DIRECTIONS[dir];
             int nx = key.x() + offset[0];
@@ -711,13 +745,14 @@ public final class FluidSim {
             for (int cell : boundaryCells(axis, positive)) {
                 if (crusted >= CRUST_PER_VISIT) break;
                 int wet = Byte.toUnsignedInt(levels[cell]);
-                if (wet <= 0 || micro.occupied(cell)) continue;
+                if (wet <= 0 || (updated == null ? micro : updated).occupied(cell)) continue;
                 // Our side is the lava side exactly when this volume holds lava; the
                 // vanilla neighbor plays the opposite role in both arrangements.
                 String rock = fluid.isLava()
                         ? crustMaterial(wet, state.isSource() ? 16 : 1)
                         : crustMaterial(state.isSource() ? 16 : 1, wet);
-                if (!micro.put(cell, rock)) continue;
+                if (updated == null) updated = micro.copy();
+                if (!updated.put(cell, rock)) continue;
                 levels[cell] = (byte) Math.max(0, wet - 4);
                 crusted++;
             }
@@ -725,29 +760,14 @@ public final class FluidSim {
         if (crusted > 0) {
             fluid.setRevision(fluid.revision() + 1);
             fluids().markDirty();
-            runtime.projection().materialize(key, micro);
+            runtime.projection().materialize(key, updated);
             if (runtime.sync() != null) {
                 for (net.minecraft.server.level.ServerPlayer player : runtime.sync().nearbyPlayers(key)) {
-                    runtime.sync().sendUpsert(player, key, micro);
+                    runtime.sync().sendUpsert(player, key, updated);
                 }
             }
             MicrovoxelMetrics.add("fluid.crusted", crusted);
         }
-    }
-
-    /**
-     * Writes one cooled cell into a microvoxel volume and projects it. Returns false when
-     * the cell turned solid under us ((edits race the sim).
-     */
-    private boolean putRock(MicrovoxelKey key, MicrovoxelVolume micro, int cell, String rock) {
-        if (!micro.put(cell, rock)) return false;
-        runtime.projection().materialize(key, micro);
-        if (runtime.sync() != null) {
-            for (net.minecraft.server.level.ServerPlayer player : runtime.sync().nearbyPlayers(key)) {
-                runtime.sync().sendUpsert(player, key, micro);
-            }
-        }
-        return true;
     }
 
     /**

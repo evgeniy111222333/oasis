@@ -260,6 +260,14 @@ tasks.register("verifyCarverChiselAssets", JavaExec) {
 	mainClass = "ua.rp.chat.CarverChiselAssetsTest"
 }
 
+tasks.register("verifyCarverDustScreen", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks the screen-space dust field: parallax bands, mote size, alpha and fade ranges."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CarverDustScreenTest"
+}
+
 tasks.register("verifyMixinSignatures") {
 	group = "verification"
 	description = "Fails when an @Inject handler lacks its trailing CallbackInfo parameter."
@@ -309,6 +317,7 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyCarverChiselAssets")
 	dependsOn tasks.named("verifyCarverWorkAim")
 	dependsOn tasks.named("verifyCarverStrikeAlign")
+	dependsOn tasks.named("verifyCarverDustScreen")
 	dependsOn tasks.named("verifyMixinSignatures")
 }
 

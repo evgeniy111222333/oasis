@@ -80,9 +80,8 @@ public class EclipseClientMod implements ClientModInitializer {
         net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.END_MAIN.register(
                 context -> {
                     ua.rp.chat.client.carver.CarverHologramRenderer.render(context);
+                    ua.rp.chat.client.carver.CarverDustCore.render(context);
                     ua.rp.chat.client.carver.CarverChalkOverlay.render();
-                    ua.rp.chat.client.carver.CarverInspectionOverlay.render();
-                    ua.rp.chat.client.carver.CarverGrainLensOverlay.render();
                 });
         MicrovoxelInteractionController.register();
         ua.rp.chat.client.carver.CarverKeybinds.register();

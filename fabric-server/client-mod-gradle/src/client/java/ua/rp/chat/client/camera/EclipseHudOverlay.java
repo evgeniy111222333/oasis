@@ -30,6 +30,10 @@ public final class EclipseHudOverlay implements HudElement {
             return;
         }
 
+        // Screen-space dust during the carving work phase: drifting motes and wind streaks keep
+        // the shot readable instead of hiding the camera. Drawn first so the readouts stay on top.
+        ua.rp.chat.client.carver.CarverDustScreen.render(graphics, width, height);
+
         float stamina = ua.rp.chat.client.vitals.VitalsClientState.getStamina01();
         float danger = manager.getStaminaDanger01();
         int barWidth = Math.max(72, width / 8);

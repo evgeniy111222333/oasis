@@ -81,10 +81,12 @@ public final class MicrovoxelEnvironmentSim {
             if (isProtected(key)) continue;
             MicrovoxelVolume volume = context.runtime().store().get(key);
             if (volume == null) continue;
+            // Published volumes are frozen: mutate a copy and publish it once at the end.
+            MicrovoxelVolume updated = volume.copy();
             int removed = 0;
             for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT
                     && evaluated < MAX_EXPLOSION_CELL_EVALUATIONS; cell++) {
-                if (!volume.occupied(cell)) continue;
+                if (!updated.occupied(cell)) continue;
                 evaluated++;
                 int localX = MicrovoxelVolume.x(cell);
                 int localY = MicrovoxelVolume.y(cell);
@@ -100,18 +102,18 @@ public final class MicrovoxelEnvironmentSim {
 
                 boolean exposed = isExposedMicrocell(occupancySnapshot, worldId,
                         key.x() * 16 + localX, key.y() * 16 + localY, key.z() * 16 + localZ);
-                BlockState material = MicrovoxelBlockStates.parseBlockState(volume.material(cell));
+                BlockState material = MicrovoxelBlockStates.parseBlockState(updated.material(cell));
                 double resistance = Math.max(0.1, material.getBlock().getExplosionResistance());
                 if (MicrovoxelExplosionRules.shouldBreak(
                         explosion.radius(), distance, resistance, exposed,
                         MicrovoxelExplosionRules.variance(key, cell))
-                        && volume.remove(cell)) {
+                        && updated.remove(cell)) {
                     removed++;
                 }
             }
             if (removed == 0) continue;
             removedTotal += removed;
-            if (volume.occupiedCount() == 0) {
+            if (updated.occupiedCount() == 0) {
                 // A fully wiped volume bursts with its own materials, not the marker.
                 java.util.List<String> blownTop =
                         ua.rp.chat.microvoxel.MicrovoxelParentage.topMaterials(
@@ -134,8 +136,8 @@ public final class MicrovoxelEnvironmentSim {
                     }
                 }
             } else {
-                context.runtime().projection().materialize(key, volume);
-                context.sync().broadcastUpsert(key, volume);
+                context.runtime().projection().materialize(key, updated);
+                context.sync().broadcastUpsert(key, updated);
             }
         }
         if (removedTotal > 0) {

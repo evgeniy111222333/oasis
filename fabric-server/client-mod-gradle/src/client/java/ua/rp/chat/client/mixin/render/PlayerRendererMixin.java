@@ -60,7 +60,14 @@ public class PlayerRendererMixin {
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At("HEAD"))
     private void eclipse$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
         SmartCameraManager cameraManager = SmartCameraManager.getInstance();
-        if (eclipse$isLocalFirstPersonState(state) && cameraManager.isWorldFirstPersonBodyRender()) {
+        // During the carving work shot the artisan is drawn as an ordinary full model. The work
+        // camera is a detached orbit, so the first-person-body treatment (head hidden plus the
+        // eye-space compensation) would render a headless, shifted body from the orbit; skipping
+        // it falls through to the normal-local branch that restores the head and lets the carving
+        // animation show.
+        boolean firstPersonBody = cameraManager.isWorldFirstPersonBodyRender()
+                && !ua.rp.chat.client.carver.CarverClientState.working();
+        if (eclipse$isLocalFirstPersonState(state) && firstPersonBody) {
             Vec3 compensation = cameraManager.getFirstPersonBodyCompensation();
             poseStack.pushPose();
             poseStack.translate(compensation.x, compensation.y, compensation.z);

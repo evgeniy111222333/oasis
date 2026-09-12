@@ -36,6 +36,67 @@ public final class CarverCameraMath {
     /** Transition from the design orbit to the work framing, in client ticks. */
     public static final int WORK_FLY_TICKS = 20;
 
+    /**
+     * A work-phase camera shot: a yaw swing from the current side plus a target pitch and
+     * distance. The montage picks these at random so the artisan sees the workpiece from
+     * switched angles (other sides, higher, lower) instead of one locked orbit.
+     */
+    public record WorkShot(float yawDeltaDeg, float pitchDeg, double dist) {
+    }
+
+    /** Sharp montage transit in client ticks: a cut, not a slow pan. */
+    public static final int WORK_CUT_TICKS = 4;
+    /** Ticks between cuts. */
+    public static final int WORK_CUT_MIN_TICKS = 60;
+    public static final int WORK_CUT_MAX_TICKS = 150;
+    /** Handheld drift between cuts, in degrees per tick. */
+    public static final double WORK_DRIFT_YAW = 0.09;
+    public static final double WORK_DRIFT_PITCH = 0.05;
+
+    private static final WorkShot[] WORK_SHOTS = {
+            new WorkShot(90.0f, 45.0f, 3.0),
+            new WorkShot(-90.0f, 50.0f, 3.2),
+            new WorkShot(135.0f, 35.0f, 3.6),
+            new WorkShot(-135.0f, 25.0f, 2.8),
+            new WorkShot(180.0f, 55.0f, 3.8),
+            new WorkShot(90.0f, 20.0f, 2.6),
+            new WorkShot(-90.0f, 60.0f, 3.4),
+            new WorkShot(135.0f, 52.0f, 3.1),
+            new WorkShot(-180.0f, 40.0f, 3.3),
+            new WorkShot(90.0f, 62.0f, 3.7),
+    };
+
+    public static int workShotCount() {
+        return WORK_SHOTS.length;
+    }
+
+    public static WorkShot workShot(int index) {
+        return WORK_SHOTS[Math.floorMod(index, WORK_SHOTS.length)];
+    }
+
+    /** Picks a cut preset different from the previous one. Pure given the RNG. */
+    public static int nextWorkShot(java.util.Random random, int previous) {
+        int size = WORK_SHOTS.length;
+        if (size <= 1) return 0;
+        int next;
+        do {
+            next = random.nextInt(size);
+        } while (next == previous);
+        return next;
+    }
+
+    /** Random ticks until the next cut. Pure given the RNG. */
+    public static int nextCutCooldown(java.util.Random random) {
+        return WORK_CUT_MIN_TICKS
+                + random.nextInt(WORK_CUT_MAX_TICKS - WORK_CUT_MIN_TICKS + 1);
+    }
+
+    /** Smoothstep ease for the cut transit. */
+    public static double smoothStep(double t) {
+        double x = Math.max(0.0, Math.min(1.0, t));
+        return x * x * (3.0 - 2.0 * x);
+    }
+
     private CarverCameraMath() {
     }
 

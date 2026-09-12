@@ -28,6 +28,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -53,9 +54,17 @@ public final class CarverManager {
     private final Map<UUID, CarverSoundKit> kits = new ConcurrentHashMap<>();
     private final Map<UUID, net.minecraft.core.particles.ParticleOptions> dust = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastDraftOpAt = new ConcurrentHashMap<>();
+    /** Players with an applied-but-not-yet-echoed draft change (burst coalescing). */
+    private final Set<UUID> draftEchoPending = ConcurrentHashMap.newKeySet();
     private final AtomicLong transactions = new AtomicLong(1L);
     private final CarverArtisanStore artisans;
-    /** Minimum milliseconds between accepted stroke packets per player. */
+    /**
+     * Minimum milliseconds between draft-state echoes per player. The draft state itself is
+     * always applied the instant the packet is validated; only the echo/broadcast packet is
+     * rate-limited and flushed on {@link #tick()}. Dropping the op instead (the previous
+     * behaviour) silently voided the stroke server-side while the client had already hidden
+     * the cells optimistically, so they reappeared a couple of seconds later.
+     */
     private static final long STROKE_THROTTLE_MS = 100L;
 
     public CarverManager(RPChat plugin,
@@ -239,6 +248,7 @@ public final class CarverManager {
                 anchors.remove(playerId);
             }
         }
+        flushPendingDraftEchoes();
     }
 
     /** Movement/damage during work breaks the carving; design only breaks on leaving. */
@@ -274,6 +284,7 @@ public final class CarverManager {
         kits.remove(playerId);
         dust.remove(playerId);
         lastDraftOpAt.remove(playerId);
+        draftEchoPending.remove(playerId);
         if (session != null && (session.state() == DraftSession.State.DESIGN
                 || session.state() == DraftSession.State.WORK)) {
             broadcastSessionClose(playerId, session);
@@ -347,13 +358,6 @@ public final class CarverManager {
             MicrovoxelMetrics.inc("carver.drop.target");
             return;
         }
-        long now = System.currentTimeMillis();
-        Long previous = lastDraftOpAt.get(player.getUUID());
-        if (previous != null && now - previous < STROKE_THROTTLE_MS) {
-            MicrovoxelMetrics.inc("carver.drop.throttle");
-            return;
-        }
-        lastDraftOpAt.put(player.getUUID(), now);
         DraftMask stroke;
         try {
             stroke = DraftMask.decode(data);
@@ -374,16 +378,14 @@ public final class CarverManager {
             DraftSession.expandMirrored(erase, session.mirrorAxes());
             session.mask().andNot(erase);
         }
-        sendDraft(player, session);
-        broadcastDraft(player, session);
-        sendEstimate(player, session);
+        publishDraft(player, session);
         MicrovoxelMetrics.add(add ? "carver.stroke.add" : "carver.stroke.erase", stroke.count());
     }
 
     /**
-     * Whole-box select validated exactly like a stroke: same session, target and
-     * throttle gates, only the cell cap is larger. Rectangularity is a client
-     * concern; the count cap is the abuse boundary.
+     * Whole-box select validated exactly like a stroke: same session and target gates,
+     * only the cell cap is larger. Rectangularity is a client concern; the count cap is
+     * the abuse boundary. The echo is coalesced through {@link #publishDraft}.
      */
     private void applyBox(ServerPlayer player, int x, int y, int z, byte[] data, boolean add) {
         DraftSession session = sessions.get(player.getUUID());
@@ -392,13 +394,6 @@ public final class CarverManager {
             MicrovoxelMetrics.inc("carver.drop.target");
             return;
         }
-        long now = System.currentTimeMillis();
-        Long previous = lastDraftOpAt.get(player.getUUID());
-        if (previous != null && now - previous < STROKE_THROTTLE_MS) {
-            MicrovoxelMetrics.inc("carver.drop.throttle");
-            return;
-        }
-        lastDraftOpAt.put(player.getUUID(), now);
         DraftMask box;
         try {
             box = DraftMask.decode(data);
@@ -419,9 +414,7 @@ public final class CarverManager {
             DraftSession.expandMirrored(erase, session.mirrorAxes());
             session.mask().andNot(erase);
         }
-        sendDraft(player, session);
-        broadcastDraft(player, session);
-        sendEstimate(player, session);
+        publishDraft(player, session);
         MicrovoxelMetrics.add(add ? "carver.box.add" : "carver.box.erase", box.count());
     }
 
@@ -432,9 +425,7 @@ public final class CarverManager {
         if (session.mask().isEmpty()) return;
         session.pushHistory();
         session.mask().clearAll();
-        sendDraft(player, session);
-        broadcastDraft(player, session);
-        sendEstimate(player, session);
+        publishDraft(player, session);
     }
 
     /** Pre-commit undo/redo over draft snapshots; the world history stays separate. */
@@ -444,9 +435,7 @@ public final class CarverManager {
                 || !session.targets(x, y, z)) return;
         boolean moved = undo ? session.undo() : session.redo();
         if (!moved) return;
-        sendDraft(player, session);
-        broadcastDraft(player, session);
-        sendEstimate(player, session);
+        publishDraft(player, session);
         MicrovoxelMetrics.inc(undo ? "carver.undo" : "carver.redo");
     }
 
@@ -541,28 +530,6 @@ public final class CarverManager {
         int tool = CarverItems.chiselOf(player.getOffhandItem());
         int workTicks = Math.max(1, DraftEstimate.workTicks(
                 cells.size(), fill, span, multiplier, tool));
-        // Grain feedback is known the moment the drawing is fixed: a draft that follows the
-        // bedding planes finishes sooner and spares the edge, one that slices across drags and
-        // dulls the chisel. Evaluated on the same mirrored field the client renders.
-        CarverGrainField.GrainType grainType =
-                CarverGrainField.typeFor(CarverWorkAnim.classify(session.materialId()));
-        CarverGrainField.Field grainField = CarverGrainField.hasGrain(grainType)
-                ? CarverGrainField.build(CarverGrainField.seedFor(x, y, z), grainType) : null;
-        double grainRespect = grainField == null ? -1.0
-                : CarverEvaluation.grainRespect(session.mask(), grainField);
-        if (grainRespect >= 0.0) {
-            double pace = 0.85 + 0.30 * grainRespect;
-            workTicks = Math.max(1, (int) Math.round(workTicks / pace));
-            session.setGrainRespect(grainRespect);
-            session.setGrainWear(1.0 + 0.6 * (1.0 - grainRespect));
-            player.sendSystemMessage(Component.literal(
-                    "Зерно: " + grainName(grainType) + " · резьба " + percent(grainRespect)
-                            + (grainRespect >= 0.70 ? " (по слою)"
-                            : grainRespect <= 0.45 ? " (поперёк)" : "")), true);
-        } else {
-            session.setGrainRespect(-1.0);
-            session.setGrainWear(1.0);
-        }
         double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
         if (stamina.escapeStamina(player) < cost) {
             player.sendSystemMessage(Component.literal("Нехватка сил: нужно "
@@ -636,11 +603,8 @@ public final class CarverManager {
         } catch (RuntimeException ignored) {
         }
         int done = session.workDoneTicks();
-        // One strike, one notch of wear on the held chisel, paced with the work song and the
-        // grain fight: cross-grain drafts dull the edge faster, clean drafts spare it.
-        int wearEvery = Math.max(6, (int) Math.round(
-                CarverWorkRhythm.STRIKE_WEAR_EVERY_TICKS / session.grainWear()));
-        if (done > 0 && done % wearEvery == 0
+        // One strike, one notch of wear on the held chisel, paced with the work song.
+        if (done > 0 && done % CarverWorkRhythm.STRIKE_WEAR_EVERY_TICKS == 0
                 && player.level() instanceof ServerLevel workLevel) {
             wearChisel(player, workLevel);
         }
@@ -751,19 +715,21 @@ public final class CarverManager {
             plan.setConverted(true);
         }
         if (volume == null) return;
+        // Published volumes are frozen: carve a copy and publish that (store.put freezes it).
+        MicrovoxelVolume updated = volume.copy();
         int removed = 0;
         java.util.Map<String, Integer> sliceMaterials = new java.util.HashMap<>();
         while (plan.applied() < target && plan.applied() < plan.cells().size()) {
             int cell = plan.cells().get(plan.applied());
-            String material = volume.occupied(cell) ? volume.material(cell) : null;
-            if (volume.remove(cell)) {
+            String material = updated.occupied(cell) ? updated.material(cell) : null;
+            if (updated.remove(cell)) {
                 removed++;
                 if (material != null && !material.isEmpty()) {
                     sliceMaterials.merge(material, 1, Integer::sum);
                 }
                 // Deltas, not full upserts: bytes per carved cell instead of kilobytes
                 // per slice. The final TRANSACTION converges late joiners and loss.
-                microvoxels.syncHub().broadcastDelta(key, volume, cell, "");
+                microvoxels.syncHub().broadcastDelta(key, updated, cell, "");
                 MicrovoxelMetrics.inc("carver.work.delta");
             }
             plan.setApplied(plan.applied() + 1);
@@ -773,11 +739,11 @@ public final class CarverManager {
         }
         if (removed == 0) return;
         microvoxels.collision().invalidate(key);
-        if (volume.occupiedCount() == 0) {
+        if (updated.occupiedCount() == 0) {
             microvoxels.runtime().projection().dematerialize(key);
             microvoxels.syncHub().broadcastRemove(key);
         } else {
-            microvoxels.runtime().projection().materialize(key, volume);
+            microvoxels.runtime().projection().materialize(key, updated);
         }
         MicrovoxelMetrics.add("carver.work.cells", removed);
     }
@@ -840,33 +806,20 @@ public final class CarverManager {
     }
 
     /**
-     * Phase 4: scores the finished piece against the workpiece grain and the remaining volume,
-     * persists the artisan's progression and reports the verdict. Runs entirely on mirrored pure
-     * classes, so the client render and this verdict read the same geology.
+     * Phase 4: scores the finished piece against the remaining volume, persists the artisan's
+     * progression and reports the verdict.
      */
     private void evaluateAndRecord(ServerPlayer player, BlockPos pos, WorkPlan plan,
                                    DraftSession session, MicrovoxelVolume after) {
         try {
-            CarverGrainField.GrainType grainType =
-                    CarverGrainField.typeFor(CarverWorkAnim.classify(plan.materialId()));
-            CarverGrainField.Field grainField = CarverGrainField.hasGrain(grainType)
-                    ? CarverGrainField.build(
-                            CarverGrainField.seedFor(pos.getX(), pos.getY(), pos.getZ()), grainType)
-                    : null;
-            CarverEvaluation.Result verdict =
-                    CarverEvaluation.evaluate(session.mask(), after, grainField);
-            String discovery = artisans.record(player.getUUID(), verdict, grainType);
+            CarverEvaluation.Result verdict = CarverEvaluation.evaluate(session.mask(), after);
+            artisans.record(player.getUUID(), verdict);
             CarverArtisanStore.Profile profile = artisans.profile(player.getUUID());
             player.sendSystemMessage(Component.literal(
                     "Оценка: " + verdict.grade()
-                            + "  (зерно " + percent(verdict.grainRespect())
-                            + ", стойкость " + percent(verdict.stability()) + ")"
+                            + "  (стойкость " + percent(verdict.stability()) + ")"
                             + "  +" + verdict.mastery() + " мастерства"
                             + "  ·  ранг: " + profile.rank()), true);
-            if (discovery != null) {
-                player.sendSystemMessage(Component.literal(
-                        "Кодекс геологии: впервые изучено зерно — " + grainName(grainType)), true);
-            }
         } catch (RuntimeException ignored) {
             // Evaluation is feedback, never a reason to lose a finished carve.
         }
@@ -874,17 +827,6 @@ public final class CarverManager {
 
     private static String percent(double value) {
         return Math.round(Math.max(0.0, Math.min(1.0, value)) * 100.0) + "%";
-    }
-
-    private static String grainName(CarverGrainField.GrainType grain) {
-        return switch (grain) {
-            case LAYERS -> "Слои";
-            case RINGS -> "Кольца";
-            case FIBERS -> "Волокна";
-            case CRYSTALS -> "Кристаллы";
-            case WOVEN -> "Плетение";
-            case AMORPHOUS -> "Аморфное";
-        };
     }
 
     /** Interrupts work keeping the carved-so-far result; design drafts just dissolve. */
@@ -912,6 +854,51 @@ public final class CarverManager {
             BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
             sendEvent(player, CarverProtocol.EVENT_SESSION_CLOSE, pos,
                     CarverSyncPayload.closeData(reason.ordinal()));
+        }
+    }
+
+    /**
+     * Echoes the authoritative draft to the artisan and nearby watchers. The state change
+     * itself is always already applied; only the packet is coalesced to at most one per
+     * {@link #STROKE_THROTTLE_MS}. A deferred echo is flushed by {@link #tick()} a few ticks
+     * later, so a fast burst of strokes can never be silently voided.
+     */
+    private void publishDraft(ServerPlayer player, DraftSession session) {
+        long now = System.currentTimeMillis();
+        Long previous = lastDraftOpAt.get(player.getUUID());
+        if (previous != null && now - previous < STROKE_THROTTLE_MS) {
+            draftEchoPending.add(player.getUUID());
+            return;
+        }
+        lastDraftOpAt.put(player.getUUID(), now);
+        draftEchoPending.remove(player.getUUID());
+        sendDraft(player, session);
+        broadcastDraft(player, session);
+        sendEstimate(player, session);
+    }
+
+    /** Flushes coalesced draft echoes whose throttle window has elapsed. */
+    private void flushPendingDraftEchoes() {
+        if (draftEchoPending.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        for (UUID playerId : draftEchoPending) {
+            DraftSession session = sessions.get(playerId);
+            if (session == null || session.state() != DraftSession.State.DESIGN) {
+                draftEchoPending.remove(playerId);
+                continue;
+            }
+            Long previous = lastDraftOpAt.get(playerId);
+            if (previous != null && now - previous < STROKE_THROTTLE_MS) continue;
+            ServerPlayer player = playerById(playerId);
+            if (player == null || !player.isAlive()) {
+                draftEchoPending.remove(playerId);
+                continue;
+            }
+            lastDraftOpAt.put(playerId, now);
+            draftEchoPending.remove(playerId);
+            sendDraft(player, session);
+            broadcastDraft(player, session);
+            sendEstimate(player, session);
         }
     }
 

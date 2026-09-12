@@ -201,18 +201,20 @@ public final class MicrovoxelMiningEngine {
         if (level != null) {
             level.levelEvent(2001, keyBlockPos(key), Block.getId(cellState));
         }
-        MicrovoxelVolume beforeMine = volume.copy();
-        volume.remove(session.cell());
+        // Published volumes are frozen: mutate a copy and publish that (store.put freezes it).
+        MicrovoxelVolume beforeMine = volume;
+        MicrovoxelVolume updated = volume.copy();
+        updated.remove(session.cell());
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("mine.breaks");
-        ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeMine, volume);
-        if (volume.occupiedCount() == 0) {
+        ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeMine, updated);
+        if (updated.occupiedCount() == 0) {
             context.collision().invalidate(key);
             context.runtime().projection().dematerialize(key);
             context.sync().broadcastRemove(key);
         } else {
             context.collision().invalidate(key);
-            context.runtime().projection().materialize(key, volume);
-            context.sync().broadcastDelta(key, volume, session.cell(), "");
+            context.runtime().projection().materialize(key, updated);
+            context.sync().broadcastDelta(key, updated, session.cell(), "");
         }
     }
 

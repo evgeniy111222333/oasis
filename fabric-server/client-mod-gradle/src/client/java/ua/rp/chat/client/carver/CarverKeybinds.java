@@ -20,10 +20,6 @@ public final class CarverKeybinds {
     public static KeyMapping depthDown;
     public static KeyMapping boxMode;
     public static KeyMapping toolToggle;
-    public static KeyMapping inspect;
-    public static KeyMapping sonar;
-    public static KeyMapping lens;
-    public static KeyMapping grainGuide;
 
     private CarverKeybinds() {
     }
@@ -39,10 +35,6 @@ public final class CarverKeybinds {
         depthDown = key("key.eclipse.carver_depth_down", GLFW.GLFW_KEY_G);
         boxMode = key("key.eclipse.carver_box", GLFW.GLFW_KEY_B);
         toolToggle = key("key.eclipse.carver_tool", GLFW.GLFW_KEY_E);
-        inspect = key("key.eclipse.carver_inspect", GLFW.GLFW_KEY_V);
-        sonar = key("key.eclipse.carver_sonar", GLFW.GLFW_KEY_G);
-        lens = key("key.eclipse.carver_lens", GLFW.GLFW_KEY_L);
-        grainGuide = key("key.eclipse.carver_grain_guide", GLFW.GLFW_KEY_H);
     }
 
     private static KeyMapping key(String translationKey, int defaultCode) {

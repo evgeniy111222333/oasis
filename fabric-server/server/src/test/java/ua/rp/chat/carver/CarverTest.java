@@ -26,15 +26,14 @@ public final class CarverTest {
 
     /**
      * Phase-4 evaluation: an empty draft stays stable, a full middle-plane cut halves the largest
-     * component, IoU is reflexive and removing a whole grain band respects the seams better than
-     * slicing the block in half.
+     * component, and IoU is reflexive.
      */
     private static void verifyEvaluation() {
         ua.rp.chat.microvoxel.MicrovoxelVolume full =
                 ua.rp.chat.microvoxel.MicrovoxelVolume.full("minecraft:stone");
         CarverEvaluation.Result empty = CarverEvaluation.evaluate(new DraftMask(), full, null);
-        require(empty.removedCells() == 0 && empty.stability() == 1.0 && empty.grainless(),
-                "An empty draft must be grainless-stable and count zero cells");
+        require(empty.removedCells() == 0 && empty.stability() == 1.0,
+                "An empty draft must be stable and count zero cells");
 
         DraftMask slab = new DraftMask();
         for (int x = 0; x < 16; x++) {
@@ -55,56 +54,12 @@ public final class CarverTest {
         b.set(DraftMask.index(0, 1, 0));
         require(CarverEvaluation.iou(a, b) < 1.0, "A differing mask must lower IoU");
 
-        CarverGrainField.Field field = CarverGrainField.build(7L, CarverGrainField.GrainType.LAYERS);
-        int targetDomain = field.domain(DraftMask.index(8, 8, 8));
-        DraftMask band = new DraftMask();
-        for (int cell = 0; cell < DraftMask.CELL_COUNT; cell++) {
-            if (field.domain(cell) == targetDomain) band.set(cell);
-        }
-        ua.rp.chat.microvoxel.MicrovoxelVolume afterBand = full.copy();
-        for (int cell : band.cells()) afterBand.remove(cell);
-        double cleanRespect = CarverEvaluation.grainRespect(band, afterBand, field);
-        require(cleanRespect > 0.7, "Removing a whole grain band must respect the seams");
-
-        DraftMask half = new DraftMask();
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = 0; y < 8; y++) half.set(DraftMask.index(x, y, z));
-            }
-        }
-        ua.rp.chat.microvoxel.MicrovoxelVolume afterHalf = full.copy();
-        for (int cell : half.cells()) afterHalf.remove(cell);
-        double sliceRespect = CarverEvaluation.grainRespect(half, afterHalf, field);
-        require(cleanRespect > sliceRespect,
-                "Following the grain must beat slicing straight through it");
-
-        CarverEvaluation.Result graded = CarverEvaluation.evaluate(band, afterBand, field);
+        CarverEvaluation.Result graded = CarverEvaluation.evaluate(slab, afterSlab);
         require(!graded.grade().isBlank() && graded.mastery() > 0
                         && graded.score() >= 0.0 && graded.score() <= 1.0,
                 "A finished evaluation must carry a grade, mastery and a bounded score");
 
-        // Draft-time respect (known at approval) must agree with the post-carve scan.
-        double cleanSolid = CarverEvaluation.grainRespect(band, field);
-        double sliceSolid = CarverEvaluation.grainRespect(half, field);
-        require(cleanSolid > 0.7 && cleanSolid > sliceSolid,
-                "Draft-time grain respect must favour seam-following drawings");
-
-        // Session grain feedback fields clamp and reset with the session lifecycle.
-        DraftSession session = new DraftSession();
-        session.beginDesign(0, 64, 0, "minecraft:stone", 600);
-        require(session.grainRespect() < 0.0 && session.grainWear() == 1.0,
-                "A fresh session must start grain-neutral");
-        session.setGrainRespect(2.0);
-        session.setGrainWear(9.0);
-        require(session.grainRespect() == 1.0 && session.grainWear() == 3.0,
-                "Grain feedback must clamp to its safe band");
-        session.setGrainRespect(-1.0);
-        session.setGrainWear(1.0);
-        session.reset();
-        require(session.grainRespect() < 0.0 && session.grainWear() == 1.0,
-                "Resetting a session must reset the grain feedback");
-
-        System.out.println("CarverEvaluationTest: stability, IoU and grain respect passed");
+        System.out.println("CarverEvaluationTest: stability and IoU passed");
     }
 
     /**

@@ -33,6 +33,8 @@ public final class CarverDustParticle extends SingleQuadParticle {
     private final double yWobble;
     private final double phase;
     private boolean fastDissolve;
+    /** Slow per-particle sprite spin, so the cloud reads as a living volume. */
+    private float spin;
 
     /** Dedicated swirling orbital cloud puff hugging and rotating around the block. */
     public CarverDustParticle(ClientLevel level,
@@ -70,6 +72,7 @@ public final class CarverDustParticle extends SingleQuadParticle {
         float blue = (color & 0xFF) / 255.0f;
         setColor(red, green, blue);
         setAlpha(0.0f);
+        initRoll(cx, cz, targetY);
         if (sprites != null) {
             setSpriteFromAge(sprites);
         }
@@ -106,6 +109,7 @@ public final class CarverDustParticle extends SingleQuadParticle {
         float blue = (color & 0xFF) / 255.0f;
         setColor(red, green, blue);
         setAlpha(0.0f);
+        initRoll(x, z, y);
         if (sprites != null) {
             setSpriteFromAge(sprites);
         }
@@ -152,6 +156,8 @@ public final class CarverDustParticle extends SingleQuadParticle {
         xo = x;
         yo = y;
         zo = z;
+        oRoll = roll;
+        roll += spin;
         if (age++ >= lifetime) {
             remove();
             return;
@@ -200,5 +206,19 @@ public final class CarverDustParticle extends SingleQuadParticle {
     @Override
     protected Layer getLayer() {
         return Layer.TRANSLUCENT;
+    }
+
+    /** Random initial sprite rotation and a slow per-particle spin, seeded from the spawn point. */
+    private void initRoll(double sx, double sz, double sy) {
+        float seed = positionRandom(sx, sz, sy);
+        this.roll = seed * 360.0f;
+        this.oRoll = this.roll;
+        this.spin = (seed < 0.5f ? -1.0f : 1.0f) * (0.25f + seed * 1.1f);
+    }
+
+    /** Stable pseudo-random 0..1 from a position (no RandomSource dependency). Pure. */
+    static float positionRandom(double x, double z, double y) {
+        double v = Math.sin(x * 12.9898 + z * 78.233 + y * 37.719) * 43758.5453;
+        return (float) (v - Math.floor(v));
     }
 }

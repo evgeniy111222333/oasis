@@ -13,10 +13,11 @@ import java.util.logging.Logger;
  * wired into the edit engine, keeping the hot mutation path free of feature coupling.
  *
  * <p>Events fire on the server thread after the store and projection already converged.
- * Volumes passed to listeners are live store references: copy them if they must outlive the
- * call. A throwing listener never breaks the edit; the failure is logged and the remaining
- * listeners still run. A {@code null} {@code before} means creation, a {@code null}
- * {@code after} means full removal.</p>
+ * Volumes passed to listeners are frozen published references (immutable for their whole
+ * lifetime), so a listener may safely retain them; it must never attempt to mutate them. A
+ * throwing listener never breaks the edit; the failure is logged and the remaining listeners
+ * still run. A {@code null} {@code before} means creation, a {@code null} {@code after} means
+ * full removal.</p>
  */
 public final class MicrovoxelEvents {
     /** Receives one authoritative volume transition. */

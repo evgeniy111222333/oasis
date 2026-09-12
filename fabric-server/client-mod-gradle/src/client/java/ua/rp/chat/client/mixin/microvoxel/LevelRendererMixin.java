@@ -41,6 +41,13 @@ public class LevelRendererMixin {
                                                  double camX, double camY, double camZ,
                                                  BlockOutlineRenderState outlineState, int light, float partialTick,
                                                  CallbackInfo ci) {
+        // The carver sockets are hidden locally (AIR), so the vanilla crosshair ray scores a block
+        // behind the hologram and its outline reads as a stray selection that never matches the
+        // mouse-driven carving preview. Suppress it for the whole drafting session.
+        if (ua.rp.chat.client.carver.CarverClientState.designing()) {
+            ci.cancel();
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.hitResult instanceof BlockHitResult blockHit) {
             BlockPos blockPos = blockHit.getBlockPos();
