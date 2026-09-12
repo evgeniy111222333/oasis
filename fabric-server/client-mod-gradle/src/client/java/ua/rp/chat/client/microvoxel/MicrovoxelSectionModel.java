@@ -21,7 +21,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import org.jspecify.annotations.Nullable;
 import ua.rp.chat.microvoxel.MicrovoxelBlocks;
+import ua.rp.chat.microvoxel.MicrovoxelGeometry;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 
 import java.util.ArrayList;
@@ -170,11 +172,150 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             }
         }
 
+        // Geometry channel: shaped cells emit their own sub-voxel mesh.
+        MicrovoxelGeometry geometry = cached.volume.geometryOrNull();
+        if (geometry != null) {
+            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
+                int shapeId = geometry.shapeAt(cell);
+                if (shapeId == 0) continue;
+                int material = cached.volume.materialIndex(cell);
+                if (material <= 0 || material >= palette.size()) continue;
+                emitShapeFaces(emitter, level, pos, cell,
+                        MicrovoxelShape.byId(shapeId), palette.get(material));
+            }
+        }
+
         // Per-cell mining crack: the exact vanilla destroy_stage_N sprite on the mined cell.
         if (MicrovoxelClientState.crackOverlayEnabled()) {
             for (int[] crack : MicrovoxelClientState.cracksAt(pos)) {
                 emitCrackCube(emitter, pos, crack[0], crack[1]);
             }
+        }
+    }
+
+    /** Emits the sub-voxel greedy mesh of one shaped cell, culling flush boundary faces. */
+    private static void emitShapeFaces(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos,
+                                       int cell, MicrovoxelShape shape, String materialName) {
+        int cellX = MicrovoxelVolume.x(cell);
+        int cellY = MicrovoxelVolume.y(cell);
+        int cellZ = MicrovoxelVolume.z(cell);
+        MaterialFaces materialFaces = materialFaces(materialName);
+        for (MicrovoxelGreedyMesher.Face shapeFace : shape.greedyFaces()) {
+            if (shapeFaceCulled(pos, shape, shapeFace, cellX, cellY, cellZ)) continue;
+            Direction direction = MC_DIRECTIONS_BY_ORDINAL[shapeFace.direction().ordinal()];
+            List<BakedQuad> quads = materialFaces.faces.get(direction);
+            if (quads == null || quads.isEmpty()) continue;
+            for (BakedQuad quad : quads) {
+                emitShapeMaterialQuad(emitter, level, pos, materialFaces.state, shapeFace,
+                        direction, quad, cellX, cellY, cellZ);
+            }
+        }
+    }
+
+    /**
+     * Culls a shape's boundary face only when the whole face is flush with the cell boundary, the
+     * shape covers that cell face completely, and the neighbour sub-cell is solid. Interior and
+     * sloped faces always render; hidden flush faces are skipped so they cannot z-fight the
+     * neighbouring full cell or real block.
+     */
+    private static boolean shapeFaceCulled(BlockPos pos, MicrovoxelShape shape,
+                                           MicrovoxelGreedyMesher.Face face,
+                                           int cellX, int cellY, int cellZ) {
+        int bx = cellX * 16;
+        int by = cellY * 16;
+        int bz = cellZ * 16;
+        return switch (face.direction()) {
+            case WEST -> face.minX() == 0 && shape.coversFaceFully(MicrovoxelShape.FACE_NEG_X)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx - 1, by + face.minY(), bz + face.minZ());
+            case EAST -> face.maxX() == 16 && shape.coversFaceFully(MicrovoxelShape.FACE_POS_X)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx + 16, by + face.minY(), bz + face.minZ());
+            case DOWN -> face.minY() == 0 && shape.coversFaceFully(MicrovoxelShape.FACE_NEG_Y)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx + face.minX(), by - 1, bz + face.minZ());
+            case UP -> face.maxY() == 16 && shape.coversFaceFully(MicrovoxelShape.FACE_POS_Y)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx + face.minX(), by + 16, bz + face.minZ());
+            case NORTH -> face.minZ() == 0 && shape.coversFaceFully(MicrovoxelShape.FACE_NEG_Z)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx + face.minX(), by + face.minY(), bz - 1);
+            case SOUTH -> face.maxZ() == 16 && shape.coversFaceFully(MicrovoxelShape.FACE_POS_Z)
+                    && MicrovoxelClientState.shapeNeighborSolid(pos, bx + face.minX(), by + face.minY(), bz + 16);
+        };
+    }
+
+    private static void emitShapeMaterialQuad(QuadEmitter emitter, BlockAndTintGetter level,
+                                              BlockPos pos, BlockState materialState,
+                                              MicrovoxelGreedyMesher.Face face, Direction direction,
+                                              BakedQuad source, int cellX, int cellY, int cellZ) {
+        emitter.fromBakedQuad(source);
+        setShapeFacePositions(emitter, face, cellX, cellY, cellZ);
+        setShapeFaceUv(emitter, face, source, cellX, cellY, cellZ);
+        emitter.nominalFace(direction).cullFace(null);
+
+        BakedQuad.MaterialInfo info = source.materialInfo();
+        int color = 0xFFFFFFFF;
+        if (info.isTinted()) {
+            BlockTintSource tint = Minecraft.getInstance().getBlockColors()
+                    .getTintSource(materialState, info.tintIndex());
+            if (tint != null) {
+                color = 0xFF000000 | (tint.colorInWorld(materialState, level, pos) & 0xFFFFFF);
+            }
+        }
+        for (int vertex = 0; vertex < 4; vertex++) {
+            emitter.color(vertex, ARGB.multiply(emitter.color(vertex), color));
+        }
+        emitter.tintIndex(-1);
+        emitter.emit();
+    }
+
+    private static void setShapeFacePositions(QuadEmitter emitter, MicrovoxelGreedyMesher.Face face,
+                                              int cellX, int cellY, int cellZ) {
+        float ox = cellX / 16.0f;
+        float oy = cellY / 16.0f;
+        float oz = cellZ / 16.0f;
+        float x0 = ox + face.minX() / 256.0f;
+        float y0 = oy + face.minY() / 256.0f;
+        float z0 = oz + face.minZ() / 256.0f;
+        float x1 = ox + face.maxX() / 256.0f;
+        float y1 = oy + face.maxY() / 256.0f;
+        float z1 = oz + face.maxZ() / 256.0f;
+        switch (face.direction()) {
+            case NORTH -> positions(emitter, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
+            case SOUTH -> positions(emitter, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+            case WEST -> positions(emitter, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+            case EAST -> positions(emitter, x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1);
+            case UP -> positions(emitter, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);
+            case DOWN -> positions(emitter, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+        }
+    }
+
+    /**
+     * Maps the source quad's texture rectangle onto the shape face using per-cell local 0..1
+     * coordinates, so every shaped cell shows the full material texture on its face instead of a
+     * block-wide UV that only makes sense for a full cube.
+     */
+    private static void setShapeFaceUv(QuadEmitter emitter, MicrovoxelGreedyMesher.Face face,
+                                       BakedQuad source, int cellX, int cellY, int cellZ) {
+        float minU = Float.POSITIVE_INFINITY;
+        float maxU = Float.NEGATIVE_INFINITY;
+        float minV = Float.POSITIVE_INFINITY;
+        float maxV = Float.NEGATIVE_INFINITY;
+        for (int vertex = 0; vertex < 4; vertex++) {
+            long packed = source.packedUV(vertex);
+            float u = Float.intBitsToFloat((int) (packed >>> 32));
+            float v = Float.intBitsToFloat((int) packed);
+            minU = Math.min(minU, u);
+            maxU = Math.max(maxU, u);
+            minV = Math.min(minV, v);
+            maxV = Math.max(maxV, v);
+        }
+        float ox = cellX / 16.0f;
+        float oy = cellY / 16.0f;
+        float oz = cellZ / 16.0f;
+        for (int vertex = 0; vertex < 4; vertex++) {
+            float localX = (emitter.x(vertex) - ox) * 16.0f;
+            float localY = (emitter.y(vertex) - oy) * 16.0f;
+            float localZ = (emitter.z(vertex) - oz) * 16.0f;
+            float u = localU(face.direction(), localX, localY, localZ);
+            float v = localV(face.direction(), localX, localY, localZ);
+            emitter.uv(vertex, minU + u * (maxU - minU), minV + v * (maxV - minV));
         }
     }
 

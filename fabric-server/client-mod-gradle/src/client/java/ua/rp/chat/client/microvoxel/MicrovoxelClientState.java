@@ -1764,6 +1764,22 @@ public final class MicrovoxelClientState {
         return materialAt(base, x, y, z) != 0;
     }
 
+    /**
+     * Neighbour probe for shape-face culling: true when the micro sub-cell at a local coordinate
+     * (possibly inside an adjacent volume or a real block) is solid. Mirrors the greedy mesher's
+     * neighbour lookup so a shape's flush boundary face is culled instead of z-fighting the
+     * neighbouring surface.
+     */
+    public static boolean shapeNeighborSolid(BlockPos base, int subX, int subY, int subZ) {
+        if (solidAt(base, subX, subY, subZ)) return true;
+        int offsetX = Math.floorDiv(subX, 16);
+        int offsetY = Math.floorDiv(subY, 16);
+        int offsetZ = Math.floorDiv(subZ, 16);
+        if (offsetX == 0 && offsetY == 0 && offsetZ == 0) return false;
+        if (activeLevel == null) return false;
+        return activeLevel.getBlockState(base.offset(offsetX, offsetY, offsetZ)).isSolidRender();
+    }
+
     private static final ThreadLocal<BlockPos.MutableBlockPos> SCRATCH_POS =
             ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
