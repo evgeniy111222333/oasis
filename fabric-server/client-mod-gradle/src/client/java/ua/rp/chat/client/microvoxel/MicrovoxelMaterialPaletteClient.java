@@ -56,7 +56,8 @@ public final class MicrovoxelMaterialPaletteClient {
         int reclaimedUnits = tag.getIntOr(MicrovoxelMaterialPalette.TAG_RECLAIMED_UNITS, 0);
         if (!reclaimedMaterial.isBlank() && reclaimedUnits > 0) {
             stacks.add(new MicrovoxelMaterialPalette.Stack(
-                    reclaimedMaterial, stack.getCount(), reclaimedUnits, 0));
+                    reclaimedMaterial, stack.getCount(),
+                    MicrovoxelMaterialPalette.toCells(reclaimedUnits), 0));
             return;
         }
 
@@ -66,7 +67,8 @@ public final class MicrovoxelMaterialPaletteClient {
                 ? blockStateString(blockItem.getBlock().defaultBlockState())
                 : consumedMaterial;
         if (material == null || material.isBlank()) return;
-        stacks.add(new MicrovoxelMaterialPalette.Stack(material, stack.getCount(), 0, usedUnits));
+        stacks.add(new MicrovoxelMaterialPalette.Stack(
+                material, stack.getCount(), 0, MicrovoxelMaterialPalette.toCells(usedUnits)));
     }
 
     /** Palette as a JSON array for the web UI: material id, display name, exact units, fragment flag. */

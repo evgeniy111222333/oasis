@@ -219,6 +219,7 @@ public final class MicrovoxelEditEngine {
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> before = new LinkedHashMap<>();
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> working = new LinkedHashMap<>();
         LinkedHashMap<String, Integer> removedMaterials = new LinkedHashMap<>();
+        int removedCells = 0;
         ServerLevel level = (ServerLevel) player.level();
         MicrovoxelMaterialEconomy.SelectedMaterial selected = adding ? economy.selectedMaterial(player) : null;
         String material = selected == null ? null : MicrovoxelBlockStates.getBlockStateString(selected.state());
@@ -267,7 +268,9 @@ public final class MicrovoxelEditEngine {
                 volume.put(target.cell(), material);
             } else {
                 if (!volume.occupied(target.cell())) continue;
-                removedMaterials.merge(volume.material(target.cell()), 1, Integer::sum);
+                int removeCost = MicrovoxelMaterialEconomy.cellCost(volume.shapeAt(target.cell()));
+                removedMaterials.merge(volume.material(target.cell()), removeCost, Integer::sum);
+                removedCells++;
                 volume.remove(target.cell());
             }
         }
@@ -285,8 +288,9 @@ public final class MicrovoxelEditEngine {
             int additions = working.values().stream().mapToInt(MicrovoxelVolume::occupiedCount).sum()
                     - before.values().stream().filter(java.util.Objects::nonNull)
                     .mapToInt(MicrovoxelVolume::occupiedCount).sum();
+            int addedUnits = additions * MicrovoxelMaterialEconomy.UNITS_PER_CELL;
             modifiedCellCount = additions;
-            if (economy.availableMaterialUnits(player, selected) < additions) {
+            if (economy.availableMaterialUnits(player, selected) < addedUnits) {
                 context.sync().feedback(player,
                         "Недостаточно материала: нужно " + additions + " микровокселей.");
                 return;
@@ -303,9 +307,9 @@ public final class MicrovoxelEditEngine {
                     return;
                 }
             }
-            economy.consumeMaterialUnits(player, selected, additions);
+            economy.consumeMaterialUnits(player, selected, addedUnits);
         } else {
-            modifiedCellCount = removedMaterials.values().stream().mapToInt(Integer::intValue).sum();
+            modifiedCellCount = removedCells;
         }
 
         List<MicrovoxelEditHistory.EditChange> historyChanges = new ArrayList<>(working.size());
@@ -546,7 +550,7 @@ public final class MicrovoxelEditEngine {
         String blockDataStr = MicrovoxelBlockStates.getBlockStateString(blockState);
         MicrovoxelVolume volume = MicrovoxelVolume.full(blockDataStr);
         volume.remove(cell);
-        economy.refundMaterialUnit(player, blockDataStr);
+        economy.refundMaterialUnits(player, blockDataStr, MicrovoxelMaterialEconomy.UNITS_PER_CELL);
         context.runtime().projection().materialize(key, volume);
         context.sync().broadcastUpsert(key, volume);
         context.sync().trace(player, "ACTION_APPLIED carve-standard cell=" + cell
@@ -638,6 +642,7 @@ public final class MicrovoxelEditEngine {
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> before = new LinkedHashMap<>();
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> working = new LinkedHashMap<>();
         int additions = 0;
+        int addedUnits = 0;
         for (MicrovoxelGenerator.Placement placement
                 : MicrovoxelGenerator.generate(generator, length, width, height, facing)) {
             int globalX = anchorX + placement.dx();
@@ -667,7 +672,10 @@ public final class MicrovoxelEditEngine {
                 }
                 working.put(key, volume);
             }
-            if (!volume.occupied(localCell)) additions++;
+            if (!volume.occupied(localCell)) {
+                additions++;
+                addedUnits += MicrovoxelMaterialEconomy.cellCost(placement.shapeId());
+            }
             if (!volume.palette().contains(material)
                     && volume.palette().size() >= MicrovoxelVolume.MAX_PALETTE) {
                 volume.compactPalette();
@@ -688,7 +696,7 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "Генератору нечего поставить.");
             return;
         }
-        if (additions > 0 && economy.availableMaterialUnits(player, selected) < additions) {
+        if (additions > 0 && economy.availableMaterialUnits(player, selected) < addedUnits) {
             context.sync().feedback(player, "Недостаточно материала: нужно " + additions + " микровокселей.");
             return;
         }
@@ -704,7 +712,7 @@ public final class MicrovoxelEditEngine {
                 return;
             }
         }
-        if (additions > 0) economy.consumeMaterialUnits(player, selected, additions);
+        if (additions > 0) economy.consumeMaterialUnits(player, selected, addedUnits);
 
         List<MicrovoxelEditHistory.EditChange> historyChanges = new ArrayList<>(working.size());
         List<MicrovoxelProtocol.StateChange> networkChanges = new ArrayList<>(working.size());
@@ -789,11 +797,12 @@ public final class MicrovoxelEditEngine {
             return;
         }
         String removedMaterial = volume.material(cell);
+        int removedCost = MicrovoxelMaterialEconomy.cellCost(volume.shapeAt(cell));
         // Published volumes are frozen: mutate a copy and publish that (store.put freezes it).
         MicrovoxelVolume beforeRemove = volume;
         MicrovoxelVolume updated = volume.copy();
         updated.remove(cell);
-        economy.refundMaterialUnit(player, removedMaterial);
+        economy.refundMaterialUnits(player, removedMaterial, removedCost);
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied");
         ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, beforeRemove, updated);
         if (updated.occupiedCount() == 0) {
@@ -854,6 +863,12 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "Возьмите в основную или вторую руку полноразмерный блок.");
             return;
         }
+        if (economy.availableMaterialUnits(player, selected)
+                < MicrovoxelMaterialEconomy.UNITS_PER_CELL) {
+            context.sync().sendUpsert(player, key, volume);
+            context.sync().feedback(player, "Недостаточно материала для микровокселя.");
+            return;
+        }
         BlockState material = selected.state();
         String matStr = MicrovoxelBlockStates.getBlockStateString(material);
         MicrovoxelVolume updated = volume.copy();
@@ -871,7 +886,7 @@ public final class MicrovoxelEditEngine {
         }
         MicrovoxelVolume beforeAdd = creatingVolume ? null : volume;
         context.runtime().projection().materialize(key, updated);
-        economy.consumeMaterialUnit(player, selected);
+        economy.consumeMaterialUnits(player, selected, MicrovoxelMaterialEconomy.UNITS_PER_CELL);
         if (creatingVolume || paletteCompacted) {
             context.sync().broadcastUpsert(key, updated);
         } else {

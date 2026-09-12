@@ -196,7 +196,8 @@ public final class MicrovoxelMiningEngine {
         // otherwise starting with Efficiency V and swapping to an empty hand keeps full speed.
         boolean toolOkNow = player.hasCorrectToolForDrops(cellState);
         if (toolOkNow && !session.material().isBlank()) {
-            economy.refundMaterialUnit(player, session.material());
+            economy.refundMaterialUnits(player, session.material(),
+                    ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL);
         }
         ServerLevel level = context.runtime().getWorld(session.worldId());
         if (level != null) {

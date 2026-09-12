@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import ua.rp.chat.microvoxel.MicrovoxelBlockStates;
 import ua.rp.chat.microvoxel.MicrovoxelRuntime;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import ua.rp.chat.microvoxel.edit.MicrovoxelEligibility;
 
@@ -27,6 +28,25 @@ import ua.rp.chat.microvoxel.edit.MicrovoxelEligibility;
  * stay vanilla-consistent.
  */
 public final class MicrovoxelMaterialEconomy {
+    /**
+     * Economy granularity. One cell is {@link MicrovoxelShape#SUB_COUNT} units (its 16³ sub-cells),
+     * so a shaped cell costs its real volume: a full cube costs a whole cell, a slab half, a ramp
+     * its occupancy. A full block is {@link #UNITS_PER_BLOCK} units.
+     */
+    public static final int UNITS_PER_CELL = MicrovoxelShape.SUB_COUNT;
+    public static final int UNITS_PER_BLOCK = MicrovoxelVolume.CELL_COUNT * UNITS_PER_CELL;
+
+    /** Microvoxel units a placed cell costs by shape (full cube = one cell, partial shapes less). */
+    public static int cellCost(int shapeId) {
+        if (shapeId <= 0) return UNITS_PER_CELL;
+        return MicrovoxelShape.byId(shapeId).solidCells();
+    }
+
+    /** Units as a human cell count (for feedback). */
+    public static int cells(int units) {
+        return (units + UNITS_PER_CELL - 1) / UNITS_PER_CELL;
+    }
+
     private static final String MATERIAL_UNITS_USED_TAG = "microvoxel_units_used";
     private static final String CONSUMED_MATERIAL_TAG = "microvoxel_consumed_material";
     private static final String RECLAIMED_UNITS_TAG = "microvoxel_reclaimed_units";
@@ -60,9 +80,9 @@ public final class MicrovoxelMaterialEconomy {
         if (reclaimed > 0) {
             return Math.multiplyExact(reclaimed, stack.getCount());
         }
-        int used = Math.max(0, Math.min(MicrovoxelVolume.CELL_COUNT - 1,
+        int used = Math.max(0, Math.min(UNITS_PER_BLOCK - 1,
                 tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0)));
-        return Math.multiplyExact(stack.getCount(), MicrovoxelVolume.CELL_COUNT) - used;
+        return Math.multiplyExact(stack.getCount(), UNITS_PER_BLOCK) - used;
     }
 
     public void consumeMaterialUnit(ServerPlayer player, SelectedMaterial selected) {
@@ -105,10 +125,10 @@ public final class MicrovoxelMaterialEconomy {
             player.getInventory().setChanged();
             return;
         }
-        int used = Math.max(0, Math.min(MicrovoxelVolume.CELL_COUNT - 1,
+        int used = Math.max(0, Math.min(UNITS_PER_BLOCK - 1,
                 tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0))) + units;
-        int consumedBlocks = used / MicrovoxelVolume.CELL_COUNT;
-        used %= MicrovoxelVolume.CELL_COUNT;
+        int consumedBlocks = used / UNITS_PER_BLOCK;
+        used %= UNITS_PER_BLOCK;
         tag.putString(CONSUMED_MATERIAL_TAG, MicrovoxelBlockStates.getBlockStateString(selected.state()));
         stack.shrink(consumedBlocks);
         if (stack.isEmpty()) {
@@ -170,10 +190,10 @@ public final class MicrovoxelMaterialEconomy {
         }
 
         while (remaining > 0) {
-            int units = Math.min(MicrovoxelVolume.CELL_COUNT, remaining);
+            int units = Math.min(UNITS_PER_BLOCK, remaining);
             remaining -= units;
             ItemStack fragment = new ItemStack(item);
-            if (units < MicrovoxelVolume.CELL_COUNT) {
+            if (units < UNITS_PER_BLOCK) {
                 CompoundTag tag = new CompoundTag();
                 tag.putInt(RECLAIMED_UNITS_TAG, units);
                 tag.putString(RECLAIMED_MATERIAL_TAG, material);

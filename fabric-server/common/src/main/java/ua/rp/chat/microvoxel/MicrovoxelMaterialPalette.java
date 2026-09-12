@@ -27,8 +27,15 @@ import java.util.Map;
 public final class MicrovoxelMaterialPalette {
     /** Palette capacity (matches the radial sub-ring). */
     public static final int MAX_ENTRIES = 9;
-    /** Microvoxel units in one full block. */
+    /** Microvoxel units in one full block (one cell = one unit for display). */
     public static final int UNITS_PER_BLOCK = MicrovoxelVolume.CELL_COUNT;
+    /** Sub-cell units in one cell, matching the server ledger granularity. */
+    public static final int SUB_UNITS_PER_CELL = MicrovoxelShape.SUB_COUNT;
+
+    /** Converts a server ledger amount (sub-cells) into whole display cells (rounded up). */
+    public static int toCells(int subUnits) {
+        return (Math.max(0, subUnits) + SUB_UNITS_PER_CELL - 1) / SUB_UNITS_PER_CELL;
+    }
 
     // Item custom-data tags shared with the server-side economy.
     public static final String TAG_RECLAIMED_UNITS = "microvoxel_reclaimed_units";

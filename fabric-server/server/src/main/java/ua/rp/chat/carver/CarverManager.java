@@ -839,11 +839,15 @@ public final class CarverManager {
         if (byMaterial.isEmpty()) {
             String material = after.palette().size() > 1
                     ? after.palette().get(1) : plan.materialId();
-            microvoxels.economy().refundMaterialUnits(player, material, removed, true);
+            microvoxels.economy().refundMaterialUnits(
+                    player, material, removed * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL,
+                    true);
         } else {
             for (java.util.Map.Entry<String, Integer> entry : byMaterial.entrySet()) {
                 microvoxels.economy().refundMaterialUnits(
-                        player, entry.getKey(), entry.getValue(), true);
+                        player, entry.getKey(),
+                        entry.getValue() * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL,
+                        true);
             }
         }
         ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, null, after);
