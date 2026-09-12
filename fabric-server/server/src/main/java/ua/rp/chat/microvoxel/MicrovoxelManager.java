@@ -364,7 +364,7 @@ public final class MicrovoxelManager {
 
     public void handleAction(ServerPlayer player, int protocolVersion, long transactionId,
                              int action, int x, int y, int z, int cell, int expectedRevision,
-                             Vec3 clientLook, Vec3 clientEye) {
+                             Vec3 clientLook, Vec3 clientEye, String material) {
         if (player == null || !runtime.storageReady()) {
             return;
         }
@@ -443,7 +443,8 @@ public final class MicrovoxelManager {
                 || !MicrovoxelEditEngine.validClientEye(clientEye)) return;
         plugin.getServer().execute(() -> engine.applyAction(player,
                 new MicrovoxelEditEngine.QueuedAction(transactionId, action, key, cell,
-                        expectedRevision, clientLook.normalize(), clientEye)));
+                        expectedRevision, clientLook.normalize(), clientEye,
+                        material == null ? "" : material)));
     }
 
     private void resyncVolume(ServerPlayer player, int x, int y, int z) {

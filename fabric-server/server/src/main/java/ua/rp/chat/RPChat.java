@@ -242,7 +242,8 @@ public class RPChat implements DedicatedServerModInitializer {
             microvoxelManager.handleAction(player, payload.protocolVersion(), payload.transactionId(),
                     payload.action(), payload.x(), payload.y(), payload.z(), payload.cell(), payload.revision(),
                     new net.minecraft.world.phys.Vec3(payload.lookX(), payload.lookY(), payload.lookZ()),
-                    new net.minecraft.world.phys.Vec3(payload.eyeX(), payload.eyeY(), payload.eyeZ()));
+                    new net.minecraft.world.phys.Vec3(payload.eyeX(), payload.eyeY(), payload.eyeZ()),
+                    payload.material());
         });
         // Batched edits: each entry flows through the exact single-action path (auth gate,
         // rate limit, revision and raycast validation per entry), so batching only saves
@@ -260,7 +261,7 @@ public class RPChat implements DedicatedServerModInitializer {
                         && !MicrovoxelProtocol.isSynchronizationAction(entry.action())) return;
                 microvoxelManager.handleAction(player, payload.protocolVersion(), entry.transactionId(),
                         entry.action(), entry.x(), entry.y(), entry.z(), entry.cell(), entry.revision(),
-                        look, eye);
+                        look, eye, entry.material());
             }
         });
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.AcquaintanceActionPayload.TYPE, (payload, context) -> {
@@ -665,7 +666,7 @@ public class RPChat implements DedicatedServerModInitializer {
                         ServerPlayer player = context.getSource().getPlayerOrException();
                         microvoxelManager.handleAction(player, MicrovoxelProtocol.VERSION, 0L,
                                 MicrovoxelProtocol.ACTION_CONVERT, 0, 0, 0, 0, 0,
-                                Vec3.ZERO, Vec3.ZERO);
+                                Vec3.ZERO, Vec3.ZERO, "");
                         return 1;
                     })
                 )

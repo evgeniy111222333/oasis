@@ -37,8 +37,9 @@ public final class MicrovoxelActionBatcher {
 
     /** Enqueues one predicted edit; the actual packet leaves at the next tick end. */
     public static void enqueue(long transactionId, int action, int x, int y, int z,
-                               int cell, int revision) {
-        QUEUE.addLast(new QueuedEdit(transactionId, action, x, y, z, cell, revision));
+                               int cell, int revision, String material) {
+        QUEUE.addLast(new QueuedEdit(transactionId, action, x, y, z, cell, revision,
+                material == null ? "" : material));
     }
 
     /** Flushes the window: one single packet for a lone click, batches of 16 otherwise. */
@@ -63,7 +64,7 @@ public final class MicrovoxelActionBatcher {
             MicrovoxelClientMetrics.inc("batch.singles");
             ClientPlayNetworking.send(new MicrovoxelActionPayload(
                     MicrovoxelClientState.PROTOCOL_VERSION, only.transactionId, only.action,
-                    only.x, only.y, only.z, only.cell, only.revision,
+                    only.x, only.y, only.z, only.cell, only.material, only.revision,
                     (float) look.x, (float) look.y, (float) look.z,
                     (float) eye.x, (float) eye.y, (float) eye.z));
             return;
@@ -73,7 +74,7 @@ public final class MicrovoxelActionBatcher {
             for (QueuedEdit edit : drained) {
                 ClientPlayNetworking.send(new MicrovoxelActionPayload(
                         MicrovoxelClientState.PROTOCOL_VERSION, edit.transactionId, edit.action,
-                        edit.x, edit.y, edit.z, edit.cell, edit.revision,
+                        edit.x, edit.y, edit.z, edit.cell, edit.material, edit.revision,
                         (float) look.x, (float) look.y, (float) look.z,
                         (float) eye.x, (float) eye.y, (float) eye.z));
             }
@@ -82,7 +83,7 @@ public final class MicrovoxelActionBatcher {
         List<MicrovoxelBatchPayload.Entry> entries = new ArrayList<>(drained.size());
         for (QueuedEdit edit : drained) {
             entries.add(new MicrovoxelBatchPayload.Entry(edit.action, edit.x, edit.y, edit.z,
-                    edit.cell, edit.revision, edit.transactionId));
+                    edit.cell, edit.material, edit.revision, edit.transactionId));
         }
         for (List<MicrovoxelBatchPayload.Entry> chunk
                 : MicrovoxelBatchPayload.split(entries, MicrovoxelBatchPayload.MAX_ENTRIES)) {
@@ -103,6 +104,6 @@ public final class MicrovoxelActionBatcher {
     }
 
     private record QueuedEdit(long transactionId, int action, int x, int y, int z,
-                              int cell, int revision) {
+                              int cell, int revision, String material) {
     }
 }

@@ -31,7 +31,12 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
             MicrovoxelBatchPayload::write, MicrovoxelBatchPayload::read);
 
     /** One batched edit. Field order matches the single-action payload exactly. */
-    public record Entry(int action, int x, int y, int z, int cell, int revision, long transactionId) {
+    public record Entry(int action, int x, int y, int z, int cell, String material,
+                        int revision, long transactionId) {
+        /** Backwards-compatible constructor for actions with no material. */
+        public Entry(int action, int x, int y, int z, int cell, int revision, long transactionId) {
+            this(action, x, y, z, cell, "", revision, transactionId);
+        }
     }
 
     /**
@@ -57,6 +62,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
             buffer.writeInt(entry.y());
             buffer.writeInt(entry.z());
             buffer.writeVarInt(entry.cell());
+            buffer.writeUtf(entry.material() == null ? "" : entry.material());
             buffer.writeInt(entry.revision());
             buffer.writeVarLong(entry.transactionId());
         }
@@ -79,7 +85,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
         for (int index = 0; index < count; index++) {
             entries.add(new Entry(
                     buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
-                    buffer.readVarInt(), buffer.readInt(), buffer.readVarLong()));
+                    buffer.readVarInt(), buffer.readUtf(), buffer.readInt(), buffer.readVarLong()));
         }
         return new MicrovoxelBatchPayload(version, batch,
                 List.copyOf(entries),

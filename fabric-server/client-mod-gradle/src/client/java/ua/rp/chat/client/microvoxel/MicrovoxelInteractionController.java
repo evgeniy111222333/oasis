@@ -55,6 +55,8 @@ public final class MicrovoxelInteractionController {
     private static int brushRadius = 1;
     private static int clipboardRotation;
     private static boolean clipboardMirror;
+    /** Material chosen in the radial palette; sent with place/brush actions so the server can source it. */
+    private static String selectedMaterialId = "";
     /** Pending raw-block conversion: a short client-side pause before the placement is sent. */
     private static int conversionTicks;
     private static java.util.function.Consumer<Minecraft> conversionAction;
@@ -180,7 +182,7 @@ public final class MicrovoxelInteractionController {
             }
         }
         send(minecraft, transactionId, action, hit.entry().x(), hit.entry().y(), hit.entry().z(),
-                cell, expectedRevision);
+                cell, expectedRevision, "");
         rememberSent(action, hitPosition, hit.cell(), transactionId);
         lastAttackSentTick = interactionTick;
         minecraft.player.swing(InteractionHand.MAIN_HAND);
@@ -243,7 +245,8 @@ public final class MicrovoxelInteractionController {
                 }
             }
         }
-        send(minecraft, transactionId, action, target.x(), target.y(), target.z(), cell, targetRevision);
+        send(minecraft, transactionId, action, target.x(), target.y(), target.z(), cell, targetRevision,
+                selectedMaterialId);
         rememberSent(action, targetPosition, cell, transactionId);
         minecraft.player.swing(InteractionHand.MAIN_HAND);
         return true;
@@ -552,6 +555,7 @@ public final class MicrovoxelInteractionController {
             case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2));
             // Fragments (reclaimed voxels) place instantly; a raw block must convert first.
             case "place" -> {
+                selectedMaterialId = material == null ? "" : material;
                 if (fragment) withEditing(minecraft, MicrovoxelInteractionController::handleUse);
                 else scheduleConversion(minecraft, MicrovoxelInteractionController::handleUse);
             }
@@ -614,15 +618,20 @@ public final class MicrovoxelInteractionController {
 
     private static void send(Minecraft minecraft, int action, int x, int y, int z, int cell, int revision) {
         send(minecraft, MicrovoxelClientState.nextTransactionId(),
-                action, x, y, z, cell, revision);
+                action, x, y, z, cell, revision, "");
     }
 
     private static void send(Minecraft minecraft, long transactionId,
                              int action, int x, int y, int z, int cell, int revision) {
+        send(minecraft, transactionId, action, x, y, z, cell, revision, "");
+    }
+
+    private static void send(Minecraft minecraft, long transactionId,
+                             int action, int x, int y, int z, int cell, int revision, String material) {
         // High-frequency cell writes ride the 50ms batch window (flushed at tick end);
         // control actions transmit immediately exactly as before.
         if (MicrovoxelActionBatcher.isBatchable(action)) {
-            MicrovoxelActionBatcher.enqueue(transactionId, action, x, y, z, cell, revision);
+            MicrovoxelActionBatcher.enqueue(transactionId, action, x, y, z, cell, revision, material);
             return;
         }
         if (ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE)) {
@@ -630,7 +639,7 @@ public final class MicrovoxelInteractionController {
             Vec3 eye = minecraft.player == null ? Vec3.ZERO : minecraft.player.getEyePosition(1.0f);
             ClientPlayNetworking.send(new MicrovoxelActionPayload(
                     MicrovoxelClientState.PROTOCOL_VERSION, transactionId,
-                    action, x, y, z, cell, revision,
+                    action, x, y, z, cell, material == null ? "" : material, revision,
                     (float) look.x, (float) look.y, (float) look.z,
                     (float) eye.x, (float) eye.y, (float) eye.z));
         } else {

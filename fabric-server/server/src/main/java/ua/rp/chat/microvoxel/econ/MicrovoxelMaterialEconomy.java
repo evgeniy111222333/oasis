@@ -70,6 +70,51 @@ public final class MicrovoxelMaterialEconomy {
         return null;
     }
 
+    /**
+     * Finds the best inventory source for an explicitly chosen material: a reclaimed fragment first
+     * (it holds already-broken voxels and needs no conversion), otherwise a converted or plain block
+     * of that material (which is auto-converted on demand). Null when the player has none.
+     */
+    public SelectedMaterial findByMaterial(ServerPlayer player, String material) {
+        if (player == null || material == null || material.isBlank()) return null;
+        var inventory = player.getInventory();
+        SelectedMaterial fallback = null;
+        int size = inventory.getContainerSize();
+        for (int slot = 0; slot <= size; slot++) {
+            ItemStack stack = slot == size ? player.getOffhandItem() : inventory.getItem(slot);
+            if (!matchesMaterial(stack, material)) continue;
+            CompoundTag tag = customTag(stack);
+            if (tag.getIntOr(RECLAIMED_UNITS_TAG, 0) > 0
+                    && material.equals(tag.getStringOr(RECLAIMED_MATERIAL_TAG, ""))) {
+                return new SelectedMaterial(materialStateFromStack(stack), stack, InteractionHand.MAIN_HAND);
+            }
+            if (fallback == null) {
+                fallback = new SelectedMaterial(materialStateFromStack(stack), stack, InteractionHand.MAIN_HAND);
+            }
+        }
+        return fallback;
+    }
+
+    /** True when a stack is a block (or a tagged fragment) of the given material. */
+    private boolean matchesMaterial(ItemStack stack, String material) {
+        if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) return false;
+        CompoundTag tag = customTag(stack);
+        String reclaimed = tag.getStringOr(RECLAIMED_MATERIAL_TAG, "");
+        if (!reclaimed.isBlank()) return material.equals(reclaimed);
+        String consumed = tag.getStringOr(CONSUMED_MATERIAL_TAG, "");
+        if (!consumed.isBlank()) return material.equals(consumed);
+        try {
+            return material.equals(MicrovoxelBlockStates.getBlockStateString(getBlockFromItem(stack)));
+        } catch (RuntimeException unparsable) {
+            return false;
+        }
+    }
+
+    private CompoundTag customTag(ItemStack stack) {
+        net.minecraft.world.item.component.CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
+        return custom == null ? new CompoundTag() : custom.copyTag();
+    }
+
     public int availableMaterialUnits(ServerPlayer player, SelectedMaterial selected) {
         if (player.gameMode.getGameModeForPlayer() == GameType.CREATIVE) return Integer.MAX_VALUE;
         if (selected == null || selected.stack().isEmpty()) return 0;

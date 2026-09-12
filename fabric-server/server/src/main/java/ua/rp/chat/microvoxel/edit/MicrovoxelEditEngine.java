@@ -100,7 +100,7 @@ public final class MicrovoxelEditEngine {
             case MicrovoxelProtocol.ACTION_REMOVE -> removeCell(player, action.transactionId(), action.key(),
                     action.cell(), action.expectedRevision(), action.clientLook(), action.clientEye());
             case MicrovoxelProtocol.ACTION_ADD -> addCell(player, action.key(), action.cell(), action.expectedRevision(),
-                    action.clientLook(), action.clientEye());
+                    action.clientLook(), action.clientEye(), action.material());
             case MicrovoxelProtocol.ACTION_CARVE_STANDARD -> carveStandardBlock(player, action.transactionId(),
                     action.key(), action.cell(), action.clientLook(), action.clientEye());
             case MicrovoxelProtocol.ACTION_SET_SHAPE -> setShape(player, action);
@@ -137,6 +137,18 @@ public final class MicrovoxelEditEngine {
         if (transactionId <= previous) return false;
         lastEditTransactions.put(player.getUUID(), transactionId);
         return true;
+    }
+
+    /**
+     * Material source for an action: the radial-chosen material when the client supplied one
+     * (fragment first, else a convertible block), otherwise the classic held-block source.
+     */
+    private MicrovoxelMaterialEconomy.SelectedMaterial materialFor(ServerPlayer player, String chosen) {
+        if (chosen != null && !chosen.isBlank()) {
+            MicrovoxelMaterialEconomy.SelectedMaterial found = economy.findByMaterial(player, chosen);
+            if (found != null) return found;
+        }
+        return economy.selectedMaterial(player);
     }
 
     public ServerMicrovoxelRaycaster.Hit raycastMicrovoxel(ServerPlayer player) {
@@ -221,7 +233,7 @@ public final class MicrovoxelEditEngine {
         LinkedHashMap<String, Integer> removedMaterials = new LinkedHashMap<>();
         int removedCells = 0;
         ServerLevel level = (ServerLevel) player.level();
-        MicrovoxelMaterialEconomy.SelectedMaterial selected = adding ? economy.selectedMaterial(player) : null;
+        MicrovoxelMaterialEconomy.SelectedMaterial selected = adding ? materialFor(player, action.material()) : null;
         String material = selected == null ? null : MicrovoxelBlockStates.getBlockStateString(selected.state());
         if (adding && selected == null) {
             context.sync().feedback(player, "Возьмите в основную или вторую руку полноразмерный блок.");
@@ -628,7 +640,7 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "Цель генератора изменилась. Наведитесь ещё раз.");
             return;
         }
-        MicrovoxelMaterialEconomy.SelectedMaterial selected = economy.selectedMaterial(player);
+        MicrovoxelMaterialEconomy.SelectedMaterial selected = materialFor(player, action.material());
         if (selected == null) {
             context.sync().feedback(player, "Возьмите в руку полноразмерный блок для генератора.");
             return;
@@ -819,7 +831,7 @@ public final class MicrovoxelEditEngine {
     }
 
     private void addCell(ServerPlayer player, MicrovoxelKey key, int cell, int expectedRevision,
-                         Vec3 clientLook, Vec3 clientEye) {
+                         Vec3 clientLook, Vec3 clientEye, String chosenMaterial) {
         MicrovoxelVolume volume = context.runtime().store().get(key);
         ServerMicrovoxelRaycaster.Hit hit = validatedHit(player, key, cell, clientLook, clientEye, false);
         if (hit == null) {
@@ -858,7 +870,7 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "Эта ячейка уже занята. Сетка синхронизирована.");
             return;
         }
-        MicrovoxelMaterialEconomy.SelectedMaterial selected = economy.selectedMaterial(player);
+        MicrovoxelMaterialEconomy.SelectedMaterial selected = materialFor(player, chosenMaterial);
         if (selected == null) {
             context.sync().feedback(player, "Возьмите в основную или вторую руку полноразмерный блок.");
             return;
@@ -1006,7 +1018,12 @@ public final class MicrovoxelEditEngine {
     }
 
     public record QueuedAction(long transactionId, int type, MicrovoxelKey key, int cell,
-                               int expectedRevision, Vec3 clientLook, Vec3 clientEye) {
+                               int expectedRevision, Vec3 clientLook, Vec3 clientEye, String material) {
+        /** Backwards-compatible constructor for actions with no material. */
+        public QueuedAction(long transactionId, int type, MicrovoxelKey key, int cell,
+                            int expectedRevision, Vec3 clientLook, Vec3 clientEye) {
+            this(transactionId, type, key, cell, expectedRevision, clientLook, clientEye, "");
+        }
     }
 
     private record ClipboardVolume(MicrovoxelVolume volume, int anchorCell) {
