@@ -12,6 +12,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import ua.rp.chat.client.EclipseClientMod;
 import ua.rp.chat.client.mixin.CubeVoxelShapeInvoker;
 import ua.rp.chat.microvoxel.MicrovoxelBlocks;
+import ua.rp.chat.microvoxel.MicrovoxelGeometry;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 import ua.rp.chat.microvoxel.MicrovoxelMeshBackpressure;
 import ua.rp.chat.microvoxel.MicrovoxelPrediction;
@@ -416,7 +417,8 @@ public final class MicrovoxelClientState {
                         throw new IOException("Unknown cell encoding");
                     }
 
-                    MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
+                    MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells,
+                            readOptionalGeometry(input));
                     BlockPos immutable = position.immutable();
                     if (!isFreshAuthoritative(immutable, revision)) continue;
                     acceptAuthoritative(immutable, volume);
@@ -462,8 +464,9 @@ public final class MicrovoxelClientState {
                 throw new IOException("Unknown cell encoding");
             }
             long tDecodeEnd = System.nanoTime();
+            MicrovoxelGeometry geometry = readOptionalGeometry(input);
             if (input.available() != 0) throw new IOException("Trailing microvoxel payload bytes");
-            MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells);
+            MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells, geometry);
             BlockPos immutable = position.immutable();
             if (!isFreshAuthoritative(immutable, revision)) return;
             CachedVolume oldCached = VOLUMES.get(immutable);
@@ -2118,7 +2121,25 @@ public final class MicrovoxelClientState {
         } else {
             throw new IOException("Unknown cell encoding");
         }
-        return new MicrovoxelVolume(revision, palette, cells);
+        return new MicrovoxelVolume(revision, palette, cells, readOptionalGeometry(input));
+    }
+
+    /**
+     * Reads the optional per-volume geometry section of the wire body: a presence byte and, when
+     * present, a length-prefixed {@link MicrovoxelGeometry} block. An all-cube volume costs one
+     * false byte, so the common case is unchanged.
+     */
+    private static MicrovoxelGeometry readOptionalGeometry(DataInputStream input) throws IOException {
+        if (!input.readBoolean()) return null;
+        int length = readVarInt(input);
+        if (length < 0 || length > 1_048_576) throw new IOException("Invalid geometry length");
+        byte[] encoded = input.readNBytes(length);
+        if (encoded.length != length) throw new EOFException("Truncated microvoxel geometry");
+        try {
+            return MicrovoxelGeometry.decode(encoded);
+        } catch (RuntimeException invalid) {
+            throw new IOException("Invalid microvoxel geometry", invalid);
+        }
     }
 
     private static void applyTransactionChange(TransactionChange change) {

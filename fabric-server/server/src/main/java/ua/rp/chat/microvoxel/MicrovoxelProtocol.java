@@ -48,6 +48,7 @@ public final class MicrovoxelProtocol {
     public static final int ACTION_PASTE = MicrovoxelWire.ACTION_PASTE;
     public static final int ACTION_SNAPSHOT_ACK = MicrovoxelWire.ACTION_SNAPSHOT_ACK;
     public static final int ACTION_HELLO = MicrovoxelWire.ACTION_HELLO;
+    public static final int ACTION_SET_SHAPE = MicrovoxelWire.ACTION_SET_SHAPE;
 
     private MicrovoxelProtocol() {
     }
@@ -210,6 +211,15 @@ public final class MicrovoxelProtocol {
         MicrovoxelWire.writeVarInt(output, volume.palette().size());
         for (String material : volume.palette()) writeUtf8(output, material);
         output.write(MicrovoxelWire.encodeCells(volume.cellsCopy()));
+        // Optional geometry section: an all-cube volume writes a single false byte (zero-cost).
+        MicrovoxelGeometry geometry = volume.geometryOrNull();
+        boolean hasGeometry = geometry != null && !geometry.isEmpty();
+        output.writeBoolean(hasGeometry);
+        if (hasGeometry) {
+            byte[] encoded = geometry.encode();
+            MicrovoxelWire.writeVarInt(output, encoded.length);
+            output.write(encoded);
+        }
     }
 
     private static void writePosition(DataOutputStream output, MicrovoxelKey key) throws IOException {

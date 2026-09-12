@@ -108,6 +108,9 @@ public final class SharedWireCodecTest {
         require(MicrovoxelWire.supports(MicrovoxelWire.CLIENT_CAPABILITIES,
                         MicrovoxelWire.CAP_MINE_STAGE),
                 "The shipped client must advertise the per-cell crack overlay it now draws");
+        require(MicrovoxelWire.supports(MicrovoxelWire.CLIENT_CAPABILITIES,
+                        MicrovoxelWire.CAP_GEOMETRY),
+                "The shipped client must advertise the geometry channel");
         require(MicrovoxelWire.compatibleMajor(MicrovoxelWire.MAJOR),
                 "The current major must be compatible with itself");
         require(!MicrovoxelWire.compatibleMajor(MicrovoxelWire.MAJOR + 1),

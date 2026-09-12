@@ -26,11 +26,11 @@ import java.util.Arrays;
 public final class MicrovoxelWire {
     public static final int MAGIC = 0x4D;
     /** Breaking frame/encoding revisions. Bumped when the layout above changes. */
-    public static final int MAJOR = 7;
+    public static final int MAJOR = 8;
     /** Additive revisions: new message types/capabilities, no layout change. */
     public static final int MINOR = 0;
     /** Oldest major this build can still read (length-prefixed frames are major 7+). */
-    public static final int MIN_SUPPORTED_MAJOR = 7;
+    public static final int MIN_SUPPORTED_MAJOR = 8;
 
     // Server -> client message types.
     public static final int CLEAR = 1;
@@ -67,6 +67,8 @@ public final class MicrovoxelWire {
     public static final int ACTION_SNAPSHOT_ACK = 14;
     /** Handshake: declares the client's major/minor and capability bitset. */
     public static final int ACTION_HELLO = 15;
+    /** Sets (or clears) the geometry shape of one occupied cell. Payload: cell VarInt, shape VarInt. */
+    public static final int ACTION_SET_SHAPE = 16;
 
     // Capabilities. The negotiated set is the intersection of both sides' advertisements.
     public static final int CAP_UPSERT = 1;
@@ -78,10 +80,12 @@ public final class MicrovoxelWire {
     public static final int CAP_FLUID = 1 << 6;
     public static final int CAP_MINE_STAGE = 1 << 7;
     public static final int CAP_CARVER = 1 << 8;
+    /** Per-cell geometry shapes (tier S/D) in the volume body and the SET_SHAPE action. */
+    public static final int CAP_GEOMETRY = 1 << 9;
 
     /** Everything a fully featured client can consume. */
     public static final int CAP_ALL = CAP_UPSERT | CAP_DELTA | CAP_BATCH | CAP_TRANSACTION
-            | CAP_EDIT_RESULT | CAP_SNAPSHOT | CAP_FLUID | CAP_MINE_STAGE | CAP_CARVER;
+            | CAP_EDIT_RESULT | CAP_SNAPSHOT | CAP_FLUID | CAP_MINE_STAGE | CAP_CARVER | CAP_GEOMETRY;
 
     /** Capabilities the shipped client implements (every advertised feature, crack overlay included). */
     public static final int CLIENT_CAPABILITIES = CAP_ALL;
