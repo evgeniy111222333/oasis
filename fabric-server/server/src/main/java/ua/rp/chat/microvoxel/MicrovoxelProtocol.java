@@ -49,6 +49,7 @@ public final class MicrovoxelProtocol {
     public static final int ACTION_SNAPSHOT_ACK = MicrovoxelWire.ACTION_SNAPSHOT_ACK;
     public static final int ACTION_HELLO = MicrovoxelWire.ACTION_HELLO;
     public static final int ACTION_SET_SHAPE = MicrovoxelWire.ACTION_SET_SHAPE;
+    public static final int ACTION_GENERATE = MicrovoxelWire.ACTION_GENERATE;
 
     private MicrovoxelProtocol() {
     }

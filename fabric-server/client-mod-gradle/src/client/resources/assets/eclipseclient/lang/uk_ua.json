@@ -60,5 +60,6 @@
   "key.eclipseclient.microvoxel_paste": "Вставити вокселі",
   "key.eclipseclient.microvoxel_rotate": "Повернути буфер",
   "key.eclipseclient.microvoxel_mirror": "Віддзеркалити буфер",
-  "key.eclipseclient.microvoxel_shape": "Форма комірки"
+  "key.eclipseclient.microvoxel_shape": "Форма комірки",
+  "key.eclipseclient.microvoxel_generate": "Генератор (рампа)"
 }

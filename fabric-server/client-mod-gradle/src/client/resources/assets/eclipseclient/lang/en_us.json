@@ -60,6 +60,7 @@
   "key.eclipseclient.microvoxel_rotate": "Rotate clipboard",
   "key.eclipseclient.microvoxel_mirror": "Mirror clipboard",
   "key.eclipseclient.microvoxel_shape": "Cycle cell shape",
+  "key.eclipseclient.microvoxel_generate": "Generator (ramp)",
   "item.eclipseserver.carver_chisel_flat": "Flat chisel",
   "item.eclipseserver.carver_chisel_point": "Point chisel"
 }

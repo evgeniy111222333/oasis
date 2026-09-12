@@ -13,6 +13,7 @@ import ua.rp.chat.RPChat;
 import ua.rp.chat.microvoxel.MicrovoxelBlockStates;
 import ua.rp.chat.microvoxel.MicrovoxelBrush;
 import ua.rp.chat.microvoxel.MicrovoxelContext;
+import ua.rp.chat.microvoxel.MicrovoxelGenerator;
 import ua.rp.chat.microvoxel.MicrovoxelKey;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
 import ua.rp.chat.microvoxel.MicrovoxelProtocol;
@@ -102,6 +103,7 @@ public final class MicrovoxelEditEngine {
             case MicrovoxelProtocol.ACTION_CARVE_STANDARD -> carveStandardBlock(player, action.transactionId(),
                     action.key(), action.cell(), action.clientLook(), action.clientEye());
             case MicrovoxelProtocol.ACTION_SET_SHAPE -> setShape(player, action);
+            case MicrovoxelProtocol.ACTION_GENERATE -> generate(player, action);
             default -> context.sync().trace(player, "ACTION_REJECT unknown-action=" + action.type());
         }
         MicrovoxelVolume after = MicrovoxelEditHistory.copyOrNull(
@@ -124,7 +126,8 @@ public final class MicrovoxelEditEngine {
                 || action == MicrovoxelProtocol.ACTION_PASTE
                 || action == MicrovoxelProtocol.ACTION_CONVERT
                 || action == MicrovoxelProtocol.ACTION_CARVE_STANDARD
-                || action == MicrovoxelProtocol.ACTION_SET_SHAPE;
+                || action == MicrovoxelProtocol.ACTION_SET_SHAPE
+                || action == MicrovoxelProtocol.ACTION_GENERATE;
     }
 
     /** Strictly-increasing per-player transaction ids: the anti-replay boundary. */
@@ -593,6 +596,137 @@ public final class MicrovoxelEditEngine {
         context.sync().sendEditResult(player, action.transactionId(), true, action.key(), updated);
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied.shape");
         context.sync().trace(player, "ACTION_APPLIED shape cell=" + cell + " shape=" + shapeId);
+    }
+
+    /**
+     * Generates a structure (ramp/column/roof) from a small parameter set and applies it as one
+     * authoritative transaction. Mirrors the brush path: a shared working copy per touched volume,
+     * palette-capped, chunk-capped, material-charged per added cell, published atomically and
+     * recorded in history so a generator result is fully undoable.
+     */
+    private void generate(ServerPlayer player, QueuedAction action) {
+        int encoded = action.cell();
+        int cell = encoded & 0x0FFF;
+        int typeIndex = (encoded >>> 12) & 0x3;
+        int facing = (encoded >>> 14) & 0x3;
+        int length = (encoded >>> 16) & 0x1F;
+        int width = (encoded >>> 21) & 0x1F;
+        int height = (encoded >>> 26) & 0x1F;
+        if (typeIndex >= MicrovoxelGenerator.typeCount()) {
+            context.sync().feedback(player, "Неизвестный генератор.");
+            return;
+        }
+        MicrovoxelGenerator.Type generator = MicrovoxelGenerator.Type.values()[typeIndex];
+        ServerMicrovoxelRaycaster.Hit hit = validatedHit(player, action.key(), cell,
+                action.clientLook(), action.clientEye(), true);
+        if (hit == null || !hit.key().equals(action.key()) || hit.cell() != cell) {
+            context.sync().feedback(player, "Цель генератора изменилась. Наведитесь ещё раз.");
+            return;
+        }
+        MicrovoxelMaterialEconomy.SelectedMaterial selected = economy.selectedMaterial(player);
+        if (selected == null) {
+            context.sync().feedback(player, "Возьмите в руку полноразмерный блок для генератора.");
+            return;
+        }
+        String material = MicrovoxelBlockStates.getBlockStateString(selected.state());
+        int anchorX = action.key().x() * 16 + MicrovoxelVolume.x(cell);
+        int anchorY = action.key().y() * 16 + MicrovoxelVolume.y(cell);
+        int anchorZ = action.key().z() * 16 + MicrovoxelVolume.z(cell);
+        ServerLevel level = (ServerLevel) player.level();
+
+        LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> before = new LinkedHashMap<>();
+        LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> working = new LinkedHashMap<>();
+        int additions = 0;
+        for (MicrovoxelGenerator.Placement placement
+                : MicrovoxelGenerator.generate(generator, length, width, height, facing)) {
+            int globalX = anchorX + placement.dx();
+            int globalY = anchorY + placement.dy();
+            int globalZ = anchorZ + placement.dz();
+            int blockY = Math.floorDiv(globalY, 16);
+            if (blockY < level.getMinY() || blockY >= level.getMaxY()) continue;
+            MicrovoxelKey key = new MicrovoxelKey(action.key().worldId(),
+                    Math.floorDiv(globalX, 16), blockY, Math.floorDiv(globalZ, 16));
+            if (isProtected(key)) {
+                context.sync().feedback(player,
+                        "Генератор затрагивает защищённый микровоксельный объём; транзакция отменена.");
+                return;
+            }
+            int localCell = MicrovoxelVolume.index(Math.floorMod(globalX, 16),
+                    Math.floorMod(globalY, 16), Math.floorMod(globalZ, 16));
+            MicrovoxelVolume volume = working.get(key);
+            if (volume == null) {
+                MicrovoxelVolume authoritative = context.runtime().store().get(key);
+                before.put(key, MicrovoxelEditHistory.copyOrNull(authoritative));
+                if (authoritative == null) {
+                    BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
+                    if (!level.getBlockState(pos).isAir()) continue;
+                    volume = MicrovoxelVolume.empty();
+                } else {
+                    volume = authoritative.copy();
+                }
+                working.put(key, volume);
+            }
+            if (!volume.occupied(localCell)) additions++;
+            if (!volume.palette().contains(material)
+                    && volume.palette().size() >= MicrovoxelVolume.MAX_PALETTE) {
+                volume.compactPalette();
+            }
+            if (!volume.palette().contains(material)
+                    && volume.palette().size() >= MicrovoxelVolume.MAX_PALETTE) {
+                context.sync().feedback(player,
+                        "Один из объёмов достиг лимита материалов; генератор отменён.");
+                return;
+            }
+            volume.update(localCell, material);
+            volume.setShape(localCell, placement.shapeId());
+        }
+        working.entrySet().removeIf(entry ->
+                MicrovoxelEditHistory.sameVolume(before.get(entry.getKey()), entry.getValue()));
+        before.keySet().retainAll(working.keySet());
+        if (working.isEmpty()) {
+            context.sync().feedback(player, "Генератору нечего поставить.");
+            return;
+        }
+        if (additions > 0 && economy.availableMaterialUnits(player, selected) < additions) {
+            context.sync().feedback(player, "Недостаточно материала: нужно " + additions + " микровокселей.");
+            return;
+        }
+        Map<ChunkKey, Integer> newPerChunk = new HashMap<>();
+        for (MicrovoxelKey key : working.keySet()) {
+            if (before.get(key) == null) newPerChunk.merge(ChunkKey.of(key), 1, Integer::sum);
+        }
+        for (Map.Entry<ChunkKey, Integer> entry : newPerChunk.entrySet()) {
+            ChunkKey chunk = entry.getKey();
+            if (context.runtime().store().countInChunk(chunk.worldId(), chunk.x(), chunk.z())
+                    + entry.getValue() > MicrovoxelRuntime.MAX_PER_CHUNK) {
+                context.sync().feedback(player, "Генератор превысит лимит микровоксельных объёмов в чанке.");
+                return;
+            }
+        }
+        if (additions > 0) economy.consumeMaterialUnits(player, selected, additions);
+
+        List<MicrovoxelEditHistory.EditChange> historyChanges = new ArrayList<>(working.size());
+        List<MicrovoxelProtocol.StateChange> networkChanges = new ArrayList<>(working.size());
+        for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : working.entrySet()) {
+            MicrovoxelKey key = entry.getKey();
+            MicrovoxelVolume volume = entry.getValue();
+            MicrovoxelVolume after;
+            context.collision().invalidate(key);
+            if (volume.occupiedCount() == 0) {
+                context.runtime().projection().dematerialize(key);
+                after = null;
+            } else {
+                context.runtime().projection().materialize(key, volume);
+                after = volume.copy();
+            }
+            historyChanges.add(new MicrovoxelEditHistory.EditChange(key, before.get(key), after));
+            networkChanges.add(new MicrovoxelProtocol.StateChange(key, after));
+        }
+        context.sync().broadcastTransaction(action.transactionId(), networkChanges);
+        history.recordEdit(player, action.transactionId(), historyChanges);
+        ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.applied.generate");
+        ua.rp.chat.microvoxel.MicrovoxelMetrics.add("edits.generate.cells", additions);
+        context.sync().feedback(player, "Сгенерировано структур: " + additions + " ячеек.");
     }
 
     private void convert(ServerPlayer player, MicrovoxelKey key) {

@@ -421,7 +421,8 @@ public final class MicrovoxelManager {
         boolean brushAction = action == MicrovoxelProtocol.ACTION_BRUSH_REMOVE
                 || action == MicrovoxelProtocol.ACTION_BRUSH_ADD;
         boolean packedCellAction = brushAction || action == MicrovoxelProtocol.ACTION_PASTE
-                || action == MicrovoxelProtocol.ACTION_SET_SHAPE;
+                || action == MicrovoxelProtocol.ACTION_SET_SHAPE
+                || action == MicrovoxelProtocol.ACTION_GENERATE;
         if (cell < 0 || (!packedCellAction && cell >= MicrovoxelVolume.CELL_COUNT)) return;
         UUID worldId = runtime.worldId(player.level());
         MicrovoxelKey key = new MicrovoxelKey(worldId, x, y, z);

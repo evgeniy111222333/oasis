@@ -69,6 +69,8 @@ public final class MicrovoxelWire {
     public static final int ACTION_HELLO = 15;
     /** Sets (or clears) the geometry shape of one occupied cell. Payload: cell VarInt, shape VarInt. */
     public static final int ACTION_SET_SHAPE = 16;
+    /** Generates a structure (ramp/column/roof) as one transaction. Payload: packed params VarInt. */
+    public static final int ACTION_GENERATE = 17;
 
     // Capabilities. The negotiated set is the intersection of both sides' advertisements.
     public static final int CAP_UPSERT = 1;

@@ -33,6 +33,7 @@ public final class MicrovoxelInteractionController {
     public static final int ACTION_COPY = 12;
     public static final int ACTION_PASTE = 13;
     public static final int ACTION_SET_SHAPE = 16;
+    public static final int ACTION_GENERATE = 17;
     private static KeyMapping modeKey;
     private static KeyMapping convertKey;
     private static KeyMapping undoKey;
@@ -63,6 +64,7 @@ public final class MicrovoxelInteractionController {
     private static int clipboardRotation;
     private static boolean clipboardMirror;
     private static KeyMapping shapeKey;
+    private static KeyMapping generateKey;
 
     private MicrovoxelInteractionController() {
     }
@@ -104,6 +106,9 @@ public final class MicrovoxelInteractionController {
         shapeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.microvoxel_shape", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_H, KeyMapping.Category.GAMEPLAY));
+        generateKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.eclipseclient.microvoxel_generate", InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_G, KeyMapping.Category.GAMEPLAY));
     }
 
     public static void tick(Minecraft minecraft) {
@@ -160,6 +165,7 @@ public final class MicrovoxelInteractionController {
             showClipboardTransform(minecraft);
         }
         while (editing && shapeKey != null && shapeKey.consumeClick()) cycleShape(minecraft);
+        while (editing && generateKey != null && generateKey.consumeClick()) generateTarget(minecraft);
         // End of the 50ms coalescing window: lone clicks keep single-packet latency,
         // bursts leave as one batch packet per 16 entries.
         MicrovoxelActionBatcher.flush(minecraft);
@@ -562,6 +568,33 @@ public final class MicrovoxelInteractionController {
                 encoded, cached.volume.revision());
         minecraft.gui.setOverlayMessage(Component.literal("Форма: "
                 + ua.rp.chat.microvoxel.MicrovoxelShape.byId(next).type().name()), false);
+    }
+
+    /**
+     * Generates a default ramp anchored at the looked-at cell, material taken from the held block
+     * (G). The server expands it authoritatively as one transaction.
+     */
+    private static void generateTarget(Minecraft minecraft) {
+        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        if (hit == null) {
+            minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
+            return;
+        }
+        BlockPos position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
+        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
+        if (cached == null) return;
+        net.minecraft.world.phys.Vec3 look = minecraft.player == null
+                ? net.minecraft.world.phys.Vec3.ZERO : minecraft.player.getViewVector(1.0f);
+        int facing = Math.abs(look.x) > Math.abs(look.z) ? (look.x > 0 ? 2 : 3) : (look.z > 0 ? 0 : 1);
+        int encoded = (hit.cell() & 0x0FFF)
+                | (0 << 12)
+                | ((facing & 0x3) << 14)
+                | ((5 & 0x1F) << 16)
+                | ((3 & 0x1F) << 21)
+                | ((1 & 0x1F) << 26);
+        send(minecraft, ACTION_GENERATE, position.getX(), position.getY(), position.getZ(),
+                encoded, cached.volume.revision());
+        minecraft.gui.setOverlayMessage(Component.literal("Генератор: рампа"), false);
     }
 
     private static void send(Minecraft minecraft, int action, int x, int y, int z, int cell, int revision) {
