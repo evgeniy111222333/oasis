@@ -49,6 +49,7 @@ public final class MicrovoxelServerCoreTest {
         verifyEditHistoryGeometryEquality();
         verifyMicrovoxelGenerators();
         verifyPortableGeometryRoundTrip();
+        verifyMaterialPalette();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1702,6 +1703,49 @@ public final class MicrovoxelServerCoreTest {
         }
         require(rejected, "An unknown shape id must fail closed");
         System.out.println("MicrovoxelVolumeGeometryTest: channel integration, copy-on-write and clear passed");
+    }
+
+    /**
+     * Client-side material palette: fragments first, blocks auto-converted into the same material,
+     * exact unit totals, capped at nine plaques.
+     */
+    private static void verifyMaterialPalette() {
+        // 1 fragment of dirt (1 unit) + 31 plain dirt blocks (31×4096) ⇒ 126977, as one fragment entry.
+        java.util.List<MicrovoxelMaterialPalette.Stack> stacks = java.util.List.of(
+                new MicrovoxelMaterialPalette.Stack("minecraft:dirt", 1, 1, 0),
+                new MicrovoxelMaterialPalette.Stack("minecraft:dirt", 31, 0, 0),
+                new MicrovoxelMaterialPalette.Stack("minecraft:stone", 2, 0, 100),
+                new MicrovoxelMaterialPalette.Stack("minecraft:oak_planks", 5, 0, 0),
+                new MicrovoxelMaterialPalette.Stack("minecraft:sand", 3, 3, 0));
+        java.util.List<MicrovoxelMaterialPalette.Entry> entries = MicrovoxelMaterialPalette.compose(stacks);
+        require(entries.size() == 4, "The palette must merge per material, got " + entries.size());
+        require(entries.get(0).material().equals("minecraft:dirt")
+                        && entries.get(0).units() == 126977L && entries.get(0).fromFragment(),
+                "A dirt fragment plus 31 dirt blocks must total 126977 units");
+        require(entries.get(1).material().equals("minecraft:sand")
+                        && entries.get(1).units() == 9L && entries.get(1).fromFragment(),
+                "Fragment materials must be listed before block-only materials");
+        require(entries.get(2).material().equals("minecraft:stone")
+                        && entries.get(2).units() == 2L * 4096 - 100,
+                "A partially consumed block must expose count×4096 − used units");
+        require(entries.get(3).material().equals("minecraft:oak_planks") && !entries.get(3).fromFragment(),
+                "A plain block material must be a non-fragment entry");
+
+        // Cap: never more than MAX_ENTRIES plaques, fragments first.
+        java.util.List<MicrovoxelMaterialPalette.Stack> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            many.add(new MicrovoxelMaterialPalette.Stack("minecraft:b" + i, 1, 0, 0));
+        }
+        many.add(new MicrovoxelMaterialPalette.Stack("minecraft:frag", 1, 4, 0));
+        java.util.List<MicrovoxelMaterialPalette.Entry> capped = MicrovoxelMaterialPalette.compose(many);
+        require(capped.size() == MicrovoxelMaterialPalette.MAX_ENTRIES,
+                "The palette must be capped at nine plaques");
+        require(capped.get(0).material().equals("minecraft:frag"),
+                "The fragment material must occupy the first plaque even when listed last");
+        require(MicrovoxelMaterialPalette.compose(java.util.List.of()).isEmpty(),
+                "An empty inventory must yield an empty palette");
+
+        System.out.println("MicrovoxelMaterialPaletteTest: fragment-first, auto-convert totals and cap passed");
     }
 
     /**
