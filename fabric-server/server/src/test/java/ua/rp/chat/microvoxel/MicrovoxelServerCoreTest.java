@@ -1587,6 +1587,49 @@ public final class MicrovoxelServerCoreTest {
             rejected = true;
         }
         require(rejected, "An out-of-range shape id must fail closed");
+
+        // Greedy mesh of a shape reuses the shared mesher over the shape's own 16^3 mask.
+        java.util.List<MicrovoxelGreedyMesher.Face> fullMesh = full.greedyFaces();
+        require(fullMesh.size() == 6, "A full cube shape must mesh to exactly six quads");
+        require(fullMesh.stream().allMatch(f -> f.minX() >= 0 && f.maxX() <= MicrovoxelShape.SUB
+                        && f.minY() >= 0 && f.maxY() <= MicrovoxelShape.SUB
+                        && f.minZ() >= 0 && f.maxZ() <= MicrovoxelShape.SUB),
+                "Shape mesh coordinates must stay inside the sub-cell lattice");
+        require(full.greedyFaces() == fullMesh, "Shape meshes must be cached, not rebuilt per call");
+
+        java.util.List<MicrovoxelGreedyMesher.Face> slabMesh = slab.greedyFaces();
+        require(slabMesh.size() == 6, "A bottom slab must mesh to six quads");
+        require(slabMesh.stream().anyMatch(f -> f.direction() == MicrovoxelGreedyMesher.Direction.UP
+                        && f.minY() == 8 && f.maxY() == 8),
+                "The slab top face must sit at the half-cell plane");
+        require(ramp.greedyFaces().size() > 6,
+                "A ramp must emit more than a box's six quads");
+
+        // Collision and raycast reuse the shared merged-cuboid builder and micro-cell DDA.
+        require(full.collisionCuboids().size() == 1, "A full cube must merge to one collision cuboid");
+        MicrovoxelVolume.Cuboid fullBox = full.collisionCuboids().get(0);
+        require(fullBox.minX() == 0 && fullBox.maxX() == MicrovoxelShape.SUB
+                        && fullBox.minY() == 0 && fullBox.maxY() == MicrovoxelShape.SUB,
+                "The full cube collision box must span the whole cell");
+        require(slab.collisionCuboids().size() == 1 && slab.collisionCuboids().get(0).maxY() == 8,
+                "A bottom slab must collide only up to the half-cell plane");
+        require(ramp.collisionCuboids().size() > 1
+                        && ramp.collisionCuboids().stream().allMatch(c -> c.minX() >= 0
+                        && c.maxX() <= MicrovoxelShape.SUB && c.minY() >= 0
+                        && c.maxY() <= MicrovoxelShape.SUB && c.minZ() >= 0
+                        && c.maxZ() <= MicrovoxelShape.SUB),
+                "A ramp must merge to bounded cuboids inside the cell");
+
+        require(full.raycast(0.5, 0.5, 0.5, 0, -1, 0, 2.0) != null,
+                "A ray starting inside a full cube must hit immediately");
+        MicrovoxelRaycaster.Hit slabHit = slab.raycast(0.5, 0.9, 0.5, 0, -1, 0, 2.0);
+        require(slabHit != null && MicrovoxelVolume.y(slabHit.cell()) == 7
+                        && Math.abs(slabHit.distance() - 0.4) < 0.02,
+                "A downward ray must strike the slab top at the half-cell plane");
+        require(ramp.raycast(0.5, 0.5, 0.2, 0, 0, -1, 2.0) == null,
+                "RAMP_S must miss a low ray travelling north");
+        require(ramp.raycast(0.5, 0.5, 0.2, 0, 0, 1, 2.0) != null,
+                "RAMP_S must hit a low ray travelling south");
         System.out.println("MicrovoxelShapeTest: catalog occupancy, faces and fractions passed");
     }
 

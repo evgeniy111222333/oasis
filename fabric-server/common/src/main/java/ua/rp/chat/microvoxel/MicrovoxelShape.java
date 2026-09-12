@@ -1,5 +1,7 @@
 package ua.rp.chat.microvoxel;
 
+import java.util.List;
+
 /**
  * Bounded structural shape catalog ("geometry as data", tier S).
  *
@@ -246,6 +248,78 @@ public final class MicrovoxelShape {
      */
     public boolean isFullCube() {
         return solidCells == SUB_COUNT;
+    }
+
+    /**
+     * Greedy mesh of this shape in sub-cell coordinates (0..{@link #SUB}), material index 1.
+     *
+     * <p>Because the shape is itself a 16³ occupancy mask, the shared {@link MicrovoxelGreedyMesher}
+     * produces its geometry with no shape-specific code at all: it simply meshes the mask as a
+     * one-material mini-volume with air outside. The result is immutable and cached per shape, so a
+     * formed cell costs only a list walk on the render path.</p>
+     */
+    public List<MicrovoxelGreedyMesher.Face> greedyFaces() {
+        List<MicrovoxelGreedyMesher.Face> cached = greedyFaces;
+        if (cached == null) {
+            synchronized (this) {
+                cached = greedyFaces;
+                if (cached == null) {
+                    cached = buildGreedyFaces();
+                    greedyFaces = cached;
+                }
+            }
+        }
+        return cached;
+    }
+
+    private volatile List<MicrovoxelGreedyMesher.Face> greedyFaces;
+    private volatile MicrovoxelVolume volume;
+
+    private List<MicrovoxelGreedyMesher.Face> buildGreedyFaces() {
+        MicrovoxelVolume source = shapeVolume();
+        return MicrovoxelGreedyMesher.build(source, source::materialAt);
+    }
+
+    /**
+     * The shape as a one-material 16³ volume, cached. Every derived artifact (greedy mesh,
+     * collision cuboids, raycast) reuses this and therefore the exact same voxel machinery as a
+     * normal volume — no shape-specific geometry, collision or ray math anywhere.
+     */
+    public MicrovoxelVolume shapeVolume() {
+        MicrovoxelVolume cached = volume;
+        if (cached == null) {
+            synchronized (this) {
+                cached = volume;
+                if (cached == null) {
+                    byte[] cells = new byte[SUB_COUNT];
+                    for (int cell = 0; cell < SUB_COUNT; cell++) {
+                        if ((mask[cell >>> 6] & (1L << (cell & 63))) != 0) cells[cell] = 1;
+                    }
+                    cached = MicrovoxelVolume.restore(1, List.of("", "minecraft:stone"), cells);
+                    volume = cached;
+                }
+            }
+        }
+        return cached;
+    }
+
+    /**
+     * Merged collision cuboids in sub-cell coordinates (0..{@link #SUB}), cached. A shape is a
+     * normal 16³ volume, so its collision reuses the shared merged-cuboid builder verbatim.
+     */
+    public List<MicrovoxelVolume.Cuboid> collisionCuboids() {
+        return shapeVolume().collisionCuboids();
+    }
+
+    /**
+     * Exact ray-vs-shape test inside one cell. Coordinates and direction are in cell-local units
+     * (0..1), exactly like a unit block, and the result reuses the shared micro-cell DDA, so a
+     * sloped or curved shape collides with rays at full 1/256 precision.
+     */
+    public MicrovoxelRaycaster.Hit raycast(double ox, double oy, double oz,
+                                           double dx, double dy, double dz, double maxDistance) {
+        return MicrovoxelRaycaster.cast(ox, oy, oz, dx, dy, dz, maxDistance,
+                List.of(new MicrovoxelRaycaster.Entry(0, 0, 0, shapeVolume())));
     }
 
     private static int computeFaceFullMask(long[] mask) {
