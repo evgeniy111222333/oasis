@@ -40,6 +40,8 @@ public final class MicrovoxelServerCoreTest {
         verifyFluidFrost();
         verifyFluidHardening();
         verifyEmptyVolumeNeverProjected();
+        verifyMicrovoxelShapes();
+        verifyMicrovoxelGeometryChannel();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1536,6 +1538,104 @@ public final class MicrovoxelServerCoreTest {
         projection.materialize(solid, MicrovoxelVolume.full("minecraft:stone"));
         require(store.get(solid) != null,
                 "A non-empty volume must still materialize normally");
+    }
+
+    /**
+     * Structural shape catalog: every shape is a bounded, deterministic sub-voxel bitmask that
+     * reuses the normal voxel machinery, so its occupancy, face coverage and solid fraction must
+     * be exact and pure.
+     */
+    private static void verifyMicrovoxelShapes() {
+        require(MicrovoxelShape.count() == MicrovoxelShape.Type.values().length,
+                "Every shape type must be registered exactly once");
+
+        MicrovoxelShape full = MicrovoxelShape.full();
+        require(full.id() == 0 && full.isFullCube() && full.solidFraction() == 1.0,
+                "Shape 0 must be the full cube with unit fraction");
+        int allFaces = MicrovoxelShape.FACE_NEG_X | MicrovoxelShape.FACE_POS_X
+                | MicrovoxelShape.FACE_NEG_Y | MicrovoxelShape.FACE_POS_Y
+                | MicrovoxelShape.FACE_NEG_Z | MicrovoxelShape.FACE_POS_Z;
+        require(full.faceFullMask() == allFaces,
+                "A full cube must cover every face completely");
+
+        MicrovoxelShape slab = MicrovoxelShape.byId(MicrovoxelShape.Type.SLAB_BOTTOM.ordinal());
+        require(slab.solidFraction() == 0.5 && slab.coversFaceFully(MicrovoxelShape.FACE_NEG_Y)
+                        && !slab.coversFaceFully(MicrovoxelShape.FACE_POS_Y),
+                "A bottom slab must be half solid and cover only the bottom face");
+        require(slab.occupied(8, 0, 8) && !slab.occupied(8, 15, 8),
+                "A bottom slab must occupy the lower half only");
+
+        MicrovoxelShape ramp = MicrovoxelShape.byId(MicrovoxelShape.Type.RAMP_S.ordinal());
+        require(ramp.occupied(0, 0, 0) && !ramp.occupied(0, 1, 0) && ramp.occupied(0, 15, 15),
+                "RAMP_S must be the y<=z half-space");
+
+        MicrovoxelShape round = MicrovoxelShape.byId(MicrovoxelShape.Type.QUARTER_ROUND_SW.ordinal());
+        require(round.occupied(0, 15, 0) && round.occupied(15, 0, 0) && !round.occupied(15, 15, 0),
+                "The quarter round must exclude the far corner of its bounding box");
+        require(round.solidFraction() > 0.7 && round.solidFraction() < 0.85,
+                "A quarter disc must occupy roughly pi/4 of the cell");
+
+        // Defensive copy and fail-closed lookup.
+        long[] copy = full.maskCopy();
+        copy[0] ^= 1L;
+        require(full.occupied(0, 0, 0),
+                "maskCopy must be a defensive snapshot, not a live view");
+        boolean rejected = false;
+        try {
+            MicrovoxelShape.byId(MicrovoxelShape.count());
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        require(rejected, "An out-of-range shape id must fail closed");
+        System.out.println("MicrovoxelShapeTest: catalog occupancy, faces and fractions passed");
+    }
+
+    /**
+     * Geometry channel: an empty channel costs zero bytes; shaped cells survive an encode/decode
+     * round-trip exactly; clearing returns to the zero-cost full-cube state.
+     */
+    private static void verifyMicrovoxelGeometryChannel() {
+        MicrovoxelGeometry empty = MicrovoxelGeometry.empty();
+        require(empty.isEmpty() && empty.encode().length == 0,
+                "An all-cube volume must carry an empty, zero-byte geometry channel");
+
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        int slab = MicrovoxelShape.Type.SLAB_BOTTOM.ordinal();
+        MicrovoxelGeometry geometry = MicrovoxelGeometry.empty();
+        require(geometry.setShape(0, ramp) && geometry.shapeAt(0) == ramp,
+                "Setting a shape must store and read back the shape id");
+        require(geometry.setShape(1000, slab) && geometry.shapedCells() == 2,
+                "A second shape must register a second shaped cell");
+        require(!geometry.setShape(0, ramp), "Re-setting the same shape must report no change");
+        require(geometry.setShape(0, 0) && geometry.shapeAt(0) == 0 && geometry.shapedCells() == 1,
+                "Clearing a cell must return it to the full cube");
+
+        MicrovoxelGeometry decoded = MicrovoxelGeometry.decode(geometry.encode());
+        require(decoded.shapedCells() == 1 && decoded.shapeAt(1000) == slab && decoded.shapeAt(7) == 0,
+                "A non-empty geometry channel must round-trip exactly");
+
+        // Force the raw (non-RLE) encoding path with an alternating pattern and round-trip it.
+        MicrovoxelGeometry ragged = MicrovoxelGeometry.empty();
+        for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell += 2) {
+            ragged.setShape(cell, ramp);
+        }
+        require(ragged.shapedCells() == MicrovoxelVolume.CELL_COUNT / 2,
+                "Ragged channel must count every shaped cell");
+        MicrovoxelGeometry raggedDecoded = MicrovoxelGeometry.decode(ragged.encode());
+        boolean exact = raggedDecoded.shapedCells() == ragged.shapedCells();
+        for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT && exact; cell++) {
+            exact = raggedDecoded.shapeAt(cell) == ragged.shapeAt(cell);
+        }
+        require(exact, "Both RLE and raw encodings must round-trip exactly");
+
+        boolean rejected = false;
+        try {
+            geometry.setShape(5, MicrovoxelShape.count());
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        require(rejected, "An unknown shape id must fail closed");
+        System.out.println("MicrovoxelGeometryChannelTest: zero-cost empty, round-trip and clear passed");
     }
 
     /**
