@@ -535,10 +535,14 @@ public final class MicrovoxelInteractionController {
     }
 
     private static void generateTarget(Minecraft minecraft) {
-        generateTarget(minecraft, 0);
+        generateTarget(minecraft, 0, 5, 3, 1);
     }
 
     private static void generateTarget(Minecraft minecraft, int type) {
+        generateTarget(minecraft, type, 5, 3, 1);
+    }
+
+    private static void generateTarget(Minecraft minecraft, int type, int length, int width, int height) {
         MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
@@ -547,10 +551,13 @@ public final class MicrovoxelInteractionController {
         BlockPos position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
         MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
         if (cached == null) return;
+        int len = Math.max(1, Math.min(31, length));
+        int wid = Math.max(1, Math.min(31, width));
+        int hei = Math.max(1, Math.min(31, height));
         net.minecraft.world.phys.Vec3 look = minecraft.player == null
                 ? net.minecraft.world.phys.Vec3.ZERO : minecraft.player.getViewVector(1.0f);
         int facing = Math.abs(look.x) > Math.abs(look.z) ? (look.x > 0 ? 2 : 3) : (look.z > 0 ? 0 : 1);
-        int encoded = MicrovoxelWire.packGenerate(hit.cell(), type, facing, 5, 3, 1);
+        int encoded = MicrovoxelWire.packGenerate(hit.cell(), type, facing, len, wid, hei);
         send(minecraft, ACTION_GENERATE, position.getX(), position.getY(), position.getZ(),
                 encoded, cached.volume.revision());
         String label = switch (type) {
@@ -558,14 +565,16 @@ public final class MicrovoxelInteractionController {
             case 2 -> "крыша";
             default -> "рампа";
         };
-        minecraft.gui.setOverlayMessage(Component.literal("Генератор: " + label), false);
+        minecraft.gui.setOverlayMessage(Component.literal(
+                "Генератор: " + label + " " + len + "×" + wid + "×" + hei), false);
     }
 
     /**
      * Dispatches a radial-menu choice to the matching edit action. Same actions the old key bindings
      * used; the radial is now the only way to reach them (Undo stays on its own key).
      */
-    static void handleRadialSelection(String action, String material, boolean fragment, int shapeId) {
+    static void handleRadialSelection(String action, String material, boolean fragment, int shapeId,
+                                      int length, int width, int height) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.player == null || action == null) return;
         switch (action) {
@@ -583,9 +592,9 @@ public final class MicrovoxelInteractionController {
                             Component.literal("Конвертация блока в микровоксели…"), false);
                 }
             }
-            case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0));
-            case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1));
-            case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2));
+            case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0, length, width, height));
+            case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1, length, width, height));
+            case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2, length, width, height));
             // Fragments (reclaimed voxels) place instantly; a raw block converts once (~0.6 s),
             // then the tool stays engaged for continuous LMB/RMB building.
             case "place" -> {

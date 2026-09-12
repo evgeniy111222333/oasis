@@ -36,7 +36,8 @@ public final class MicrovoxelRadialScreen extends Screen {
     /** Callback the opener supplies: action id, material id (nullable), fragment flag, shape id. */
     @FunctionalInterface
     public interface Listener {
-        void onSelect(String action, String material, boolean fragment, int shapeId);
+        void onSelect(String action, String material, boolean fragment, int shapeId,
+                      int length, int width, int height);
     }
 
     private static final String RESOURCE = "/assets/eclipseclient/web/radial/radial.html";
@@ -109,9 +110,12 @@ public final class MicrovoxelRadialScreen extends Screen {
         String material = jsonValue(json, "material");
         boolean fragment = !"false".equalsIgnoreCase(jsonValue(json, "fragment"));
         int shapeId = jsonInt(json, "shapeId", -1);
+        int length = jsonInt(json, "length", 5);
+        int width = jsonInt(json, "width", 3);
+        int height = jsonInt(json, "height", 1);
         Minecraft minecraft = this.minecraft;
         if (minecraft != null) minecraft.execute(() -> {
-            if (listener != null) listener.onSelect(action, material, fragment, shapeId);
+            if (listener != null) listener.onSelect(action, material, fragment, shapeId, length, width, height);
             if (minecraft.screen == this) minecraft.setScreen(null);
         });
     }

@@ -393,6 +393,62 @@
     margin-bottom: 2px;
   }
   .ring--inner .sector__swatch { width: 24px; height: 24px; }
+
+  /* ---------- foliant panel: shape picker / generator ---------- */
+  .foliant {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%) scale(0.94);
+    width: min(680px, 84vw); max-height: 74vh;
+    display: flex; flex-direction: column;
+    background: linear-gradient(150deg, rgba(27,24,20,0.94), rgba(12,11,10,0.92));
+    border: 1px solid rgba(232,220,196,0.28);
+    border-radius: 18px;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.6), inset 0 1px 0 rgba(232,220,196,0.10);
+    opacity: 0; pointer-events: none; z-index: 20;
+    transition: opacity 0.24s var(--ease-soft), transform 0.3s var(--ease-open);
+  }
+  .foliant[data-open="true"] { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  .foliant__head { display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+    border-bottom: 1px solid rgba(232,220,196,0.16); }
+  .foliant__title { flex: 1; text-align: center; font-size: 18px; color: var(--gold-a); }
+  .foliant__back { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 9px;
+    border: 1px solid var(--stroke); color: var(--paper); font-size: 12px; }
+  .foliant__back:hover { border-color: rgba(240,220,174,0.5); }
+  .foliant__body { padding: 16px; overflow: auto; }
+
+  .shape-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .shape-tile { all: unset; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; gap: 6px; padding: 10px 6px; border-radius: 12px; text-align: center;
+    background: linear-gradient(150deg, rgba(32,29,25,0.82), rgba(14,13,12,0.72));
+    border: 1px solid rgba(232,220,196,0.16); color: var(--paper-soft);
+    transition: transform 0.14s var(--ease-open), border-color 0.14s, background 0.14s, color 0.14s; }
+  .shape-tile:hover { transform: translateY(-2px); border-color: rgba(240,220,174,0.5); color: #fff6e4;
+    background: linear-gradient(150deg, rgba(232,164,91,0.22), rgba(232,164,91,0.06)); }
+  .shape-tile__ico { width: 34px; height: 34px; }
+  .shape-tile__ico svg { width: 100%; height: 100%; }
+  .shape-tile__cap { font-size: 10.5px; line-height: 1.05; }
+
+  .gen-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .gen-tab { all: unset; cursor: pointer; padding: 8px 16px; border-radius: 10px;
+    border: 1px solid var(--stroke); color: var(--paper-soft); font-size: 13px; }
+  .gen-tab.is-on { color: #241b0c; background: linear-gradient(150deg, var(--gold-a), var(--gold-b));
+    border-color: rgba(240,220,174,0.9); }
+  .gen-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0; }
+  .gen-row label { width: 92px; text-align: right; color: var(--paper-soft); font-size: 13px; }
+  .gen-step { display: flex; align-items: center; gap: 10px; }
+  .gen-step button { all: unset; cursor: pointer; width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 8px; border: 1px solid var(--stroke); color: var(--paper); font-size: 16px; }
+  .gen-step button:hover { border-color: rgba(240,220,174,0.5); }
+  .gen-step span { min-width: 34px; text-align: center; font-size: 15px; color: #fff6e4; }
+  .gen-create { all: unset; cursor: pointer; display: block; margin: 18px auto 0; padding: 10px 26px;
+    border-radius: 11px; border: 1px solid rgba(240,220,174,0.6); color: #fff6e4; font-size: 14px;
+    background: linear-gradient(150deg, rgba(232,164,91,0.3), rgba(232,164,91,0.1)); }
+  .gen-create:hover { box-shadow: 0 10px 24px rgba(232,164,91,0.25); }
+
+  /* while the foliant is open the wheel steps aside */
+  .radial.panel-open .ring, .radial.panel-open .hub, .radial.panel-open .ornament,
+  .radial.panel-open .ray, .radial.panel-open .emblem, .radial.panel-open .halo {
+    opacity: 0 !important; pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -450,6 +506,15 @@
           <div class="palette__meta" id="paletteMeta">дубовая доска</div>
         </div>
         <div class="swatches" id="swatches"></div>
+      </div>
+
+      <!-- shape picker / generator foliant: opens over the wheel -->
+      <div class="foliant" id="foliant" data-open="false">
+        <div class="foliant__head">
+          <button class="foliant__back" id="foliantBack">&#8249; Назад</button>
+          <span class="foliant__title serif" id="foliantTitle">Форма</span>
+        </div>
+        <div class="foliant__body" id="foliantBody"></div>
       </div>
     </div>
   </div>
@@ -516,11 +581,7 @@
     { id: "erase",  label: "Убрать",    icon: "erase" },
     { id: "shape",  label: "Форма",     icon: "shape", picker: "shape" },
     { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
-    { id: "gen",    label: "Генератор", icon: "gen", children: [
-        { id: "gen.ramp",   label: "Рампа",    icon: "ramp" },
-        { id: "gen.column", label: "Колонна",  icon: "column" },
-        { id: "gen.roof",   label: "Крыша",    icon: "roof" }
-    ]},
+    { id: "gen",    label: "Генератор", icon: "gen" },
     { id: "brush",  label: "Кисть",     icon: "brush", children: [
         { id: "brush.single", label: "Одна",    icon: "single" },
         { id: "brush.line",   label: "Линия",   icon: "line" },
@@ -563,6 +624,10 @@
   const readout     = document.getElementById("readout");
   const toast       = document.getElementById("toast");
   const openBtn     = document.getElementById("openBtn");
+  const foliant      = document.getElementById("foliant");
+  const foliantTitle = document.getElementById("foliantTitle");
+  const foliantBody  = document.getElementById("foliantBody");
+  const foliantBack  = document.getElementById("foliantBack");
 
   /* ============================ state ============================ */
   let isOpen        = false;
@@ -577,6 +642,9 @@
   let animTimer     = null;
   const onSelectListeners = new Set();
   let uiScale = 1;
+  let panelOpen = false;
+  let genType = "ramp";
+  const genDims = { length: 5, width: 3, height: 1 };
 
   /** Fit the whole wheel to the smaller screen dimension, so it adapts to any resolution. */
   function updateScale() {
@@ -632,6 +700,95 @@
   }
 
   const hasOptions = (sector) => !!optionsFor(sector);
+
+  const prettify = (name) => name.replace(/_/g, " ").toLowerCase();
+  function svgShape(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" '
+      + 'stroke-linecap="round" stroke-linejoin="round">' + shapeIcon(name) + "</svg>";
+  }
+
+  function openPanel(kind) {
+    panelOpen = true;
+    root.classList.add("panel-open");
+    foliant.setAttribute("data-open", "true");
+    foliantTitle.textContent = kind === "shape" ? "Форма" : "Генератор";
+    foliantBody.innerHTML = "";
+    if (kind === "shape") buildShapeGrid();
+    else buildGeneratorPanel();
+  }
+
+  function closePanel() {
+    if (!panelOpen) return;
+    panelOpen = false;
+    root.classList.remove("panel-open");
+    foliant.setAttribute("data-open", "false");
+  }
+
+  function buildShapeGrid() {
+    const grid = document.createElement("div");
+    grid.className = "shape-grid";
+    SHAPE_NAMES.forEach((name, id) => {
+      const tile = document.createElement("button");
+      tile.className = "shape-tile";
+      tile.innerHTML = '<span class="shape-tile__ico">' + svgShape(name) + "</span>"
+        + '<span class="shape-tile__cap">' + prettify(name) + "</span>";
+      tile.addEventListener("click", () => emit("shape.set", { shapeId: id, label: prettify(name) }));
+      grid.appendChild(tile);
+    });
+    foliantBody.appendChild(grid);
+  }
+
+  function buildGeneratorPanel() {
+    const types = [["ramp", "Рампа"], ["column", "Колонна"], ["roof", "Крыша"]];
+    const tabs = document.createElement("div");
+    tabs.className = "gen-tabs";
+    types.forEach(([type, label]) => {
+      const button = document.createElement("button");
+      button.className = "gen-tab" + (type === genType ? " is-on" : "");
+      button.textContent = label;
+      button.addEventListener("click", () => { genType = type; openPanel("gen"); });
+      tabs.appendChild(button);
+    });
+    foliantBody.appendChild(tabs);
+
+    [["length", "Длина"], ["width", "Ширина"], ["height", "Высота"]].forEach(([key, label]) => {
+      const row = document.createElement("div");
+      row.className = "gen-row";
+      const caption = document.createElement("label");
+      caption.textContent = label;
+      row.appendChild(caption);
+      const step = document.createElement("div");
+      step.className = "gen-step";
+      const minus = document.createElement("button");
+      minus.textContent = "\u2212";
+      const value = document.createElement("span");
+      value.textContent = genDims[key];
+      const plus = document.createElement("button");
+      plus.textContent = "+";
+      minus.addEventListener("click", () => {
+        genDims[key] = Math.max(1, genDims[key] - 1);
+        value.textContent = genDims[key];
+      });
+      plus.addEventListener("click", () => {
+        genDims[key] = Math.min(31, genDims[key] + 1);
+        value.textContent = genDims[key];
+      });
+      step.appendChild(minus);
+      step.appendChild(value);
+      step.appendChild(plus);
+      row.appendChild(step);
+      foliantBody.appendChild(row);
+    });
+
+    const create = document.createElement("button");
+    create.className = "gen-create";
+    create.textContent = "Создать";
+    const label = types.find(([type]) => type === genType)[1];
+    create.addEventListener("click", () => emit("gen." + genType, {
+      length: genDims.length, width: genDims.width, height: genDims.height, label: label
+    }));
+    foliantBody.appendChild(create);
+  }
 
   function renderInner(parentIndex) {
     ringInner.innerHTML = "";
@@ -705,6 +862,7 @@
   function close(fireCancel = false) {
     if (!isOpen) return;
     isOpen = false;
+    closePanel();
     root.classList.add("is-animating");
     // reverse stagger: last item leaves first
     outerEls.forEach((el, i) => el.style.setProperty("--d", ((outerEls.length - 1 - i) * 16) + "ms"));
@@ -861,6 +1019,8 @@
       updateHot();
       return;
     }
+    if (sector.id === "shape") { openPanel("shape"); return; }
+    if (sector.id === "gen") { openPanel("gen"); return; }
     emit(sector.id);
   }
 
@@ -920,6 +1080,7 @@
   });
   window.addEventListener("mousedown", (e) => {
     if (!isOpen) return;
+    if (panelOpen) return;                                         // the foliant owns its clicks
     if (e.target.closest && e.target.closest(".devbar")) return;   // prototype chrome
     e.preventDefault();
     confirm();
@@ -927,7 +1088,12 @@
   window.addEventListener("wheel", (e) => { if (isOpen) { e.preventDefault(); cycleMaterial(Math.sign(e.deltaY)); } }, { passive: false });
   window.addEventListener("contextmenu", (e) => { if (isOpen) e.preventDefault(); });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isOpen) { e.preventDefault(); close(true); return; }
+    if (e.key === "Escape" && isOpen) {
+      e.preventDefault();
+      if (panelOpen) closePanel();
+      else close(true);
+      return;
+    }
     if (!isOpen) return;
     if (e.key >= "1" && e.key <= "9") {
       const n = parseInt(e.key, 10) - 1;
@@ -938,6 +1104,7 @@
   // prototype entry: hold Tab (in-game this becomes the scroll gesture / key)
   window.addEventListener("keydown", (e) => { if (e.key === "Tab" && !isOpen) { e.preventDefault(); openAt(); } });
   openBtn.addEventListener("click", () => openAt());
+  if (foliantBack) foliantBack.addEventListener("click", () => closePanel());
 
   /* ============================ public bridge ============================ */
   // The in-game build will call these from the Java/MCEF side and subscribe to onSelect.
@@ -982,6 +1149,10 @@
       openAt();
       // headless --virtual-time-budget does not fire rAF, so force the settled state
       root.setAttribute("data-open", "true");
+      if (wanted && wanted.startsWith("panel:")) {
+        openPanel(wanted.slice("panel:".length));
+        return;
+      }
       const idx = wanted ? SECTORS.findIndex((s) => s.id === wanted) : -1;
       if (idx >= 0) {
         const a = (angleFor(idx, SECTORS.length) * Math.PI) / 180;
