@@ -22,6 +22,7 @@ public final class SharedWireCodecTest {
         verifyLevelsRoundTrip();
         verifyCapabilities();
         verifyCrackState();
+        verifyGeometryActionPacking();
         System.out.println("SharedWireCodecTest passed");
     }
 
@@ -136,6 +137,41 @@ public final class SharedWireCodecTest {
         require(!ua.rp.chat.microvoxel.MicrovoxelCrack.apply(cracks, -1, 4)
                         && !ua.rp.chat.microvoxel.MicrovoxelCrack.apply(cracks, 4096, 4),
                 "Out-of-range cells must be ignored");
+    }
+
+    /**
+     * The geometry actions pack their parameters into the action-cell field. Both packings use bits
+     * above 15, so the field must travel as a VarInt; narrowing it to a short silently drops the
+     * shape id (>=16) and every GENERATE dimension. This guards the packing and that width contract.
+     */
+    private static void verifyGeometryActionPacking() {
+        int maxShape = ua.rp.chat.microvoxel.MicrovoxelShape.count() - 1;
+        int topCell = MicrovoxelVolumeCells.COUNT - 1;
+        int packedShape = MicrovoxelWire.packSetShape(topCell, maxShape);
+        require(MicrovoxelWire.shapeCell(packedShape) == topCell
+                        && MicrovoxelWire.shapeId(packedShape) == maxShape,
+                "SET_SHAPE packing must round-trip the top shape id");
+        require(packedShape > 0xFFFF,
+                "The top shape id needs bits above 15; the payload cell field must be a VarInt");
+
+        int packedGenerate = MicrovoxelWire.packGenerate(topCell, 0, 3, 31, 31, 31);
+        require(MicrovoxelWire.generateCell(packedGenerate) == topCell
+                        && MicrovoxelWire.generateType(packedGenerate) == 0
+                        && MicrovoxelWire.generateFacing(packedGenerate) == 3
+                        && MicrovoxelWire.generateLength(packedGenerate) == 31
+                        && MicrovoxelWire.generateWidth(packedGenerate) == 31
+                        && MicrovoxelWire.generateHeight(packedGenerate) == 31,
+                "GENERATE packing must round-trip every field at its maximum");
+        require(packedGenerate > 0xFFFF,
+                "GENERATE dimensions live above bit 15; the payload cell field must be a VarInt");
+
+        boolean rejected = false;
+        try {
+            MicrovoxelWire.packSetShape(MicrovoxelVolumeCells.COUNT, 0);
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        require(rejected, "An out-of-range packed cell must fail closed");
     }
 
     private static void require(boolean condition, String message) {

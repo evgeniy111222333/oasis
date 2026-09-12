@@ -22,7 +22,9 @@ public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
         buffer.writeInt(x);
         buffer.writeInt(y);
         buffer.writeInt(z);
-        buffer.writeShort(cell);
+        // VarInt, not short: SET_SHAPE packs the shape id above bit 12 and GENERATE packs its
+        // dimensions up to bit 30, so a 16-bit cell field would silently drop both.
+        buffer.writeVarInt(cell);
         buffer.writeInt(revision);
         buffer.writeFloat(lookX);
         buffer.writeFloat(lookY);
@@ -36,7 +38,7 @@ public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
         return new MicrovoxelActionPayload(
                 buffer.readVarInt(), buffer.readVarLong(),
                 buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
-                buffer.readUnsignedShort(), buffer.readInt(),
+                buffer.readVarInt(), buffer.readInt(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat());
     }

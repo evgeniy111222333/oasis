@@ -104,6 +104,70 @@ public final class MicrovoxelWire {
         return peerMajor >= MIN_SUPPORTED_MAJOR && peerMajor <= MAJOR;
     }
 
+    // ===== Packed geometry action payloads =====
+    // Both sides must agree bit for bit, so the packing lives here (single source of truth) and is
+    // unit-tested. The packed int rides the action payload's VarInt cell field; it must NEVER be
+    // narrowed to 16 bits, since GENERATE uses bits up to 30.
+
+    /** Action-cell layout: SET_SHAPE = cell[0..11] | shape[12..27]. */
+    public static int packSetShape(int cell, int shapeId) {
+        if (cell < 0 || cell >= MicrovoxelShape.SUB_COUNT) {
+            throw new IllegalArgumentException("Invalid microvoxel cell " + cell);
+        }
+        if (shapeId < 0 || shapeId >= MicrovoxelShape.count()) {
+            throw new IllegalArgumentException("Invalid microvoxel shape " + shapeId);
+        }
+        return (cell & 0x0FFF) | (shapeId << 12);
+    }
+
+    public static int shapeCell(int packed) {
+        return packed & 0x0FFF;
+    }
+
+    public static int shapeId(int packed) {
+        return (packed >>> 12) & 0xFFFF;
+    }
+
+    /** Action-cell layout: GENERATE = cell[0..11] | type[12..13] | facing[14..15] | dims[16..30]. */
+    public static int packGenerate(int cell, int type, int facing, int length, int width, int height) {
+        if (cell < 0 || cell >= MicrovoxelShape.SUB_COUNT) {
+            throw new IllegalArgumentException("Invalid microvoxel cell " + cell);
+        }
+        if (type < 0 || type >= MicrovoxelGenerator.typeCount()) {
+            throw new IllegalArgumentException("Invalid microvoxel generator " + type);
+        }
+        return (cell & 0x0FFF)
+                | ((type & 0x3) << 12)
+                | ((facing & 0x3) << 14)
+                | ((length & 0x1F) << 16)
+                | ((width & 0x1F) << 21)
+                | ((height & 0x1F) << 26);
+    }
+
+    public static int generateCell(int packed) {
+        return packed & 0x0FFF;
+    }
+
+    public static int generateType(int packed) {
+        return (packed >>> 12) & 0x3;
+    }
+
+    public static int generateFacing(int packed) {
+        return (packed >>> 14) & 0x3;
+    }
+
+    public static int generateLength(int packed) {
+        return (packed >>> 16) & 0x1F;
+    }
+
+    public static int generateWidth(int packed) {
+        return (packed >>> 21) & 0x1F;
+    }
+
+    public static int generateHeight(int packed) {
+        return (packed >>> 26) & 0x1F;
+    }
+
     public record Frame(int major, int minor, int type, byte[] payload) {
     }
 

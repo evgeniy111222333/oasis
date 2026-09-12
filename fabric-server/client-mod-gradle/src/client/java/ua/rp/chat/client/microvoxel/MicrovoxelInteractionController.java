@@ -15,25 +15,26 @@ import org.lwjgl.glfw.GLFW;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 import ua.rp.chat.microvoxel.MicrovoxelBrush;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
+import ua.rp.chat.microvoxel.MicrovoxelWire;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public final class MicrovoxelInteractionController {
     private static final boolean DEBUG = Boolean.getBoolean("rpchat.microvoxel.debug");
-    // Action ids mirror MicrovoxelProtocol 1:1 and are shared with the send batcher.
-    public static final int ACTION_CONVERT = 1;
-    public static final int ACTION_REMOVE = 2;
-    public static final int ACTION_ADD = 3;
-    public static final int ACTION_CARVE_STANDARD = 4;
-    public static final int ACTION_UNDO = 8;
-    public static final int ACTION_REDO = 9;
-    public static final int ACTION_BRUSH_REMOVE = 10;
-    public static final int ACTION_BRUSH_ADD = 11;
-    public static final int ACTION_COPY = 12;
-    public static final int ACTION_PASTE = 13;
-    public static final int ACTION_SET_SHAPE = 16;
-    public static final int ACTION_GENERATE = 17;
+    // Action ids come from the shared wire class so client and server can never drift apart.
+    public static final int ACTION_CONVERT = MicrovoxelWire.ACTION_CONVERT;
+    public static final int ACTION_REMOVE = MicrovoxelWire.ACTION_REMOVE;
+    public static final int ACTION_ADD = MicrovoxelWire.ACTION_ADD;
+    public static final int ACTION_CARVE_STANDARD = MicrovoxelWire.ACTION_CARVE_STANDARD;
+    public static final int ACTION_UNDO = MicrovoxelWire.ACTION_UNDO;
+    public static final int ACTION_REDO = MicrovoxelWire.ACTION_REDO;
+    public static final int ACTION_BRUSH_REMOVE = MicrovoxelWire.ACTION_BRUSH_REMOVE;
+    public static final int ACTION_BRUSH_ADD = MicrovoxelWire.ACTION_BRUSH_ADD;
+    public static final int ACTION_COPY = MicrovoxelWire.ACTION_COPY;
+    public static final int ACTION_PASTE = MicrovoxelWire.ACTION_PASTE;
+    public static final int ACTION_SET_SHAPE = MicrovoxelWire.ACTION_SET_SHAPE;
+    public static final int ACTION_GENERATE = MicrovoxelWire.ACTION_GENERATE;
     private static KeyMapping modeKey;
     private static KeyMapping convertKey;
     private static KeyMapping undoKey;
@@ -563,7 +564,7 @@ public final class MicrovoxelInteractionController {
         if (cached == null) return;
         int current = cached.volume.shapeAt(hit.cell());
         int next = (current + 1) % ua.rp.chat.microvoxel.MicrovoxelShape.count();
-        int encoded = (hit.cell() & 0x0FFF) | (next << 12);
+        int encoded = MicrovoxelWire.packSetShape(hit.cell(), next);
         send(minecraft, ACTION_SET_SHAPE, position.getX(), position.getY(), position.getZ(),
                 encoded, cached.volume.revision());
         minecraft.gui.setOverlayMessage(Component.literal("Форма: "
@@ -586,12 +587,7 @@ public final class MicrovoxelInteractionController {
         net.minecraft.world.phys.Vec3 look = minecraft.player == null
                 ? net.minecraft.world.phys.Vec3.ZERO : minecraft.player.getViewVector(1.0f);
         int facing = Math.abs(look.x) > Math.abs(look.z) ? (look.x > 0 ? 2 : 3) : (look.z > 0 ? 0 : 1);
-        int encoded = (hit.cell() & 0x0FFF)
-                | (0 << 12)
-                | ((facing & 0x3) << 14)
-                | ((5 & 0x1F) << 16)
-                | ((3 & 0x1F) << 21)
-                | ((1 & 0x1F) << 26);
+        int encoded = MicrovoxelWire.packGenerate(hit.cell(), 0, facing, 5, 3, 1);
         send(minecraft, ACTION_GENERATE, position.getX(), position.getY(), position.getZ(),
                 encoded, cached.volume.revision());
         minecraft.gui.setOverlayMessage(Component.literal("Генератор: рампа"), false);

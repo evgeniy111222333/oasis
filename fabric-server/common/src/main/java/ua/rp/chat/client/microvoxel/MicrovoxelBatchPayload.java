@@ -56,7 +56,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
             buffer.writeInt(entry.x());
             buffer.writeInt(entry.y());
             buffer.writeInt(entry.z());
-            buffer.writeShort(entry.cell());
+            buffer.writeVarInt(entry.cell());
             buffer.writeInt(entry.revision());
             buffer.writeVarLong(entry.transactionId());
         }
@@ -79,7 +79,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
         for (int index = 0; index < count; index++) {
             entries.add(new Entry(
                     buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
-                    buffer.readUnsignedShort(), buffer.readInt(), buffer.readVarLong()));
+                    buffer.readVarInt(), buffer.readInt(), buffer.readVarLong()));
         }
         return new MicrovoxelBatchPayload(version, batch,
                 List.copyOf(entries),

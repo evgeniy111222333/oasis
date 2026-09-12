@@ -18,6 +18,7 @@ import ua.rp.chat.microvoxel.MicrovoxelKey;
 import ua.rp.chat.microvoxel.MicrovoxelManager;
 import ua.rp.chat.microvoxel.MicrovoxelProtocol;
 import ua.rp.chat.microvoxel.MicrovoxelRuntime;
+import ua.rp.chat.microvoxel.MicrovoxelWire;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import ua.rp.chat.microvoxel.ServerMicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.ChunkKey;
@@ -560,8 +561,8 @@ public final class MicrovoxelEditEngine {
      * the volume body.
      */
     private void setShape(ServerPlayer player, QueuedAction action) {
-        int cell = action.cell() & 0x0FFF;
-        int shapeId = (action.cell() >>> 12) & 0xFFFF;
+        int cell = MicrovoxelWire.shapeCell(action.cell());
+        int shapeId = MicrovoxelWire.shapeId(action.cell());
         if (shapeId >= ua.rp.chat.microvoxel.MicrovoxelShape.count()) {
             context.sync().feedback(player, "Неизвестная форма микровокселя.");
             return;
@@ -606,12 +607,12 @@ public final class MicrovoxelEditEngine {
      */
     private void generate(ServerPlayer player, QueuedAction action) {
         int encoded = action.cell();
-        int cell = encoded & 0x0FFF;
-        int typeIndex = (encoded >>> 12) & 0x3;
-        int facing = (encoded >>> 14) & 0x3;
-        int length = (encoded >>> 16) & 0x1F;
-        int width = (encoded >>> 21) & 0x1F;
-        int height = (encoded >>> 26) & 0x1F;
+        int cell = MicrovoxelWire.generateCell(encoded);
+        int typeIndex = MicrovoxelWire.generateType(encoded);
+        int facing = MicrovoxelWire.generateFacing(encoded);
+        int length = MicrovoxelWire.generateLength(encoded);
+        int width = MicrovoxelWire.generateWidth(encoded);
+        int height = MicrovoxelWire.generateHeight(encoded);
         if (typeIndex >= MicrovoxelGenerator.typeCount()) {
             context.sync().feedback(player, "Неизвестный генератор.");
             return;
