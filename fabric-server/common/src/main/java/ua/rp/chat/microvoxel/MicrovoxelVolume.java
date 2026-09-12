@@ -15,6 +15,12 @@ public final class MicrovoxelVolume {
     private int revision;
     private final List<String> palette;
     private final byte[] cells;
+    /**
+     * Optional geometry channel (tier S/D shapes). Null when every cell is a full cube, which keeps
+     * an all-cube volume byte-for-byte identical to before this layer existed (zero extra memory,
+     * zero extra bytes on the wire, zero extra render work).
+     */
+    private MicrovoxelGeometry geometry;
     private transient volatile List<Cuboid> collisionCuboids;
     private transient volatile CollisionPlan collisionPlan;
     /**
@@ -27,9 +33,15 @@ public final class MicrovoxelVolume {
     private boolean frozen;
 
     public MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
+        this(revision, palette, cells, null);
+    }
+
+    public MicrovoxelVolume(int revision, List<String> palette, byte[] cells,
+                            MicrovoxelGeometry geometry) {
         this.revision = Math.max(1, revision);
         this.palette = new ArrayList<>(palette);
         this.cells = cells.clone();
+        this.geometry = geometry == null || geometry.isEmpty() ? null : geometry.copy();
         validate();
     }
 
@@ -50,8 +62,59 @@ public final class MicrovoxelVolume {
         return new MicrovoxelVolume(revision, palette, cells);
     }
 
+    public static MicrovoxelVolume restore(int revision, List<String> palette, byte[] cells,
+                                           MicrovoxelGeometry geometry) {
+        return new MicrovoxelVolume(revision, palette, cells, geometry);
+    }
+
     public MicrovoxelVolume copy() {
-        return new MicrovoxelVolume(revision, palette, cells);
+        return new MicrovoxelVolume(revision, palette, cells, geometry);
+    }
+
+    /** True when at least one cell carries a non-full shape. */
+    public boolean hasGeometry() {
+        return geometry != null && !geometry.isEmpty();
+    }
+
+    /** Global shape id at one cell (0 = full cube). */
+    public int shapeAt(int cell) {
+        requireCell(cell);
+        return geometry == null ? 0 : geometry.shapeAt(cell);
+    }
+
+    /** The geometry channel, or null when the volume is all full cubes (zero-cost default). */
+    public MicrovoxelGeometry geometryOrNull() {
+        return geometry;
+    }
+
+    /**
+     * Sets the geometry of one occupied cell. Returns true when the volume changed. Shape 0 clears
+     * the cell back to a full cube. The channel is created lazily, so an all-cube volume still
+     * costs nothing until the first shaped cell exists.
+     */
+    public boolean setShape(int cell, int shapeId) {
+        requireMutable();
+        requireCell(cell);
+        if (cells[cell] == 0) {
+            if (shapeId == 0) return false;
+            throw new IllegalStateException("Cannot shape an empty microvoxel cell");
+        }
+        if (shapeId == 0) {
+            if (geometry == null) return false;
+            if (!geometry.setShape(cell, 0)) return false;
+            if (geometry.isEmpty()) geometry = null;
+            changed();
+            return true;
+        }
+        if (geometry == null) geometry = MicrovoxelGeometry.empty();
+        if (!geometry.setShape(cell, shapeId)) return false;
+        changed();
+        return true;
+    }
+
+    private void clearShapeInternal(int cell) {
+        if (geometry == null) return;
+        if (geometry.setShape(cell, 0) && geometry.isEmpty()) geometry = null;
     }
 
     /** True once this instance has been published to the store and may no longer be mutated. */
@@ -167,6 +230,7 @@ public final class MicrovoxelVolume {
             return false;
         }
         cells[cell] = 0;
+        clearShapeInternal(cell);
         changed();
         return true;
     }
@@ -198,6 +262,7 @@ public final class MicrovoxelVolume {
         requireCell(cell);
         if (blockData == null || blockData.isBlank()) {
             cells[cell] = 0;
+            clearShapeInternal(cell);
         } else {
             int paletteIndex = palette.indexOf(blockData);
             if (paletteIndex < 0) {
@@ -570,6 +635,13 @@ public final class MicrovoxelVolume {
         for (byte cell : cells) {
             if (Byte.toUnsignedInt(cell) >= palette.size()) {
                 throw new IllegalArgumentException("Cell references missing palette entry");
+            }
+        }
+        if (geometry != null && !geometry.isEmpty()) {
+            for (int cell = 0; cell < CELL_COUNT; cell++) {
+                if (geometry.shapeAt(cell) != 0 && cells[cell] == 0) {
+                    throw new IllegalArgumentException("Shaped cell must be occupied");
+                }
             }
         }
     }

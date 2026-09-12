@@ -42,6 +42,7 @@ public final class MicrovoxelServerCoreTest {
         verifyEmptyVolumeNeverProjected();
         verifyMicrovoxelShapes();
         verifyMicrovoxelGeometryChannel();
+        verifyVolumeGeometryIntegration();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1538,6 +1539,43 @@ public final class MicrovoxelServerCoreTest {
         projection.materialize(solid, MicrovoxelVolume.full("minecraft:stone"));
         require(store.get(solid) != null,
                 "A non-empty volume must still materialize normally");
+    }
+
+    /** The geometry channel is optional, copy-on-write and dropped with the cell it shaped. */
+    private static void verifyVolumeGeometryIntegration() {
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        MicrovoxelVolume volume = MicrovoxelVolume.full("minecraft:stone");
+        require(!volume.hasGeometry() && volume.shapeAt(0) == 0,
+                "A fresh all-cube volume must carry no geometry channel");
+        int revision = volume.revision();
+        require(volume.setShape(0, ramp) && volume.hasGeometry() && volume.shapeAt(0) == ramp
+                        && volume.revision() != revision,
+                "Setting a shape must store it and bump the revision");
+
+        MicrovoxelVolume copy = volume.copy();
+        require(copy.shapeAt(0) == ramp, "A copy must preserve the geometry channel");
+        copy.setShape(0, 0);
+        require(copy.shapeAt(0) == 0 && volume.shapeAt(0) == ramp,
+                "Copy-on-write must isolate geometry mutation");
+
+        volume.remove(0);
+        require(volume.shapeAt(0) == 0 && !volume.hasGeometry(),
+                "Removing a shaped cell must drop its geometry and re-zero the channel");
+
+        MicrovoxelVolume shaped = MicrovoxelVolume.full("minecraft:stone");
+        shaped.setShape(5, ramp);
+        MicrovoxelVolume restored = MicrovoxelVolume.restore(
+                shaped.revision(), shaped.palette(), shaped.cellsCopy(), shaped.geometryOrNull());
+        require(restored.shapeAt(5) == ramp, "Restore must round-trip the geometry channel");
+
+        boolean rejected = false;
+        try {
+            shaped.setShape(5, MicrovoxelShape.count());
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        require(rejected, "An unknown shape id must fail closed");
+        System.out.println("MicrovoxelVolumeGeometryTest: channel integration, copy-on-write and clear passed");
     }
 
     /**
