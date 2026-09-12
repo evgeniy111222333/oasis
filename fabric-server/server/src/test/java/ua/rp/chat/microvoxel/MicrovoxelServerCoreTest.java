@@ -38,6 +38,8 @@ public final class MicrovoxelServerCoreTest {
         verifyFluidLateral();
         verifyLavaEngine();
         verifyFluidFrost();
+        verifyFluidHardening();
+        verifyEmptyVolumeNeverProjected();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -411,16 +413,6 @@ public final class MicrovoxelServerCoreTest {
             require(input.readUnsignedByte() == 1, "Mostly uniform volume must use RLE encoding");
         }
 
-        // Test REGISTER_MATERIAL
-        byte[] regPacket = MicrovoxelProtocol.registerMaterial(42, "minecraft:deepslate");
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(regPacket))) {
-            requireWireHeader(input, MicrovoxelProtocol.REGISTER_MATERIAL);
-            require(MicrovoxelProtocol.readVarInt(input) == 42, "ID must match");
-            int len = MicrovoxelProtocol.readVarInt(input);
-            byte[] bytes = input.readNBytes(len);
-            require(new String(bytes, java.nio.charset.StandardCharsets.UTF_8).equals("minecraft:deepslate"), "String must match");
-        }
-
         // Test CLEAR_CHUNK
         byte[] clearPacket = MicrovoxelProtocol.clearChunk(10, -5);
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(clearPacket))) {
@@ -523,9 +515,13 @@ public final class MicrovoxelServerCoreTest {
 
     private static void requireWireHeader(DataInputStream input, int expectedType) throws Exception {
         require(input.readUnsignedByte() == MicrovoxelProtocol.MAGIC,
-                "Microvoxel packets must start with the versioned wire magic");
+                "Microvoxel packets must start with the wire magic");
         require(MicrovoxelProtocol.readVarInt(input) == MicrovoxelProtocol.VERSION,
-                "Microvoxel packet version must match the paired client");
+                "Microvoxel packet major must match the paired client");
+        require(MicrovoxelProtocol.readVarInt(input) == MicrovoxelProtocol.MINOR,
+                "Microvoxel packet minor must match the paired client");
+        int frameLength = MicrovoxelProtocol.readVarInt(input);
+        require(frameLength >= 1, "Microvoxel frame length must be positive");
         require(input.readUnsignedByte() == expectedType,
                 "Microvoxel packet type must match " + expectedType);
     }
@@ -840,14 +836,10 @@ public final class MicrovoxelServerCoreTest {
 
     private static void requireSnapshotEnvelope(byte[] payload, int expectedType, long expectedId)
             throws Exception {
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
-            require(input.readUnsignedByte() == MicrovoxelProtocol.MAGIC,
-                    "Snapshot envelope must retain the protocol magic");
-            require(MicrovoxelProtocol.readVarInt(input) == MicrovoxelProtocol.VERSION,
-                    "Snapshot envelope must retain the negotiated protocol version");
-            require(input.readUnsignedByte() == expectedType
-                            && input.readLong() == expectedId
-                            && input.available() == 0,
+        MicrovoxelWire.Frame frame = MicrovoxelWire.readFrame(payload);
+        require(frame.type() == expectedType, "Snapshot envelope type must match");
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(frame.payload()))) {
+            require(input.readLong() == expectedId && input.available() == 0,
                     "Snapshot envelope must carry exactly one delivery id");
         }
     }
@@ -1466,6 +1458,84 @@ public final class MicrovoxelServerCoreTest {
                         && cappedFrozen.stream().allMatch(cell -> MicrovoxelVolume.y(cell) == 12),
                 "Water under a solid lid must frost at its own surface, never through rock");
         System.out.println("MicrovoxelFluidFrostTest: crust placement passed");
+    }
+
+    /**
+     * Hardening invariants: reverse equalization must cross the shared face (never the far
+     * faces), and rain must refuse lava and protected basins. A conservation-only check
+     * cannot see these — conservation holds even when the wrong cells move.
+     */
+    private static void verifyFluidHardening() {
+        FluidVolume near = FluidVolume.empty();
+        near.setLevel(FluidVolume.index(15, 0, 0), 16);
+        FluidVolume far = FluidVolume.empty();
+        far.setLevel(FluidVolume.index(15, 0, 0), 16);
+        int[] faceX = FluidVolume.facePairs(0, true);
+        long moved = near.equalizeWith(far, faceX, Long.MAX_VALUE);
+        require(moved == 8,
+                "Equalization must move exactly half the shared-face gap, moved=" + moved);
+        require(near.level(FluidVolume.index(15, 0, 0)) == 8
+                        && far.level(FluidVolume.index(0, 0, 0)) == 8,
+                "Forward equalization must level the shared face");
+        require(near.level(FluidVolume.index(0, 0, 0)) == 0
+                        && far.level(FluidVolume.index(15, 0, 0)) == 16,
+                "Reverse equalization must use the shared face, never the far faces");
+
+        require(!FluidSim.acceptsRain(true, null)
+                        && !FluidSim.acceptsRain(true, FluidVolume.empty()),
+                "Rain must never touch a protected basin");
+        require(FluidSim.acceptsRain(false, null)
+                        && FluidSim.acceptsRain(false, FluidVolume.empty()),
+                "Rain may seed a dry unprotected basin");
+        require(FluidSim.acceptsRain(false, FluidVolume.empty(FluidVolume.Kind.WATER)),
+                "Rain may top an existing water basin");
+        require(!FluidSim.acceptsRain(false, FluidVolume.empty(FluidVolume.Kind.LAVA)),
+                "Rain must never top a lava basin or waterlog it");
+        System.out.println("MicrovoxelFluidHardeningTest: orientation and rain gate passed");
+    }
+
+    /**
+     * The projection single-writer must treat an empty volume as a removal, so no caller can
+     * ever leave an unbreakable marker with nothing inside. A non-empty volume still stores.
+     */
+    private static void verifyEmptyVolumeNeverProjected() throws Exception {
+        Path directory = Files.createTempDirectory("empty-volume-test");
+        MicrovoxelStore store = new MicrovoxelStore(directory.resolve("microvoxels.dat"));
+        MicrovoxelProjection.World world = new MicrovoxelProjection.World() {
+            @Override
+            public net.minecraft.server.level.ServerLevel getWorld(UUID worldId) {
+                return null;
+            }
+
+            @Override
+            public net.minecraft.world.level.chunk.LevelChunk loadedChunk(UUID worldId, int chunkX, int chunkZ) {
+                return null;
+            }
+
+            @Override
+            public void setBlock(net.minecraft.server.level.ServerLevel level,
+                                 net.minecraft.world.level.chunk.LevelChunk chunk,
+                                 net.minecraft.core.BlockPos pos,
+                                 net.minecraft.world.level.block.state.BlockState state) {
+            }
+
+            @Override
+            public void scheduleLight(net.minecraft.server.level.ServerLevel level,
+                                      net.minecraft.core.BlockPos pos) {
+            }
+        };
+        MicrovoxelProjection projection = new MicrovoxelProjection(store, world, () -> { },
+                (key, volume) -> net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+
+        MicrovoxelKey shell = new MicrovoxelKey(UUID.randomUUID(), 1, 64, 1);
+        projection.materialize(shell, MicrovoxelVolume.empty());
+        require(store.get(shell) == null,
+                "An empty volume must project as a removal, never be stored or marked");
+
+        MicrovoxelKey solid = new MicrovoxelKey(UUID.randomUUID(), 2, 64, 1);
+        projection.materialize(solid, MicrovoxelVolume.full("minecraft:stone"));
+        require(store.get(solid) != null,
+                "A non-empty volume must still materialize normally");
     }
 
     /**

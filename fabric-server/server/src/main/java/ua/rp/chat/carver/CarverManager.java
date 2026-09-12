@@ -13,6 +13,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import ua.rp.chat.RPChat;
+import ua.rp.chat.antiabuse.ActionRateLimiter;
 import ua.rp.chat.client.carver.CarverSyncPayload;
 import ua.rp.chat.microvoxel.MicrovoxelBlockStates;
 import ua.rp.chat.microvoxel.MicrovoxelKey;
@@ -57,6 +58,8 @@ public final class CarverManager {
     /** Players with an applied-but-not-yet-echoed draft change (burst coalescing). */
     private final Set<UUID> draftEchoPending = ConcurrentHashMap.newKeySet();
     private final AtomicLong transactions = new AtomicLong(1L);
+    private final ActionRateLimiter incomingLimiter =
+            new ActionRateLimiter(ACTION_RATE_PER_SECOND, ACTION_BURST);
     private final CarverArtisanStore artisans;
     /**
      * Minimum milliseconds between draft-state echoes per player. The draft state itself is
@@ -66,6 +69,13 @@ public final class CarverManager {
      * the cells optimistically, so they reappeared a couple of seconds later.
      */
     private static final long STROKE_THROTTLE_MS = 100L;
+    /**
+     * Incoming carver action budget. The old code applied every draft packet the instant it
+     * arrived with no ceiling, so a hostile client could flood strokes/boxes. Tokens refill
+     * fast enough that honest click storms are unaffected; a sustained flood is dropped.
+     */
+    private static final double ACTION_RATE_PER_SECOND = 80.0;
+    private static final double ACTION_BURST = 80.0;
 
     public CarverManager(RPChat plugin,
                              ua.rp.chat.microvoxel.MicrovoxelManager microvoxels,
@@ -197,6 +207,10 @@ public final class CarverManager {
     public void handleAction(ServerPlayer player, int action, int x, int y, int z, byte[] data) {
         if (player == null || !CarverProtocol.isAction(action)) return;
         if (!RPChat.hasPermission(player, "rpchat.carver", 0)) return;
+        if (isDesignAction(action)
+                && !designActionAllowed(player, sessions.get(player.getUUID()))) {
+            return;
+        }
         switch (action) {
             case CarverProtocol.ACTION_STROKE_ADD -> applyStroke(player, x, y, z, data, true);
             case CarverProtocol.ACTION_STROKE_ERASE -> applyStroke(player, x, y, z, data, false);
@@ -214,6 +228,39 @@ public final class CarverManager {
             default -> {
             }
         }
+    }
+
+    /** Cancel is deliberately excluded: a player must always be able to back out. */
+    private static boolean isDesignAction(int action) {
+        return action == CarverProtocol.ACTION_STROKE_ADD
+                || action == CarverProtocol.ACTION_STROKE_ERASE
+                || action == CarverProtocol.ACTION_BOX_ADD
+                || action == CarverProtocol.ACTION_BOX_ERASE
+                || action == CarverProtocol.ACTION_UNDO
+                || action == CarverProtocol.ACTION_REDO
+                || action == CarverProtocol.ACTION_MIRROR_SET
+                || action == CarverProtocol.ACTION_SAVE
+                || action == CarverProtocol.ACTION_AUTOWALK
+                || action == CarverProtocol.ACTION_CLEAR_DRAFT
+                || action == CarverProtocol.ACTION_APPROVE;
+    }
+
+    /**
+     * Server authority for every design-stage mutation: the player is rate-limited, must still
+     * hold a live session, and must still be wearing the recipe bag. A draft begun with the bag
+     * equipped cannot keep editing after the bag is dropped or moved out of the chest slot.
+     */
+    private boolean designActionAllowed(ServerPlayer player, DraftSession session) {
+        if (!incomingLimiter.tryAcquire(player.getUUID())) {
+            MicrovoxelMetrics.inc("carver.drop.rate");
+            return false;
+        }
+        if (session == null || session.state() != DraftSession.State.DESIGN) return false;
+        if (!CarverItems.hasBag(player)) {
+            MicrovoxelMetrics.inc("carver.drop.no-bag");
+            return false;
+        }
+        return true;
     }
 
     public void tick() {
@@ -269,6 +316,7 @@ public final class CarverManager {
     public void onQuit(ServerPlayer player) {
         if (player == null) return;
         dropSession(player.getUUID());
+        incomingLimiter.reset(player.getUUID());
     }
 
     /**
@@ -493,6 +541,14 @@ public final class CarverManager {
         }
         if (!(player.level() instanceof ServerLevel level)) return;
         BlockPos pos = new BlockPos(x, y, z);
+        // Approve commits a real world mutation, so re-validate proximity here even though
+        // the player drifted under the (looser) design leash since opening the draft.
+        if (!withinReach(player, pos)) {
+            MicrovoxelMetrics.inc("carver.drop.reach");
+            player.sendSystemMessage(Component.literal(
+                    "Блок слишком далеко: подойдите ближе, чтобы начать работу."), true);
+            return;
+        }
         BlockState state = level.getBlockState(pos);
         if (ua.rp.chat.microvoxel.MicrovoxelBlocks.isMarker(state)) {
             MicrovoxelKey volumeKey = keyFor(level, pos);
@@ -685,6 +741,16 @@ public final class CarverManager {
         if (plan == null) return;
         UUID worldId = microvoxels.runtimeWorldId(level);
         MicrovoxelKey key = new MicrovoxelKey(worldId, pos.getX(), pos.getY(), pos.getZ());
+        // TOCTOU guard: a volume protected after work began must stop being carved. The old
+        // check lived only in the not-yet-converted branch, so an existing volume kept losing
+        // cells even after a moderator protected it mid-work.
+        if (microvoxels.isProtected(key)) {
+            MicrovoxelMetrics.inc("carver.work.protected");
+            finalizeWork(player, level, pos, session, false);
+            player.sendSystemMessage(Component.literal("Этот блок защищён от изменений."), true);
+            closeSession(player, DraftSession.CancelReason.BLOCK_CHANGED, true);
+            return;
+        }
         int target = (int) Math.floor(session.workProgress() * plan.cells().size());
         if (target <= plan.applied()) return;
         MicrovoxelVolume volume = microvoxels.microvolumes().get(key);
@@ -694,12 +760,6 @@ public final class CarverManager {
                     || !MicrovoxelEligibility.isEligibleFullBlock(state, pos, level)) {
                 finalizeWork(player, level, pos, session, false);
                 player.sendSystemMessage(Component.literal("Блок изменился во время работы."), true);
-                closeSession(player, DraftSession.CancelReason.BLOCK_CHANGED, true);
-                return;
-            }
-            if (microvoxels.isProtected(key)) {
-                finalizeWork(player, level, pos, session, false);
-                player.sendSystemMessage(Component.literal("Этот блок защищён от изменений."), true);
                 closeSession(player, DraftSession.CancelReason.BLOCK_CHANGED, true);
                 return;
             }

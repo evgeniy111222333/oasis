@@ -83,88 +83,25 @@ public final class ServerMicrovoxelRaycaster {
         return Math.max(0.0, (boundary - origin) / direction);
     }
 
+    /**
+     * Per-volume DDA delegated to the shared {@link MicrovoxelRaycaster}: client and server run
+     * the exact same traversal, so a predicted cavity shot revalidates to the same cell. Only the
+     * entry/hit types differ and are adapted here.
+     */
     private static Hit castVolume(double ox, double oy, double oz, double dx, double dy, double dz,
                                   double maxDistance, MicrovoxelKey key, MicrovoxelVolume volume) {
-        Slab slab = intersectUnitBlock(ox - key.x(), oy - key.y(), oz - key.z(), dx, dy, dz, maxDistance);
-        if (slab == null) return null;
-        double t = Math.max(0.0, slab.enter) + EPSILON;
-        int x = clampCell((int) Math.floor((ox + dx * t - key.x()) * MicrovoxelVolume.RESOLUTION));
-        int y = clampCell((int) Math.floor((oy + dy * t - key.y()) * MicrovoxelVolume.RESOLUTION));
-        int z = clampCell((int) Math.floor((oz + dz * t - key.z()) * MicrovoxelVolume.RESOLUTION));
-        Face enteredFace = slab.face;
-
-        for (int steps = 0; steps < 52 && t <= slab.exit + EPSILON && t <= maxDistance; steps++) {
-            if (volume.occupied(x, y, z)) {
-                return new Hit(key, MicrovoxelVolume.index(x, y, z), enteredFace, t);
-            }
-            double tx = nextBoundary(t, ox, dx,
-                    key.x() + (dx > 0 ? (x + 1.0) / MicrovoxelVolume.RESOLUTION : x / (double) MicrovoxelVolume.RESOLUTION));
-            double ty = nextBoundary(t, oy, dy,
-                    key.y() + (dy > 0 ? (y + 1.0) / MicrovoxelVolume.RESOLUTION : y / (double) MicrovoxelVolume.RESOLUTION));
-            double tz = nextBoundary(t, oz, dz,
-                    key.z() + (dz > 0 ? (z + 1.0) / MicrovoxelVolume.RESOLUTION : z / (double) MicrovoxelVolume.RESOLUTION));
-            if (tx <= ty && tx <= tz) {
-                t = tx + EPSILON;
-                x += dx > 0 ? 1 : -1;
-                enteredFace = dx > 0 ? Face.WEST : Face.EAST;
-            } else if (ty <= tz) {
-                t = ty + EPSILON;
-                y += dy > 0 ? 1 : -1;
-                enteredFace = dy > 0 ? Face.DOWN : Face.UP;
-            } else {
-                t = tz + EPSILON;
-                z += dz > 0 ? 1 : -1;
-                enteredFace = dz > 0 ? Face.NORTH : Face.SOUTH;
-            }
-            // Leaving the 16^3 lattice means leaving the unit block itself (straight ray
-            // through a convex box cannot re-enter). Empty cavities inside were already
-            // stepped through above; the block-level walk in castIndexed moves on next.
-            if (!MicrovoxelVolume.inside(x, y, z)) return null;
+        MicrovoxelRaycaster.Entry entry =
+                new MicrovoxelRaycaster.Entry(key.x(), key.y(), key.z(), volume);
+        MicrovoxelRaycaster.Hit shared = MicrovoxelRaycaster.cast(
+                ox, oy, oz, dx, dy, dz, maxDistance, java.util.List.of(entry));
+        if (shared == null) return null;
+        Face face;
+        try {
+            face = Face.valueOf(shared.face().name());
+        } catch (IllegalArgumentException unknown) {
+            return null;
         }
-        return null;
-    }
-
-    private static double nextBoundary(double current, double origin, double direction, double boundary) {
-        if (Math.abs(direction) < EPSILON) return Double.POSITIVE_INFINITY;
-        double result = (boundary - origin) / direction;
-        return result <= current + EPSILON ? current + EPSILON * 4.0 : result;
-    }
-
-    private static Slab intersectUnitBlock(
-            double ox, double oy, double oz, double dx, double dy, double dz, double maxDistance) {
-        double enter = 0.0;
-        double exit = maxDistance;
-        Face face = Face.NORTH;
-        double[][] axes = {{ox, dx}, {oy, dy}, {oz, dz}};
-        Face[][] faces = {{Face.WEST, Face.EAST}, {Face.DOWN, Face.UP}, {Face.NORTH, Face.SOUTH}};
-        for (int axis = 0; axis < 3; axis++) {
-            double origin = axes[axis][0];
-            double direction = axes[axis][1];
-            if (Math.abs(direction) < EPSILON) {
-                if (origin < 0.0 || origin > 1.0) return null;
-                continue;
-            }
-            double first = -origin / direction;
-            double second = (1.0 - origin) / direction;
-            Face nearFace = faces[axis][0];
-            if (first > second) {
-                double swap = first;
-                first = second;
-                second = swap;
-                nearFace = faces[axis][1];
-            }
-            if (first > enter) {
-                enter = first;
-                face = nearFace;
-            }
-            exit = Math.min(exit, second);
-            if (exit < enter) return null;
-        }
-        return new Slab(enter, exit, face);
-    }
-
-    private static int clampCell(int cell) {
-        return Math.max(0, Math.min(MicrovoxelVolume.RESOLUTION - 1, cell));
+        return new Hit(key, shared.cell(), face, shared.distance());
     }
 
     public enum Face {
@@ -211,8 +148,5 @@ public final class ServerMicrovoxelRaycaster {
     @FunctionalInterface
     public interface VolumeLookup {
         MicrovoxelVolume get(int x, int y, int z);
-    }
-
-    private record Slab(double enter, double exit, Face face) {
     }
 }

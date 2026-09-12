@@ -13,10 +13,12 @@ import ua.rp.chat.client.EclipseClientMod;
 import ua.rp.chat.client.mixin.CubeVoxelShapeInvoker;
 import ua.rp.chat.microvoxel.MicrovoxelBlocks;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+import ua.rp.chat.microvoxel.MicrovoxelMeshBackpressure;
 import ua.rp.chat.microvoxel.MicrovoxelPrediction;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.MicrovoxelRevision;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
+import ua.rp.chat.microvoxel.MicrovoxelWire;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -35,27 +37,39 @@ import java.util.Set;
 
 public final class MicrovoxelClientState {
     private static final boolean DEBUG = Boolean.getBoolean("rpchat.microvoxel.debug");
-    private static final int PROTOCOL_MAGIC = 0x4D;
-    /** Version 6 adds the fluid kind byte to FLUID_UPSERT (lava engine). */
-    public static final int PROTOCOL_VERSION = 6;
-    private static final int CLEAR = 1;
-    private static final int UPSERT = 2;
-    private static final int REMOVE = 3;
-    private static final int MESSAGE = 4;
-    private static final int REGISTER_MATERIAL = 5;
-    private static final int BATCH_UPSERT = 6;
-    private static final int CLEAR_CHUNK = 7;
-    private static final int DELTA_UPSERT = 8;
-    private static final int TRANSACTION = 9;
-    private static final int EDIT_RESULT = 10;
-    private static final int SNAPSHOT_BEGIN = 11;
-    private static final int SNAPSHOT_END = 12;
-    private static final int FLUID_UPSERT = 14;
-    private static final int FLUID_REMOVE = 15;
-    private static final int ACTION_READY = 5;
-    private static final int ACTION_RESYNC_VOLUME = 6;
-    private static final int ACTION_RESYNC_CHUNK = 7;
-    private static final int ACTION_SNAPSHOT_ACK = 14;
+    /** Wire major. Frame layout, codes and codecs are the shared MicrovoxelWire contract. */
+    public static final int PROTOCOL_VERSION = MicrovoxelWire.MAJOR;
+    private static final int CLEAR = MicrovoxelWire.CLEAR;
+    private static final int UPSERT = MicrovoxelWire.UPSERT;
+    private static final int REMOVE = MicrovoxelWire.REMOVE;
+    private static final int MESSAGE = MicrovoxelWire.MESSAGE;
+    private static final int BATCH_UPSERT = MicrovoxelWire.BATCH_UPSERT;
+    private static final int CLEAR_CHUNK = MicrovoxelWire.CLEAR_CHUNK;
+    private static final int DELTA_UPSERT = MicrovoxelWire.DELTA_UPSERT;
+    private static final int TRANSACTION = MicrovoxelWire.TRANSACTION;
+    private static final int EDIT_RESULT = MicrovoxelWire.EDIT_RESULT;
+    private static final int SNAPSHOT_BEGIN = MicrovoxelWire.SNAPSHOT_BEGIN;
+    private static final int SNAPSHOT_END = MicrovoxelWire.SNAPSHOT_END;
+    private static final int MINE_STAGE = MicrovoxelWire.MINE_STAGE;
+    private static final int FLUID_UPSERT = MicrovoxelWire.FLUID_UPSERT;
+    private static final int FLUID_REMOVE = MicrovoxelWire.FLUID_REMOVE;
+    private static final int HELLO_ACK = MicrovoxelWire.HELLO_ACK;
+    private static final int ACTION_READY = MicrovoxelWire.ACTION_READY;
+    private static final int ACTION_RESYNC_VOLUME = MicrovoxelWire.ACTION_RESYNC_VOLUME;
+    private static final int ACTION_RESYNC_CHUNK = MicrovoxelWire.ACTION_RESYNC_CHUNK;
+    private static final int ACTION_SNAPSHOT_ACK = MicrovoxelWire.ACTION_SNAPSHOT_ACK;
+    private static final int ACTION_HELLO = MicrovoxelWire.ACTION_HELLO;
+    /** Capabilities the server confirmed (intersection of both advertisements). */
+    private static int negotiatedCapabilities = MicrovoxelWire.CLIENT_CAPABILITIES;
+    /**
+     * Capabilities actually sent in HELLO. The crack overlay flag can drop {@code CAP_MINE_STAGE}
+     * at runtime, so the server never sends MINE_STAGE frames a disabled client cannot draw.
+     */
+    private static int advertisedCapabilities() {
+        return CRACK_OVERLAY_ENABLED
+                ? MicrovoxelWire.CLIENT_CAPABILITIES
+                : MicrovoxelWire.CLIENT_CAPABILITIES & ~MicrovoxelWire.CAP_MINE_STAGE;
+    }
     private static final int READY_RETRY_TICKS = 60;
     private static final int MISSING_MARKER_GRACE_TICKS = 10;
     private static final int MISSING_MARKER_TARGETED_RETRY_TICKS = 50;
@@ -65,7 +79,6 @@ public final class MicrovoxelClientState {
     private static final Map<BlockPos, CachedVolume> VOLUMES = new java.util.concurrent.ConcurrentHashMap<>();
     private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
-    private static final Map<Integer, String> CLIENT_DICTIONARY = new HashMap<>();
     private static final Map<BlockPos, MicrovoxelVolume> AUTHORITATIVE_VOLUMES = new HashMap<>();
     private static final java.util.LinkedHashMap<Long, PendingEdit> PENDING_EDITS =
             new java.util.LinkedHashMap<>();
@@ -92,6 +105,25 @@ public final class MicrovoxelClientState {
             return Byte.toUnsignedInt(levels[cell]);
         }
     }
+
+    /**
+     * Feature kill-switch for the per-cell mining crack overlay. Default on; the launch flag
+     * {@code -Drpchat.microvoxel.crackOverlay=false} both stops advertising the capability in
+     * HELLO and disables rendering, so a broken overlay can be killed without a rebuild.
+     */
+    private static final boolean CRACK_OVERLAY_ENABLED =
+            !"false".equalsIgnoreCase(System.getProperty("rpchat.microvoxel.crackOverlay", "true"));
+    /**
+     * Active per-cell cracks: volume position -> (cell -> destroy stage). Written on the client
+     * thread from MINE_STAGE frames; read by terrain compilation workers through
+     * {@link #cracksAt(BlockPos)}. A global counter gives every change a unique revision so the
+     * section geometry key rebuilds on each stage transition.
+     */
+    private static final Map<BlockPos, Map<Integer, Integer>> CRACKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<BlockPos, Integer> CRACK_REVISIONS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static int crackRevisionCounter;
     private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
             java.util.concurrent.Executors.newFixedThreadPool(
                     Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)), r -> {
@@ -115,6 +147,13 @@ public final class MicrovoxelClientState {
     private static final Set<Long> CHUNK_BATCH_QUEUE = new LinkedHashSet<>();
     private static final Set<Long> SECTION_REBUILD_QUEUE = new LinkedHashSet<>();
     private static final int MAX_SECTION_REBUILDS_PER_TICK = 8;
+    /**
+     * Hard cap on mesh builds in flight. Bounds both the worker backlog and the client-thread
+     * snapshot cost per tick (each build clones up to seven volumes); without it a burst of edits
+     * could submit hundreds of jobs in a single tick. Deferred positions stay in MESH_QUEUE and
+     * are retried next tick.
+     */
+    private static final int MAX_INFLIGHT_MESH_JOBS = 16;
     /**
      * One-shot runtime evidence for the microvoxel pipeline.  This is intentionally keyed by
      * volume revision: a diagnostic session stays compact while still proving which shape and
@@ -154,6 +193,9 @@ public final class MicrovoxelClientState {
         if (activeLevel != null && !snapshotConfirmed && clientTick >= nextReadyTick
                 && net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
                 MicrovoxelActionPayload.TYPE)) {
+            // Capability handshake first: major/minor/caps ride the x/y/z ints of the hello action.
+            sendControlAction(ACTION_HELLO, nextTransactionId++,
+                    MicrovoxelWire.MAJOR, MicrovoxelWire.MINOR, MicrovoxelWire.CLIENT_CAPABILITIES);
             sendControlAction(ACTION_READY, nextTransactionId++, 0, 0, 0);
             nextReadyTick = clientTick + READY_RETRY_TICKS;
         }
@@ -188,17 +230,26 @@ public final class MicrovoxelClientState {
     }
 
     public static void handle(MicrovoxelSyncPayload payload) {
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload.data()))) {
-            int magic = input.readUnsignedByte();
-            if (magic != PROTOCOL_MAGIC) {
-                throw new IOException("Unsupported legacy microvoxel packet");
+        // Shared length-prefixed frame: an unknown type is skipped defensively, never desyncs.
+        MicrovoxelWire.Frame frame;
+        try {
+            frame = MicrovoxelWire.readFrame(payload.data());
+        } catch (IOException rejected) {
+            EclipseClientMod.LOGGER.warn("[MICROVOXEL] Rejected sync payload: " + rejected.getMessage());
+            return;
+        }
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(frame.payload()))) {
+            int type = frame.type();
+            if (type == HELLO_ACK) {
+                int serverMajor = readVarInt(input);
+                int serverMinor = readVarInt(input);
+                negotiatedCapabilities = readVarInt(input);
+                if (DEBUG) {
+                    EclipseClientMod.LOGGER.info("[MICROVOXEL] Negotiated protocol major="
+                            + serverMajor + "." + serverMinor + " caps=" + negotiatedCapabilities);
+                }
+                return;
             }
-            int protocolVersion = readVarInt(input);
-            if (protocolVersion != PROTOCOL_VERSION) {
-                throw new IOException("Microvoxel protocol mismatch: client=" + PROTOCOL_VERSION
-                        + ", server=" + protocolVersion);
-            }
-            int type = input.readUnsignedByte();
             if (type == SNAPSHOT_BEGIN) {
                 long snapshotId = input.readLong();
                 if (snapshotId <= 0L || input.available() != 0) {
@@ -254,12 +305,6 @@ public final class MicrovoxelClientState {
                 String message = readUtf8(input);
                 Minecraft minecraft = Minecraft.getInstance();
                 minecraft.gui.setOverlayMessage(Component.literal(message), false);
-                return;
-            }
-            if (type == REGISTER_MATERIAL) {
-                int id = readVarInt(input);
-                String material = readUtf8(input);
-                CLIENT_DICTIONARY.put(id, material);
                 return;
             }
             if (type == CLEAR_CHUNK) {
@@ -378,7 +423,18 @@ public final class MicrovoxelClientState {
                 }
                 return;
             }
-            if (type != UPSERT) return;
+            if (type == MINE_STAGE) {
+                BlockPos position = readPosition(input).immutable();
+                int cell = readVarInt(input);
+                int stage = input.readByte();
+                if (input.available() != 0) throw new IOException("Trailing mine-stage bytes");
+                applyMineStage(position, cell, stage);
+                return;
+            }
+            if (type != UPSERT) {
+                if (DEBUG) EclipseClientMod.LOGGER.debug("[MICROVOXEL] Ignored message type " + type);
+                return;
+            }
             long tStart = System.nanoTime();
             BlockPos position = readPosition(input);
             int revision = readVarInt(input);
@@ -502,6 +558,10 @@ public final class MicrovoxelClientState {
 
     private static void acceptAuthoritative(BlockPos position, MicrovoxelVolume authoritative) {
         BlockPos immutable = position.immutable();
+        // A crack on a cell the server just removed (broken) must not linger; the -1 frame is
+        // best-effort, the authoritative volume is the source of truth.
+        if (authoritative == null) clearCracks(immutable);
+        else pruneCracks(immutable, authoritative);
         if (authoritative != null) MISSING_MARKERS.remove(immutable);
         PENDING_PLACEMENTS.remove(immutable);
         if (hasPendingAt(immutable)) {
@@ -576,6 +636,10 @@ public final class MicrovoxelClientState {
 
         @Override
         public int renderFlagsFor(BlockPos position) {
+            // An active crack is translucent and must never render in the opaque pass.
+            if (hasCracks(position.immutable())) {
+                return MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS;
+            }
             // Any fluid forces the translucent pass even for otherwise opaque volumes.
             if (CLIENT_FLUIDS.containsKey(position.immutable())) {
                 return MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS;
@@ -597,6 +661,12 @@ public final class MicrovoxelClientState {
         public int fluidRevisionOf(BlockPos position) {
             FluidView view = CLIENT_FLUIDS.get(position.immutable());
             return view == null ? Integer.MIN_VALUE : view.revision();
+        }
+
+        /** Crack revision for the geometry key; 0 when the volume is not being mined. */
+        @Override
+        public int crackRevisionOf(BlockPos position) {
+            return MicrovoxelClientState.crackRevisionOf(position.immutable());
         }
     }
 
@@ -826,6 +896,8 @@ public final class MicrovoxelClientState {
         EclipseClientMod.LOGGER.warn("[MICROVOXEL] Requesting authoritative resync: {}", reason);
         snapshotConfirmed = false;
         nextReadyTick = clientTick + READY_RETRY_TICKS;
+        sendControlAction(ACTION_HELLO, nextTransactionId++,
+                MicrovoxelWire.MAJOR, MicrovoxelWire.MINOR, advertisedCapabilities());
         sendControlAction(ACTION_READY, nextTransactionId++, 0, 0, 0);
     }
 
@@ -1072,6 +1144,94 @@ public final class MicrovoxelClientState {
         } catch (RuntimeException unreadable) {
             return false;
         }
+    }
+
+    /**
+     * Client hook for a real (non-marker) block change. Occlusion is computed at mesh-build
+     * time from the six direct neighbours, so a volume whose neighbour just appeared or
+     * vanished keeps stale hidden or missing faces until something else rebuilds it. Re-mesh
+     * exactly the axis neighbours of the change; {@link #queueRebuild} coalesces duplicates and
+     * skips positions without a volume, so this is six cheap lookups per block update.
+     */
+    public static void onRealBlockChanged(BlockPos changed) {
+        if (changed == null || activeLevel == null) return;
+        BlockPos immutable = changed.immutable();
+        if (MicrovoxelBlocks.isMarker(activeLevel.getBlockState(immutable))) return;
+        queueRebuild(immutable.offset(1, 0, 0));
+        queueRebuild(immutable.offset(-1, 0, 0));
+        queueRebuild(immutable.offset(0, 1, 0));
+        queueRebuild(immutable.offset(0, -1, 0));
+        queueRebuild(immutable.offset(0, 0, 1));
+        queueRebuild(immutable.offset(0, 0, -1));
+    }
+
+    /** True when the per-cell crack overlay feature flag is on. */
+    public static boolean crackOverlayEnabled() {
+        return CRACK_OVERLAY_ENABLED;
+    }
+
+    /** Terrain-worker view of the active cracks on a volume, as {@code {cell, stage}} pairs. */
+    public static java.util.List<int[]> cracksAt(BlockPos position) {
+        Map<Integer, Integer> cells = CRACKS.get(position);
+        if (cells == null || cells.isEmpty()) return java.util.List.of();
+        java.util.List<int[]> out = new java.util.ArrayList<>(cells.size());
+        for (Map.Entry<Integer, Integer> entry : cells.entrySet()) {
+            out.add(new int[]{entry.getKey(), entry.getValue()});
+        }
+        return out;
+    }
+
+    /** True when a volume shows at least one crack (forces the translucent render pass). */
+    public static boolean hasCracks(BlockPos position) {
+        return CRACKS.containsKey(position);
+    }
+
+    /** Monotonic per-volume crack revision for the section geometry key (0 when none). */
+    public static int crackRevisionOf(BlockPos position) {
+        Integer revision = CRACK_REVISIONS.get(position);
+        return revision == null ? 0 : revision;
+    }
+
+    /**
+     * Applies one authoritative MINE_STAGE frame. Only a real transition bumps the crack revision
+     * and queues a rebuild, so a steady stage costs nothing on the render path.
+     */
+    private static void applyMineStage(BlockPos position, int cell, int stage) {
+        if (!CRACK_OVERLAY_ENABLED) return;
+        Map<Integer, Integer> cells = CRACKS.computeIfAbsent(
+                position, ignored -> new java.util.concurrent.ConcurrentHashMap<>());
+        boolean changed = ua.rp.chat.microvoxel.MicrovoxelCrack.apply(cells, cell, stage);
+        if (cells.isEmpty()) CRACKS.remove(position, cells);
+        if (!changed) return;
+        CRACK_REVISIONS.put(position, ++crackRevisionCounter);
+        queueRebuild(position);
+        queueChunkBatch(position);
+    }
+
+    /** Drops cracks whose cells no longer exist in an authoritative volume (e.g. after a break). */
+    private static void pruneCracks(BlockPos position, MicrovoxelVolume authoritative) {
+        Map<Integer, Integer> cells = CRACKS.get(position);
+        if (cells == null) return;
+        boolean changed = false;
+        for (Integer cell : java.util.List.copyOf(cells.keySet())) {
+            if (cell == null || cell < 0 || cell >= MicrovoxelVolume.CELL_COUNT
+                    || !authoritative.occupied(cell)) {
+                cells.remove(cell);
+                changed = true;
+            }
+        }
+        if (cells.isEmpty()) CRACKS.remove(position, cells);
+        if (changed) {
+            CRACK_REVISIONS.put(position, ++crackRevisionCounter);
+            queueRebuild(position);
+            queueChunkBatch(position);
+        }
+    }
+
+    private static void clearCracks(BlockPos position) {
+        if (CRACKS.remove(position) == null && CRACK_REVISIONS.remove(position) == null) return;
+        queueRebuild(position);
+        queueChunkBatch(position);
     }
 
     /**
@@ -1736,10 +1896,16 @@ public final class MicrovoxelClientState {
     }
 
     private static void rebuildQueuedMeshes() {
+        // Backpressure first: cap in-flight jobs so the worker queue (and the per-job client-thread
+        // snapshots) cannot spike. If the pool is saturated, leave the queue intact for next tick.
+        int admits = MicrovoxelMeshBackpressure.admitCount(
+                MESHING_JOBS.size(), MESH_QUEUE.size(), MAX_INFLIGHT_MESH_JOBS);
+        if (admits <= 0) return;
         long deadline = System.nanoTime() + MESH_BUDGET_NANOS;
         Iterator<BlockPos> iterator = MESH_QUEUE.iterator();
         int rebuilt = 0;
-        while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
+        while (iterator.hasNext() && rebuilt < admits
+                && (rebuilt == 0 || System.nanoTime() < deadline)) {
             BlockPos position = iterator.next();
             iterator.remove();
             rebuild(position);
@@ -1791,12 +1957,13 @@ public final class MicrovoxelClientState {
         CHUNK_BATCH_QUEUE.clear();
         SECTION_REBUILD_QUEUE.clear();
         PROBE_EMITTED.clear();
-        CLIENT_DICTIONARY.clear();
         AUTHORITATIVE_VOLUMES.clear();
         PENDING_EDITS.clear();
         PENDING_PLACEMENTS.clear();
         PENDING_LIGHT_CHECKS.clear();
         CLIENT_FLUIDS.clear();
+        CRACKS.clear();
+        CRACK_REVISIONS.clear();
         predictedFluidAt = null;
         MESHING_JOBS.clear();
         MESH_DIRTY_DURING_BUILD.clear();
@@ -1816,6 +1983,7 @@ public final class MicrovoxelClientState {
                 MISSING_MARKERS.remove(pos);
                 PENDING_LIGHT_CHECKS.remove(pos);
                 CLIENT_FLUIDS.remove(pos);
+                clearCracks(pos);
                 if (workFocus != null && workFocus.equals(pos)) {
                     setWorkFocus(null);
                 }
@@ -2164,17 +2332,7 @@ public final class MicrovoxelClientState {
     }
 
     private static int readVarInt(DataInputStream in) throws IOException {
-        int value = 0;
-        int position = 0;
-        byte currentByte;
-        while (true) {
-            currentByte = in.readByte();
-            value |= (currentByte & 0x7F) << position;
-            if ((currentByte & 0x80) == 0) break;
-            position += 7;
-            if (position >= 32) throw new IOException("VarInt is too big");
-        }
-        return value;
+        return MicrovoxelWire.readVarInt(in);
     }
 
     private static String readUtf8(DataInputStream input) throws IOException {

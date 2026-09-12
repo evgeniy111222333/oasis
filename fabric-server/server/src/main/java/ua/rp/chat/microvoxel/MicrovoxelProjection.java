@@ -28,6 +28,9 @@ public final class MicrovoxelProjection {
      *  so this cap cannot produce territory-scale catch-up. */
     public static final int MAX_RECONCILES_PER_TICK = 2;
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger("MicrovoxelProjection");
+
     /** The environment-facing surface of the projection. Unit tests substitute a fake surface. */
     public interface World {
         ServerLevel getWorld(UUID worldId);
@@ -86,6 +89,13 @@ public final class MicrovoxelProjection {
      */
     public void materialize(MicrovoxelKey key, MicrovoxelVolume volume) {
         if (volume == null) throw new IllegalArgumentException("Cannot materialize a null volume");
+        // Single-writer invariant: an empty volume is indistinguishable from "no volume", so it
+        // must project as a removal. Without this an empty volume would leave an unbreakable
+        // marker with nothing inside, which no normal attack path can clean up.
+        if (volume.occupiedCount() == 0) {
+            dematerialize(key);
+            return;
+        }
         clearedWhileUnloaded.remove(key);
         store.put(key, volume);
         store.markDirty(key);
@@ -199,22 +209,46 @@ public final class MicrovoxelProjection {
                 reconcileQueue.complete(chunkKey);
                 continue;
             }
-            reconcileChunk(level, chunk, chunkKey);
-            reconcileQueue.complete(chunkKey);
+            try {
+                reconcileChunk(level, chunk, chunkKey);
+            } catch (RuntimeException failure) {
+                // A world/light write failure must not permanently lease this chunk:
+                // release it so a later tick can retry, and keep the failure from
+                // escaping into the server tick loop.
+                LOGGER.warning("Microvoxel chunk reconcile failed for "
+                        + chunkKey.worldId() + " " + chunkKey.x() + "," + chunkKey.z()
+                        + ": " + failure.getMessage());
+            } finally {
+                reconcileQueue.complete(chunkKey);
+            }
         }
     }
 
     private void reconcileChunk(ServerLevel level, LevelChunk chunk, ChunkKey chunkKey) {
         java.util.Set<MicrovoxelKey> stored = new java.util.HashSet<>();
+        java.util.List<MicrovoxelKey> emptyShells = new java.util.ArrayList<>();
         for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry
                 : store.inChunk(chunkKey.worldId(), chunkKey.x(), chunkKey.z())) {
-            stored.add(entry.getKey());
-            BlockPos pos = pos(entry.getKey());
-            BlockState desired = markerStates.markerState(entry.getKey(), entry.getValue());
+            MicrovoxelKey key = entry.getKey();
+            if (entry.getValue().occupiedCount() == 0) {
+                // A stale empty shell (e.g. loaded from an old store): drop it and clear any
+                // marker instead of re-projecting an unbreakable, empty block.
+                emptyShells.add(key);
+                continue;
+            }
+            stored.add(key);
+            BlockPos pos = pos(key);
+            BlockState desired = markerStates.markerState(key, entry.getValue());
             if (!chunk.getBlockState(pos).equals(desired)) {
                 world.setBlock(level, chunk, pos, desired);
                 world.scheduleLight(level, pos);
             }
+        }
+        for (MicrovoxelKey key : emptyShells) {
+            store.remove(key);
+            store.markDirty(key);
+            persistence.run();
+            clearMarker(level, chunk, key);
         }
         Iterator<MicrovoxelKey> clears = clearedWhileUnloaded.iterator();
         while (clears.hasNext()) {

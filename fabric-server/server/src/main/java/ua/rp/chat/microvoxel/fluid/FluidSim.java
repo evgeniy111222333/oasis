@@ -241,6 +241,16 @@ public final class FluidSim {
         return occupied > 0 && occupied < MicrovoxelVolume.CELL_COUNT;
     }
 
+    /**
+     * Rain may only top a basin that is unprotected and either holds no fluid yet or already
+     * holds water. Lava basins are excluded so rain can neither flood them nor raise a
+     * WATERLOGGED flag that vanilla physics would misread as water. Pure and unit-tested.
+     */
+    public static boolean acceptsRain(boolean protectedVolume, FluidVolume existing) {
+        if (protectedVolume) return false;
+        return existing == null || existing.kind() == FluidVolume.Kind.WATER;
+    }
+
     /** Air mask of the sibling microvoxel volume: the only cells water may occupy. */
     public static boolean[] airMask(MicrovoxelVolume micro) {
         return airScratch(micro);
@@ -288,12 +298,15 @@ public final class FluidSim {
                 if (caught >= 8) break;
                 MicrovoxelKey key = entry.getKey();
                 if (!isBasin(entry.getValue())) continue;
+                FluidVolume fluid = fluids().get(key);
+                // Rain is water-only and never touches protected volumes: a lava basin must
+                // not gain water, and no protected basin may be topped behind the admin's back.
+                if (!acceptsRain(isProtected(key), fluid)) continue;
                 BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
                 if (!level.isRainingAt(pos.above())) continue;
-                FluidVolume fluid = fluids().get(key);
                 if (fluid == null) {
                     fluid = FluidVolume.empty();
-                    fluids().put(key, fluid);
+                    if (!fluids().put(key, fluid)) continue;
                 }
                 int topped = FluidVolume.rainTopUp(
                         fluid.levelsDirect(), solidScratch(entry.getValue()), 1);
@@ -349,6 +362,13 @@ public final class FluidSim {
             dropFluid(key);
             return;
         }
+
+        // Protected volumes are frozen: no settling, lateral flow, inflow, seepage,
+        // outflow, crusting, comparator signalling or level sync — for water and lava
+        // alike. Admin protection is a hard lock, and skipping here also denies a
+        // neighbouring volume of the same kind through the neighbour guard in
+        // equalizeWithNeighbors.
+        if (isProtected(key)) return;
 
         // Lava never carries the waterlogged flag by design (it would read as water to
         // vanilla physics), so it takes a dedicated path below instead of the scoop rule.
@@ -624,6 +644,8 @@ public final class FluidSim {
             FluidVolume neighbor = fluids().get(neighborKey);
             // Mixed kinds never equalize: water and lava crust instead (see below).
             if (neighbor == null || neighbor.kind() != fluid.kind()) continue;
+            // A protected volume is frozen and must never be topped by a neighbour's tick.
+            if (isProtected(key) || isProtected(neighborKey)) continue;
             int axis = dir / 2;
             boolean positive = (dir % 2) == 0;
             int[] pairs = FluidVolume.facePairs(axis, positive);
@@ -879,7 +901,7 @@ public final class FluidSim {
                 }
                 FluidVolume fluid = FluidVolume.empty();
                 fluid.fillMasked(airMask(entry.getValue()));
-                fluids().put(key, fluid);
+                if (!fluids().put(key, fluid)) continue;
                 adopted++;
                 MicrovoxelMetrics.inc("fluid.adopted");
             }

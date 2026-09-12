@@ -12,6 +12,7 @@ import ua.rp.chat.microvoxel.MicrovoxelContext;
 import ua.rp.chat.microvoxel.MicrovoxelKey;
 import ua.rp.chat.microvoxel.MicrovoxelProtocol;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
+import ua.rp.chat.microvoxel.MicrovoxelWire;
 import ua.rp.chat.microvoxel.ServerMicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy;
 
@@ -153,7 +154,7 @@ public final class MicrovoxelMiningEngine {
         }
         MicrovoxelMiningSession next = advance.session();
         if (next.lastStage() != current.lastStage()) {
-            sendMineStage(player, next.key(), next.cell(), next.lastStage());
+            broadcastMineStage(next.key(), next.cell(), next.lastStage());
         }
         if (next.progress() != current.progress() || next.lastStage() != current.lastStage()) {
             sessions.put(playerId, next);
@@ -216,24 +217,37 @@ public final class MicrovoxelMiningEngine {
             context.runtime().projection().materialize(key, updated);
             context.sync().broadcastDelta(key, updated, session.cell(), "");
         }
+        // Clear the crack explicitly: on a successful break the session is dropped without a
+        // -1 frame, so onlookers would otherwise keep the last stage until the next tick.
+        broadcastMineStage(session.key(), session.cell(), -1);
     }
 
     private static BlockPos keyBlockPos(MicrovoxelKey key) {
         return new BlockPos(key.x(), key.y(), key.z());
     }
 
-    private void sendMineStage(ServerPlayer player, MicrovoxelKey key, int cell, int stage) {
-        ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("mine.stages");
-        context.sync().sendPacket(player, MicrovoxelProtocol.mineStage(key, cell, stage));
+    /**
+     * Broadcasts one crack stage to every nearby player that advertises the capability, so
+     * onlookers see the same chipping the miner does (vanilla parity). Stage updates are rare
+     * (at most one per transition per cell), so this costs a handful of frames per break.
+     */
+    private void broadcastMineStage(MicrovoxelKey key, int cell, int stage) {
+        if (context.sync() == null) return;
+        int delivered = 0;
+        for (ServerPlayer observer : context.sync().nearbyPlayers(key)) {
+            if (!context.sync().supports(observer.getUUID(), MicrovoxelWire.CAP_MINE_STAGE)) continue;
+            context.sync().sendPacket(observer, MicrovoxelProtocol.mineStage(key, cell, stage));
+            delivered++;
+        }
+        if (delivered > 0 && stage >= 0) {
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("mine.stages");
+        }
     }
 
     private void dropSession(UUID playerId) {
         MicrovoxelMiningSession session = sessions.remove(playerId);
         if (session != null && session.lastStage() >= 0) {
-            ServerPlayer player = context.runtime().server().getPlayerList().getPlayer(playerId);
-            if (player != null && player.connection != null) {
-                sendMineStage(player, session.key(), session.cell(), -1);
-            }
+            broadcastMineStage(session.key(), session.cell(), -1);
         }
         wrongToolCooldown.remove(playerId);
     }

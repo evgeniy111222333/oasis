@@ -119,7 +119,15 @@ public abstract class BlockStateMicrovoxelMixin {
             CallbackInfoReturnable<Float> cir
     ) {
         BlockState parent = eclipse$parentState(level, position);
-        if (parent != null) cir.setReturnValue(parent.getDestroyProgress(player, level, position));
+        if (parent != null) {
+            cir.setReturnValue(parent.getDestroyProgress(player, level, position));
+            return;
+        }
+        // Empty volume or orphan marker: give it a breakable, stone-like progress so the player
+        // can always clear a shell with nothing inside instead of an immortal marker.
+        if (eclipse$canClearMarkerShell()) {
+            cir.setReturnValue(Blocks.STONE.defaultBlockState().getDestroyProgress(player, level, position));
+        }
     }
 
     @Inject(method = "getDestroySpeed(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F",
@@ -130,7 +138,26 @@ public abstract class BlockStateMicrovoxelMixin {
             CallbackInfoReturnable<Float> cir
     ) {
         BlockState parent = eclipse$parentState(level, position);
-        if (parent != null) cir.setReturnValue(parent.getDestroySpeed(level, position));
+        if (parent != null) {
+            cir.setReturnValue(parent.getDestroySpeed(level, position));
+            return;
+        }
+        if (eclipse$canClearMarkerShell()) {
+            cir.setReturnValue(Blocks.STONE.defaultBlockState().getDestroySpeed(level, position));
+        }
+    }
+
+    /**
+     * True for a marker shell that may be cleared: a marker (or legacy anchor) whose parent is
+     * absent because the volume is empty or orphaned. Gated on a live manager so markers stay
+     * fail-closed (unbreakable) until storage is ready.
+     */
+    private boolean eclipse$canClearMarkerShell() {
+        BlockState state = (BlockState) (Object) this;
+        if (!MicrovoxelBlocks.isMarker(state)
+                && !state.is(Blocks.STRUCTURE_VOID) && !state.is(Blocks.LIGHT)) return false;
+        RPChat plugin = RPChat.getInstance();
+        return plugin != null && plugin.getMicrovoxelManager() != null;
     }
 
     private void eclipse$replaceShape(BlockGetter level, BlockPos position,

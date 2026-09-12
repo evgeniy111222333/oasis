@@ -82,3 +82,6 @@ __pycache__/
 /fabric-server/config/RPChat/appearances/.legacy-mirror-migration-v1
 /fabric-server/config/RPChat/carver/
 /plugins/RPChat/*.db.bak-*
+
+# External reference codebase (LittleTiles), not part of this project
+/LittleTiles/

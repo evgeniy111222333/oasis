@@ -5,6 +5,12 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+// Single source of truth for code shared with the client module (protocol, volume model,
+// codecs, shared gameplay math). Compiled by each side; never copied.
+def commonSources = rootProject.file('common/src/main/java')
+sourceSets.main.java.srcDirs += commonSources
+sourceSets.test.java.srcDirs += rootProject.file('common/src/test/java')
+
 repositories {
     mavenCentral()
 }
@@ -40,6 +46,99 @@ tasks.register("verifyServerCore", JavaExec) {
     description = "Checks microvoxel persistence, collision, protocol, hammer and item-pickup invariants."
     classpath = sourceSets.test.runtimeClasspath
     mainClass = "ua.rp.chat.microvoxel.MicrovoxelServerCoreTest"
+}
+
+tasks.register("verifyFluidStoreHardening", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks the fluid store entry-cap fail-safe and corrupt-load backup fallback."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.microvoxel.fluid.FluidStoreHardeningTest"
+}
+
+tasks.register("verifyMicrovoxelCrackBroadcast") {
+    group = "verification"
+    description = "Checks mining crack stages are broadcast to nearby clients and cleared on break."
+    def mining = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/mining/MicrovoxelMiningEngine.java")
+    inputs.files(mining)
+    doLast {
+        def text = mining.asFile.getText("UTF-8")
+        assert text.contains("private void broadcastMineStage(")
+                && text.contains("nearbyPlayers(key)")
+                && text.count("broadcastMineStage(") >= 3:
+                "Crack stages must be broadcast to nearby players and cleared on break/drop"
+    }
+}
+
+tasks.register("verifyMicrovoxelEmptyShellRecovery") {
+    group = "verification"
+    description = "Checks empty/orphan markers are never projected and can always be cleared."
+    def projection = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProjection.java")
+    def manager = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def mixin = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/mixin/microvoxel/BlockStateMicrovoxelMixin.java")
+    inputs.files(projection, manager, mixin)
+    doLast {
+        def projectionText = projection.asFile.getText("UTF-8")
+        assert projectionText.contains("if (volume.occupiedCount() == 0)")
+                && projectionText.contains("emptyShells")
+                && projectionText.contains("dematerialize(key);"):
+                "Empty volumes must dematerialize in materialize() and be dropped on reconcile"
+        def managerText = manager.asFile.getText("UTF-8")
+        assert managerText.contains("clearOrphanMarker(key)")
+                && managerText.contains("if (volume.occupiedCount() == 0)")
+                && managerText.contains("Never import a shell with no cells"):
+                "Orphan/empty markers must be clearable and never imported from legacy storage"
+        def mixinText = mixin.asFile.getText("UTF-8")
+        assert mixinText.contains("eclipse\$canClearMarkerShell")
+                && mixinText.contains("Blocks.STONE.defaultBlockState().getDestroyProgress"):
+                "Empty/orphan markers need a breakable destroy fallback"
+    }
+}
+
+tasks.register("verifyMicrovoxelHardening") {
+    group = "verification"
+    description = "Checks protection freezes fluid and blocks multi-volume brush/paste bypass; queue leases always release."
+    def engine = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/edit/MicrovoxelEditEngine.java")
+    def sim = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/fluid/FluidSim.java")
+    def projection = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProjection.java")
+    def manager = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def store = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/fluid/FluidStore.java")
+    inputs.files(engine, sim, projection, manager, store)
+    doLast {
+        def engineText = engine.asFile.getText("UTF-8")
+        assert engineText.count("if (isProtected(key))") >= 2:
+                "Brush and paste must each re-check protection on every touched volume"
+        def simText = sim.asFile.getText("UTF-8")
+        assert simText.contains("acceptsRain(") && simText.contains("isProtected(neighborKey)"):
+                "Rain must gate on kind/protection and equalization must skip protected neighbours"
+        assert simText.contains("if (isProtected(key)) return;"):
+                "A protected volume must be frozen in the tick loop"
+        def projectionText = projection.asFile.getText("UTF-8")
+        assert projectionText.contains("catch (RuntimeException failure)")
+                && projectionText.contains("finally")
+                && projectionText.contains("reconcileQueue.complete(chunkKey)"):
+                "Chunk reconcile leases must be released on every path without escaping the tick"
+        def managerText = manager.asFile.getText("UTF-8")
+        assert managerText.contains("MicrovoxelParentage.dominantMaterial(volume)"):
+                "Marker sound and restore must use the dominant material"
+        assert managerText.contains("if (isProtected(hit.key()))"):
+                "restoreLookedAt must refuse protected volumes"
+        def storeText = store.asFile.getText("UTF-8")
+        assert storeText.contains("public synchronized boolean put(")
+                && storeText.contains("Path backup = backupFile(file);")
+                && storeText.contains("fluids.clear();")
+                && storeText.contains("catch (IllegalArgumentException corruptLevels)"):
+                "Fluid store must fail closed on the cap and never half-load a corrupt file"
+    }
 }
 
 tasks.register("verifyArrowImpactPhysics", JavaExec) {
@@ -134,10 +233,9 @@ tasks.register("verifyMicrovoxelNativeMarker") {
     description = "Checks the paired native marker registry and fail-closed delta resynchronization."
     def managerSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
-    def serverMarker = layout.projectDirectory.file(
-            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
-    def clientMarker = rootProject.layout.projectDirectory.file(
-            "client-mod-gradle/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def serverMarker = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def clientMarker = serverMarker
     def clientState = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
     def clientRenderer = rootProject.layout.projectDirectory.file(
@@ -362,35 +460,40 @@ tasks.register("verifyMixinConfigSync") {
 
 tasks.register("verifyMicrovoxelProtocolParity") {
     group = "verification"
-    description = "Checks server/client microvoxel wire parity: versions, payload mirrors and batch registration."
+    description = "Checks the wire contract is single-sourced in common/ and consumed by both sides."
+    def wireSource = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/microvoxel/MicrovoxelWire.java")
     def protocolSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java")
     def clientState = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
-    def serverAction = layout.projectDirectory.file(
-            "src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelActionPayload.java")
-    def clientAction = rootProject.layout.projectDirectory.file(
-            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelActionPayload.java")
-    def serverBatch = layout.projectDirectory.file(
-            "src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
-    def clientBatch = rootProject.layout.projectDirectory.file(
-            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
+    def batchPayload = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
     def bootstrapSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/RPChat.java")
     def clientBootstrap = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/EclipseClientMod.java")
-    inputs.files(protocolSource, clientState, serverAction, clientAction,
-            serverBatch, clientBatch, bootstrapSource, clientBootstrap)
+    inputs.files(wireSource, protocolSource, clientState, batchPayload, bootstrapSource, clientBootstrap)
     doLast {
+        def wire = wireSource.asFile.getText("UTF-8")
         def protocol = protocolSource.asFile.getText("UTF-8")
         def state = clientState.asFile.getText("UTF-8")
-        assert protocol.contains("VERSION = 6") && state.contains("PROTOCOL_VERSION = 6"):
-                "Server/client microvoxel protocol versions diverged"
-        assert serverAction.asFile.getText("UTF-8") == clientAction.asFile.getText("UTF-8"):
-                "Server/client action payload definitions diverged"
-        assert serverBatch.asFile.getText("UTF-8") == clientBatch.asFile.getText("UTF-8"):
-                "Server/client batch payload definitions diverged"
-        assert serverBatch.asFile.getText("UTF-8").contains("MAX_ENTRIES = 16"):
+        // The shared contract owns the frame and the codes.
+        assert wire.contains("public static final int MAJOR =")
+                && wire.contains("public static final int MINOR =")
+                && wire.contains("public static final int MAGIC =")
+                && wire.contains("public static byte[] frame(")
+                && wire.contains("public static Frame readFrame("):
+                "The shared wire contract must define the frame, magic and version"
+        // Server builders and client decoder both consume it, never a copied constant table.
+        assert protocol.contains("MicrovoxelWire.MAGIC") && protocol.contains("MicrovoxelWire.frame("):
+                "Server builders must use the shared frame"
+        assert state.contains("MicrovoxelWire.readFrame") && state.contains("MicrovoxelWire.MINE_STAGE")
+                && state.contains("MicrovoxelWire.CLEAR") && state.contains("MicrovoxelWire.ACTION_HELLO"):
+                "Client must consume the shared contract instead of a private mirror"
+        assert !state.contains("private static final int UPSERT = 2"):
+                "Client must not re-declare wire message codes"
+        assert batchPayload.asFile.getText("UTF-8").contains("MAX_ENTRIES = 16"):
                 "Batch packet cap is missing"
         def bootstrap = bootstrapSource.asFile.getText("UTF-8")
         assert bootstrap.contains("MicrovoxelBatchPayload.TYPE")
@@ -403,13 +506,137 @@ tasks.register("verifyMicrovoxelProtocolParity") {
     }
 }
 
+tasks.register("verifySharedSourceUniqueness") {
+    group = "verification"
+    description = "Fails when a file under common/ is reintroduced as a copy on either side."
+    def commonDir = rootProject.layout.projectDirectory.dir("common/src/main/java")
+    def serverDir = layout.projectDirectory.dir("src/main/java")
+    def clientMainDir = rootProject.layout.projectDirectory.dir("client-mod-gradle/src/main/java")
+    def clientEnvDir = rootProject.layout.projectDirectory.dir("client-mod-gradle/src/client/java")
+    inputs.dir(commonDir)
+    doLast {
+        def relative = { File root, File file -> root.toPath().relativize(file.toPath()).toString() }
+        def serverSet = [] as Set
+        serverDir.asFile.eachFileRecurse { if (it.name.endsWith(".java")) serverSet.add(relative(serverDir.asFile, it)) }
+        def clientMainSet = [] as Set
+        clientMainDir.asFile.eachFileRecurse { if (it.name.endsWith(".java")) clientMainSet.add(relative(clientMainDir.asFile, it)) }
+        def clientEnvSet = [] as Set
+        clientEnvDir.asFile.eachFileRecurse { if (it.name.endsWith(".java")) clientEnvSet.add(relative(clientEnvDir.asFile, it)) }
+        def copies = []
+        commonDir.asFile.eachFileRecurse { file ->
+            if (!file.name.endsWith(".java")) return
+            def key = relative(commonDir.asFile, file)
+            if (serverSet.contains(key) || clientMainSet.contains(key) || clientEnvSet.contains(key)) {
+                copies.add(key)
+            }
+        }
+        assert copies.isEmpty():
+                "Shared sources must live only in common/, found copies: " + copies
+    }
+}
+
+tasks.register("verifySharedBoundary") {
+    group = "verification"
+    description = "Fails when shared common/ code imports a server-only or client-only package."
+    def commonDir = rootProject.layout.projectDirectory.dir("common/src/main/java")
+    inputs.dir(commonDir)
+    doLast {
+        def forbidden = [
+                "import net.minecraft.server.",
+                "import net.minecraft.client.",
+                "import ua.rp.chat.client.microvoxel.MicrovoxelClientState",
+                "import ua.rp.chat.microvoxel.sync.",
+                "import ua.rp.chat.microvoxel.persistence.",
+                "import ua.rp.chat.microvoxel.edit.",
+                "import ua.rp.chat.microvoxel.fluid.",
+                "import ua.rp.chat.microvoxel.collision.",
+                "import ua.rp.chat.microvoxel.econ.",
+                "import ua.rp.chat.microvoxel.environment.",
+                "import ua.rp.chat.microvoxel.mining.",
+        ]
+        def violations = []
+        commonDir.asFile.eachFileRecurse { file ->
+            if (!file.name.endsWith(".java")) return
+            def text = file.getText("UTF-8")
+            forbidden.each { marker ->
+                if (text.contains(marker)) violations.add("${file.name}: ${marker}")
+            }
+        }
+        assert violations.isEmpty():
+                "Shared common/ code must not depend on a side-only package: " + violations
+    }
+}
+
+tasks.register("verifySharedCodec", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Round-trips the shared frame, VarInt and RLE codecs from common/."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.common.SharedWireCodecTest"
+}
+
+tasks.register("verifyGreedyMesher", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Fuzzes the allocation-free greedy mesher against the historical reference algorithm."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.microvoxel.GreedyMesherParityTest"
+}
+
+tasks.register("verifyAntiAbuse", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Proves the shared token-bucket limiter bursts, refills and isolates keys."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.antiabuse.ActionRateLimiterTest"
+}
+
+tasks.register("verifyMicrovoxelAuthority") {
+    group = "verification"
+    description = "Checks the server authority guards: rate limits, replay shield, reach/item revalidation, protection TOCTOU."
+    def limiter = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/antiabuse/ActionRateLimiter.java")
+    def manager = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
+    def engine = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/microvoxel/edit/MicrovoxelEditEngine.java")
+    def carver = layout.projectDirectory.file(
+            "src/main/java/ua/rp/chat/carver/CarverManager.java")
+    inputs.files(limiter, manager, engine, carver)
+    doLast {
+        def limiterText = limiter.asFile.getText("UTF-8")
+        assert limiterText.contains("tryAcquire") && limiterText.contains("ConcurrentHashMap")
+                && limiterText.contains("reset("):
+                "ActionRateLimiter must expose a thread-safe token bucket with reset"
+        def managerText = manager.asFile.getText("UTF-8")
+        assert managerText.contains("new ActionRateLimiter(")
+                && managerText.contains("allowSyncAction(")
+                && managerText.contains("syncRates.reset("):
+                "MicrovoxelManager must gate edits and RESYNC floods through shared limiters"
+        def engineText = engine.asFile.getText("UTF-8")
+        assert engineText.contains("isMutating(") && engineText.contains("acceptTransaction(")
+                && engineText.contains("edits.rejected.replay")
+                && engineText.contains("ACTION_REJECT replayed-transaction"):
+                "MicrovoxelEditEngine must reject replayed transaction ids for every mutation"
+        assert !engineText.contains("previousTransaction"):
+                "Per-remove replay must be centralized, not duplicated in removeCell"
+        def carverText = carver.asFile.getText("UTF-8")
+        assert carverText.contains("incomingLimiter")
+                && carverText.contains("carver.drop.rate")
+                && carverText.contains("carver.drop.no-bag")
+                && carverText.contains("carver.drop.reach")
+                && carverText.contains("carver.work.protected")
+                && carverText.contains("isDesignAction("):
+                "CarverManager must rate-limit, re-validate bag/reach and re-check protection"
+    }
+}
+
 tasks.register("verifyMicrovoxelFluidWiring") {
     group = "verification"
     description = "Checks voxel fluid plumbing: marker waterlogging, fill path, sim reconciliation."
-    def serverMarker = layout.projectDirectory.file(
-            "src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
-    def clientMarker = rootProject.layout.projectDirectory.file(
-            "client-mod-gradle/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def serverMarker = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/microvoxel/MicrovoxelBlocks.java")
+    def clientMarker = serverMarker
     def managerSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/microvoxel/MicrovoxelManager.java")
     def simSource = layout.projectDirectory.file(
@@ -525,38 +752,22 @@ tasks.named("test") {
 
 tasks.register("verifyCarverParity") {
     group = "verification"
-    description = "Fails when server/client Carver mirrors diverge (masks, estimates, payloads, items)."
-    def pairs = [
-            ["server/src/main/java/ua/rp/chat/carver/DraftMask.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftMask.java"],
-
-            ["server/src/main/java/ua/rp/chat/carver/DraftEstimate.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/DraftEstimate.java"],
-            ["server/src/main/java/ua/rp/chat/carver/CarverProtocol.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverProtocol.java"],
-            ["server/src/main/java/ua/rp/chat/client/carver/CarverActionPayload.java",
-             "client-mod-gradle/src/client/java/ua/rp/chat/client/carver/CarverActionPayload.java"],
-            ["server/src/main/java/ua/rp/chat/client/carver/CarverSyncPayload.java",
-             "client-mod-gradle/src/client/java/ua/rp/chat/client/carver/CarverSyncPayload.java"],
-            ["server/src/main/java/ua/rp/chat/carver/CarverItems.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverItems.java"],
-            ["server/src/main/java/ua/rp/chat/carver/CarverStrikeAlign.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverStrikeAlign.java"],
-            ["server/src/main/java/ua/rp/chat/carver/CarverTrajectory.java",
-             "client-mod-gradle/src/main/java/ua/rp/chat/carver/CarverTrajectory.java"],
+    description = "Checks the shared Carver contract (masks, estimates, protocol, payloads) is single-sourced."
+    def shared = [
+            "common/src/main/java/ua/rp/chat/carver/DraftMask.java",
+            "common/src/main/java/ua/rp/chat/carver/DraftEstimate.java",
+            "common/src/main/java/ua/rp/chat/carver/CarverProtocol.java",
+            "common/src/main/java/ua/rp/chat/client/carver/CarverActionPayload.java",
+            "common/src/main/java/ua/rp/chat/client/carver/CarverSyncPayload.java",
+            "common/src/main/java/ua/rp/chat/carver/CarverItems.java",
+            "common/src/main/java/ua/rp/chat/carver/CarverStrikeAlign.java",
+            "common/src/main/java/ua/rp/chat/carver/CarverTrajectory.java",
     ]
-    pairs.each { pair ->
-        inputs.file(rootProject.layout.projectDirectory.file(pair[0]))
-        inputs.file(rootProject.layout.projectDirectory.file(pair[1]))
-    }
+    shared.each { path -> inputs.file(rootProject.layout.projectDirectory.file(path)) }
     doLast {
-        pairs.each { pair ->
-            def left = rootProject.layout.projectDirectory.file(pair[0]).asFile
-            def right = rootProject.layout.projectDirectory.file(pair[1]).asFile
-            assert left.isFile(): "Missing server mirror file: ${pair[0]}"
-            assert right.isFile(): "Missing client mirror file: ${pair[1]}"
-            assert java.util.Arrays.equals(left.readBytes(), right.readBytes()):
-                    "Carver mirror divergence: ${pair[0]} != ${pair[1]}"
+        shared.each { path ->
+            assert rootProject.layout.projectDirectory.file(path).asFile.isFile():
+                    "Missing shared Carver source: ${path}"
         }
     }
 }
@@ -564,10 +775,20 @@ tasks.register("verifyCarverParity") {
 tasks.named("check") {
     dependsOn tasks.named("verifyCarverParity")
     dependsOn tasks.named("verifyServerCore")
+    dependsOn tasks.named("verifyFluidStoreHardening")
+    dependsOn tasks.named("verifyMicrovoxelHardening")
+    dependsOn tasks.named("verifyMicrovoxelCrackBroadcast")
+    dependsOn tasks.named("verifyMicrovoxelEmptyShellRecovery")
     dependsOn tasks.named("verifyArrowImpactPhysics")
     dependsOn tasks.named("verifyFabricParity")
     dependsOn tasks.named("verifyChunkLoadMarkerSafety")
     dependsOn tasks.named("verifyMicrovoxelNativeMarker")
+    dependsOn tasks.named("verifySharedSourceUniqueness")
+    dependsOn tasks.named("verifySharedBoundary")
+    dependsOn tasks.named("verifySharedCodec")
+    dependsOn tasks.named("verifyGreedyMesher")
+    dependsOn tasks.named("verifyAntiAbuse")
+    dependsOn tasks.named("verifyMicrovoxelAuthority")
     dependsOn tasks.named("verifyMixinConfigSync")
     dependsOn tasks.named("verifyMicrovoxelProtocolParity")
     dependsOn tasks.named("verifyMicrovoxelFluidWiring")
@@ -584,7 +805,11 @@ tasks.register("quickCheck") {
     group = "verification"
     description = "Fast microvoxel unit loop: core, mining and parity invariants only."
     dependsOn tasks.named("verifyServerCore")
+    dependsOn tasks.named("verifyFluidStoreHardening")
     dependsOn tasks.named("verifyMicrovoxelMining")
+    dependsOn tasks.named("verifyMicrovoxelAuthority")
+    dependsOn tasks.named("verifyAntiAbuse")
+    dependsOn tasks.named("verifyGreedyMesher")
     dependsOn tasks.named("verifyFabricParity")
     dependsOn tasks.named("verifyCarver")
 }

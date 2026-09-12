@@ -40,23 +40,38 @@ public final class FluidStore {
     /** Upper bound on wet volumes; bounds file size and load time under abuse. */
     public static final int MAX_ENTRIES = 65_536;
 
+    private final int maxEntries;
     private final Map<MicrovoxelKey, FluidVolume> fluids = new HashMap<>();
     private boolean dirty;
     private boolean loadedFromBackup;
     private long changeSequence;
 
+    public FluidStore() {
+        this(MAX_ENTRIES);
+    }
+
+    /** Test seam: a tiny cap lets the fail-closed path be verified without 65k allocations. */
+    FluidStore(int maxEntries) {
+        this.maxEntries = Math.max(1, maxEntries);
+    }
+
     public synchronized FluidVolume get(MicrovoxelKey key) {
         return fluids.get(key);
     }
 
-    /** Returns the live mutable volume. Callers mutate cells directly, then {@link #markDirty}. */
-    public synchronized void put(MicrovoxelKey key, FluidVolume volume) {
-        if (!fluids.containsKey(key) && fluids.size() >= MAX_ENTRIES) {
-            throw new IllegalStateException("Fluid volume limit reached");
+    /**
+     * Stores (or replaces) a live mutable volume. Returns {@code false} when the entry cap is
+     * already reached for a new key, so hot paths (bucket fills, rain, orphan adoption) can
+     * degrade gracefully instead of throwing inside a server tick.
+     */
+    public synchronized boolean put(MicrovoxelKey key, FluidVolume volume) {
+        if (!fluids.containsKey(key) && fluids.size() >= maxEntries) {
+            return false;
         }
         fluids.put(key, volume);
         dirty = true;
         changeSequence++;
+        return true;
     }
 
     public synchronized FluidVolume remove(MicrovoxelKey key) {
@@ -143,9 +158,17 @@ public final class FluidStore {
             readEntries(file);
             return;
         } catch (IOException primaryInvalid) {
+            // Never keep a half-populated store from a partial primary read: the backup
+            // must start from a clean slate, and a failed fallback must leave nothing behind.
+            fluids.clear();
             Path backup = backupFile(file);
             if (!Files.isRegularFile(backup)) throw primaryInvalid;
-            readEntries(backup);
+            try {
+                readEntries(backup);
+            } catch (IOException backupInvalid) {
+                fluids.clear();
+                throw backupInvalid;
+            }
             loadedFromBackup = true;
         }
     }
@@ -174,7 +197,15 @@ public final class FluidStore {
                 }
                 byte[] levels = input.readNBytes(FluidVolume.CELL_COUNT);
                 if (levels.length != FluidVolume.CELL_COUNT) throw new EOFException("Truncated fluid volume");
-                if (fluids.put(key, FluidVolume.restore(revision, levels, kind)) != null) {
+                FluidVolume decoded;
+                try {
+                    decoded = FluidVolume.restore(revision, levels, kind);
+                } catch (IllegalArgumentException corruptLevels) {
+                    // Out-of-range levels are a corrupt file, not a reason to leak a
+                    // half-populated store: fail the read so load() falls back to the backup.
+                    throw new IOException("Corrupt fluid levels", corruptLevels);
+                }
+                if (fluids.put(key, decoded) != null) {
                     throw new IOException("Duplicate fluid position in storage");
                 }
             }

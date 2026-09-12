@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.state.properties.Property;
 import org.jspecify.annotations.Nullable;
 import ua.rp.chat.microvoxel.MicrovoxelBlocks;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+import ua.rp.chat.microvoxel.MicrovoxelVolume;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +45,35 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
     public static final int OPAQUE_MATERIAL_FLAGS = 0;
     private static final ThreadLocal<MaterialCache> MATERIAL_CACHE =
             ThreadLocal.withInitial(MaterialCache::new);
+    /** Shared mesher directions, cached so the per-face path never clones Direction.values(). */
+    private static final MicrovoxelGreedyMesher.Direction[] SHARED_DIRECTIONS =
+            MicrovoxelGreedyMesher.Direction.values();
+    /**
+     * Vanilla direction per shared mesher direction ordinal. Both enums declare
+     * DOWN, UP, NORTH, SOUTH, WEST, EAST in that order, so a single array index replaces
+     * {@code Direction.valueOf(name())} — no String allocation per emitted quad on the terrain
+     * compilation workers. A mismatch is caught by {@link #verifyDirectionMapping()} at class
+     * init.
+     */
+    private static final Direction[] MC_DIRECTIONS_BY_ORDINAL = {
+            Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST
+    };
+
+    static {
+        verifyDirectionMapping();
+    }
+
+    private static void verifyDirectionMapping() {
+        if (SHARED_DIRECTIONS.length != MC_DIRECTIONS_BY_ORDINAL.length) {
+            throw new IllegalStateException("Microvoxel direction arity drifted from vanilla");
+        }
+        for (int index = 0; index < SHARED_DIRECTIONS.length; index++) {
+            if (!SHARED_DIRECTIONS[index].name().equals(MC_DIRECTIONS_BY_ORDINAL[index].name())) {
+                throw new IllegalStateException("Microvoxel direction order drifted from vanilla at "
+                        + index + ": " + SHARED_DIRECTIONS[index] + " vs " + MC_DIRECTIONS_BY_ORDINAL[index]);
+            }
+        }
+    }
 
     private MicrovoxelSectionModel(BlockStateModel wrapped) {
         super(wrapped);
@@ -127,7 +157,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             int material = face.material();
             if (material <= 0 || material >= palette.size()) continue;
             String materialName = palette.get(material);
-            Direction direction = Direction.valueOf(face.direction().name());
+            Direction direction = MC_DIRECTIONS_BY_ORDINAL[face.direction().ordinal()];
             MaterialFaces materialFaces = materialFaces(materialName);
             List<BakedQuad> quads = materialFaces.faces.get(direction);
 
@@ -139,6 +169,98 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
                 emitMaterialQuad(emitter, level, pos, materialFaces.state, face, direction, quad);
             }
         }
+
+        // Per-cell mining crack: the exact vanilla destroy_stage_N sprite on the mined cell.
+        if (MicrovoxelClientState.crackOverlayEnabled()) {
+            for (int[] crack : MicrovoxelClientState.cracksAt(pos)) {
+                emitCrackCube(emitter, pos, crack[0], crack[1]);
+            }
+        }
+    }
+
+    /** Outward inflation of the crack cube so it never z-fights the cell's material faces. */
+    private static final float CRACK_INFLATE = 0.001f;
+
+    private static volatile net.minecraft.client.renderer.texture.TextureAtlas destroyStagesAtlas;
+    private static volatile net.minecraft.client.resources.model.sprite.Material.Baked[] destroyStages;
+
+    /**
+     * The vanilla {@code block/destroy_stage_N} sprite as a translucent material, cached per block
+     * atlas (resource reloads swap the atlas instance). Returns null when the atlas is
+     * unavailable, so a crack is skipped rather than drawn wrong.
+     */
+    @SuppressWarnings("deprecation")
+    private static net.minecraft.client.resources.model.sprite.Material.Baked destroyStageMaterial(int stage) {
+        if (stage < 0 || stage > ua.rp.chat.microvoxel.MicrovoxelCrack.MAX_STAGE) return null;
+        try {
+            net.minecraft.client.renderer.texture.TextureAtlas atlas = Minecraft.getInstance()
+                    .getAtlasManager()
+                    .getAtlasOrThrow(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS);
+            if (destroyStages == null || destroyStagesAtlas != atlas) {
+                synchronized (MicrovoxelSectionModel.class) {
+                    if (destroyStages == null || destroyStagesAtlas != atlas) {
+                        net.minecraft.client.resources.model.sprite.Material.Baked[] built =
+                                new net.minecraft.client.resources.model.sprite.Material.Baked[
+                                        ua.rp.chat.microvoxel.MicrovoxelCrack.MAX_STAGE + 1];
+                        for (int index = 0; index < built.length; index++) {
+                            net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = atlas.getSprite(
+                                    net.minecraft.resources.Identifier.fromNamespaceAndPath(
+                                            "minecraft", "block/destroy_stage_" + index));
+                            built[index] = new net.minecraft.client.resources.model.sprite.Material.Baked(
+                                    sprite, true);
+                        }
+                        destroyStages = built;
+                        destroyStagesAtlas = atlas;
+                    }
+                }
+            }
+            return destroyStages[stage];
+        } catch (RuntimeException unavailable) {
+            return null;
+        }
+    }
+
+    /** Draws the destroy-stage texture on exactly one 1/16 cell, all six faces (depth-culled). */
+    private static void emitCrackCube(QuadEmitter emitter, BlockPos pos, int cell, int stage) {
+        net.minecraft.client.resources.model.sprite.Material.Baked material = destroyStageMaterial(stage);
+        if (material == null) return;
+        net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = material.sprite();
+        float u0 = sprite.getU0();
+        float u1 = sprite.getU1();
+        float v0 = sprite.getV0();
+        float v1 = sprite.getV1();
+        float x0 = pos.getX() + MicrovoxelVolume.x(cell) / 16.0f - CRACK_INFLATE;
+        float y0 = pos.getY() + MicrovoxelVolume.y(cell) / 16.0f - CRACK_INFLATE;
+        float z0 = pos.getZ() + MicrovoxelVolume.z(cell) / 16.0f - CRACK_INFLATE;
+        float x1 = pos.getX() + (MicrovoxelVolume.x(cell) + 1) / 16.0f + CRACK_INFLATE;
+        float y1 = pos.getY() + (MicrovoxelVolume.y(cell) + 1) / 16.0f + CRACK_INFLATE;
+        float z1 = pos.getZ() + (MicrovoxelVolume.z(cell) + 1) / 16.0f + CRACK_INFLATE;
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.DOWN,
+                x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.UP,
+                x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.NORTH,
+                x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.SOUTH,
+                x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.WEST,
+                x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+        crackFace(emitter, material, u0, u1, v0, v1, Direction.EAST,
+                x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1);
+    }
+
+    private static void crackFace(QuadEmitter emitter,
+                                  net.minecraft.client.resources.model.sprite.Material.Baked material,
+                                  float u0, float u1, float v0, float v1, Direction face,
+                                  float x0, float y0, float z0, float x1, float y1, float z1,
+                                  float x2, float y2, float z2, float x3, float y3, float z3) {
+        emitter.materialBake(material, -1);
+        positions(emitter, x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
+        emitter.uv(0, u0, v1);
+        emitter.uv(1, u1, v1);
+        emitter.uv(2, u1, v0);
+        emitter.uv(3, u0, v0);
+        emitter.nominalFace(face).cullFace(null).diffuseShade(true).emit();
     }
 
     @Override
@@ -152,7 +274,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
         List<MicrovoxelGreedyMesher.Face> mesh = geometryProvider.meshFor(pos);
         return new GeometryKey(pos.asLong(), geometryProvider.revisionOf(pos),
                 cached.volume.palette().hashCode(), mesh.size(), geometryProvider.renderFlagsFor(pos),
-                geometryProvider.fluidRevisionOf(pos));
+                geometryProvider.fluidRevisionOf(pos), geometryProvider.crackRevisionOf(pos));
     }
 
     @Override
@@ -498,9 +620,9 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
     }
 
     private record GeometryKey(long position, int revision, int paletteHash, int faceCount, int flags,
-                               int fluidRevision) {
+                               int fluidRevision, int crackRevision) {
         private static final GeometryKey EMPTY = new GeometryKey(0L, -1, 0, 0, GENERAL_MATERIAL_FLAGS,
-                Integer.MIN_VALUE);
+                Integer.MIN_VALUE, 0);
     }
 
     public record UvPoint(float u, float v) {
@@ -515,8 +637,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             float[] atlasV = new float[4];
             float minU = Float.POSITIVE_INFINITY, maxU = Float.NEGATIVE_INFINITY;
             float minV = Float.POSITIVE_INFINITY, maxV = Float.NEGATIVE_INFINITY;
-            MicrovoxelGreedyMesher.Direction direction =
-                    MicrovoxelGreedyMesher.Direction.valueOf(quad.direction().name());
+            MicrovoxelGreedyMesher.Direction direction = SHARED_DIRECTIONS[quad.direction().ordinal()];
             for (int index = 0; index < 4; index++) {
                 var position = quad.position(index);
                 localU[index] = MicrovoxelSectionModel.localU(

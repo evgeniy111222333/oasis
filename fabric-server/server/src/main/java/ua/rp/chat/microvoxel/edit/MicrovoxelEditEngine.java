@@ -67,6 +67,17 @@ public final class MicrovoxelEditEngine {
             context.sync().feedback(player, "Микровоксель находится слишком далеко.");
             return;
         }
+        // Replay shield for every mutating action: a client's per-edit transaction id must strictly
+        // increase, so a captured packet cannot be re-sent to re-apply an edit (double refunds,
+        // double material consumption) or to slip an older action past a newer one.
+        if (isMutating(action.type()) && !acceptTransaction(player, action.transactionId())) {
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("edits.rejected.replay");
+            context.sync().trace(player, "ACTION_REJECT replayed-transaction id="
+                    + action.transactionId());
+            context.sync().sendEditResult(player, action.transactionId(), false, action.key(),
+                    context.runtime().store().get(action.key()));
+            return;
+        }
         if (action.type() == MicrovoxelProtocol.ACTION_BRUSH_REMOVE
                 || action.type() == MicrovoxelProtocol.ACTION_BRUSH_ADD) {
             applyBrush(player, action);
@@ -102,6 +113,24 @@ public final class MicrovoxelEditEngine {
     public void onQuit(UUID playerId) {
         lastEditTransactions.remove(playerId);
         clipboards.remove(playerId);
+    }
+
+    private static boolean isMutating(int action) {
+        return action == MicrovoxelProtocol.ACTION_REMOVE
+                || action == MicrovoxelProtocol.ACTION_ADD
+                || action == MicrovoxelProtocol.ACTION_BRUSH_ADD
+                || action == MicrovoxelProtocol.ACTION_BRUSH_REMOVE
+                || action == MicrovoxelProtocol.ACTION_PASTE
+                || action == MicrovoxelProtocol.ACTION_CONVERT
+                || action == MicrovoxelProtocol.ACTION_CARVE_STANDARD;
+    }
+
+    /** Strictly-increasing per-player transaction ids: the anti-replay boundary. */
+    private boolean acceptTransaction(ServerPlayer player, long transactionId) {
+        long previous = lastEditTransactions.getOrDefault(player.getUUID(), Long.MIN_VALUE);
+        if (transactionId <= previous) return false;
+        lastEditTransactions.put(player.getUUID(), transactionId);
+        return true;
     }
 
     public ServerMicrovoxelRaycaster.Hit raycastMicrovoxel(ServerPlayer player) {
@@ -196,6 +225,13 @@ public final class MicrovoxelEditEngine {
             if (target.blockY() < level.getMinY() || target.blockY() >= level.getMaxY()) continue;
             MicrovoxelKey key = new MicrovoxelKey(action.key().worldId(),
                     target.blockX(), target.blockY(), target.blockZ());
+            // A brush anchored on an unprotected volume can still reach protected
+            // neighbours: every touched volume must be checked, not just the origin.
+            if (isProtected(key)) {
+                context.sync().feedback(player,
+                        "Кисть затрагивает защищённый микровоксельный объём; транзакция отменена.");
+                return;
+            }
             MicrovoxelVolume authoritative = context.runtime().store().get(key);
             MicrovoxelVolume volume = working.get(key);
             if (volume == null) {
@@ -389,6 +425,13 @@ public final class MicrovoxelEditEngine {
             }
             MicrovoxelKey key = new MicrovoxelKey(action.key().worldId(),
                     Math.floorDiv(globalX, 16), blockY, Math.floorDiv(globalZ, 16));
+            // A paste spans many volumes; each destination must independently refuse
+            // if it is protected, or the origin check alone is trivially bypassed.
+            if (isProtected(key)) {
+                context.sync().feedback(player,
+                        "Вставка затрагивает защищённый микровоксельный объём; транзакция отменена.");
+                return;
+            }
             int cell = MicrovoxelVolume.index(
                     Math.floorMod(globalX, 16), Math.floorMod(globalY, 16), Math.floorMod(globalZ, 16));
             MicrovoxelVolume volume = working.get(key);
@@ -542,12 +585,6 @@ public final class MicrovoxelEditEngine {
     private void removeCell(ServerPlayer player, long transactionId, MicrovoxelKey key, int cell,
                             int expectedRevision, Vec3 clientLook, Vec3 clientEye) {
         MicrovoxelVolume volume = context.runtime().store().get(key);
-        long previousTransaction = lastEditTransactions.getOrDefault(player.getUUID(), Long.MIN_VALUE);
-        if (transactionId <= previousTransaction) {
-            context.sync().sendEditResult(player, transactionId, false, key, volume);
-            return;
-        }
-        lastEditTransactions.put(player.getUUID(), transactionId);
         ServerMicrovoxelRaycaster.Hit hit = validatedHit(
                 player, key, cell, clientLook, clientEye, true);
         if (volume == null || !volume.occupied(cell)) {
@@ -729,6 +766,12 @@ public final class MicrovoxelEditEngine {
 
     private static int clampCell(int cell) {
         return Math.max(0, Math.min(MicrovoxelVolume.RESOLUTION - 1, cell));
+    }
+
+    /** Null-safe protection probe; flags are absent (unprotected) before facade start. */
+    private boolean isProtected(MicrovoxelKey key) {
+        ua.rp.chat.microvoxel.MicrovoxelFlags flags = context.runtime().flags();
+        return flags != null && flags.isProtected(key);
     }
 
     private boolean withinReach(ServerPlayer player, MicrovoxelKey key) {

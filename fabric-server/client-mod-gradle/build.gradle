@@ -10,6 +10,11 @@ import java.security.MessageDigest
 version = project.mod_version
 group = project.maven_group
 
+// Single source of truth for code shared with the server module. Added to the client's main
+// (common environment) source set only — never to the client-only source set.
+def commonSources = rootProject.file('common/src/main/java')
+sourceSets.main.java.srcDirs += commonSources
+
 repositories {
 	// Add repositories to retrieve artifacts from in here.
 	// You should only use this when depending on other mods because
@@ -294,6 +299,74 @@ tasks.register("verifyMixinSignatures") {
 }
 
 
+tasks.register("verifyMicrovoxelBreakFeedback") {
+	group = "verification"
+	description = "Checks the mining-dust parent-material substitution on the break feedback path."
+	def mixin = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/mixin/microvoxel/ClientLevelFxMixin.java")
+	inputs.files(mixin)
+	doLast {
+		def text = mixin.asFile.getText("UTF-8")
+		assert text.contains("addBreakingBlockEffect")
+				&& text.contains("org.spongepowered.asm.mixin.injection.Redirect")
+				&& text.contains("hitCellState(pos)")
+				&& text.contains("parentState(pos)"):
+				"Mining dust must resolve the struck cell's parent material, not the stone marker"
+	}
+}
+
+tasks.register("verifyMicrovoxelCrackOverlay") {
+	group = "verification"
+	description = "Checks the per-cell mining crack overlay wiring (state, sprite emission, geometry key)."
+	def section = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelSectionModel.java")
+	def state = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+	def provider = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelGeometryProvider.java")
+	inputs.files(section, state, provider)
+	doLast {
+		def sectionText = section.asFile.getText("UTF-8")
+		assert sectionText.contains("emitCrackCube")
+				&& sectionText.contains("destroy_stage_")
+				&& sectionText.contains("crackRevisionOf")
+				&& sectionText.contains("CRACK_INFLATE"):
+				"The section model must emit the destroy-stage crack with a crack geometry key"
+		def stateText = state.asFile.getText("UTF-8")
+		assert stateText.contains("applyMineStage")
+				&& stateText.contains("crackRevisionOf")
+				&& stateText.contains("pruneCracks")
+				&& stateText.contains("clearCracks")
+				&& stateText.contains("rpchat.microvoxel.crackOverlay"):
+				"Client crack state, clearing and the kill-switch flag must be present"
+		def providerText = provider.asFile.getText("UTF-8")
+		assert providerText.contains("int crackRevisionOf(BlockPos position)"):
+				"The geometry provider must expose the crack revision in its contract"
+	}
+}
+
+tasks.register("verifyMicrovoxelOcclusionRefresh") {
+	group = "verification"
+	description = "Checks that real-block changes re-mesh adjacent microvoxel volumes (stale-occlusion fix)."
+	def mixin = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/mixin/microvoxel/ClientLevelFxMixin.java")
+	def state = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+	inputs.files(mixin, state)
+	doLast {
+		def mixinText = mixin.asFile.getText("UTF-8")
+		assert mixinText.contains("setServerVerifiedBlockState(Lnet/minecraft/core/BlockPos;")
+				&& mixinText.contains("setBlock(Lnet/minecraft/core/BlockPos;")
+				&& mixinText.contains("onRealBlockChanged(pos)")
+				&& mixinText.count('at = @At("RETURN")') >= 2:
+				"Real-block changes must invalidate microvoxel occlusion on both update paths"
+		def stateText = state.asFile.getText("UTF-8")
+		assert stateText.contains("public static void onRealBlockChanged(BlockPos")
+				&& stateText.count("queueRebuild(immutable.offset(") == 6:
+				"onRealBlockChanged must re-mesh exactly the six axis neighbours"
+	}
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -319,6 +392,9 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyCarverStrikeAlign")
 	dependsOn tasks.named("verifyCarverDustScreen")
 	dependsOn tasks.named("verifyMixinSignatures")
+	dependsOn tasks.named("verifyMicrovoxelOcclusionRefresh")
+	dependsOn tasks.named("verifyMicrovoxelCrackOverlay")
+	dependsOn tasks.named("verifyMicrovoxelBreakFeedback")
 }
 
 java {

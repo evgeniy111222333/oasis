@@ -26,7 +26,7 @@ public final class MicrovoxelVolume {
      */
     private boolean frozen;
 
-    private MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
+    public MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
         this.revision = Math.max(1, revision);
         this.palette = new ArrayList<>(palette);
         this.cells = cells.clone();
@@ -100,7 +100,64 @@ public final class MicrovoxelVolume {
     }
 
     public boolean occupied(int x, int y, int z) {
-        return inside(x, y, z) && cells[index(x, y, z)] != 0;
+        return inside(x, y, z) && cells[x | (z << 4) | (y << 8)] != 0;
+    }
+
+    /** Material index at a local cell coordinate, 0 outside the volume. Shared render/raycast read. */
+    public int materialAt(int x, int y, int z) {
+        // Inlines the index bit-pack instead of calling index(), which re-checks bounds. This is
+        // the single hottest read in meshing/AO/neighbour lambdas.
+        return inside(x, y, z) ? Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)]) : 0;
+    }
+
+    /**
+     * Compares only the outer shell (any coordinate 0 or 15) against another volume without
+     * copying either cell array. Edit hot paths call this per click to decide whether neighbours
+     * need a mesh rebuild; two 4 KB clones per click were pure waste with an early exit on the
+     * first boundary difference in the common single-cell case.
+     */
+    public boolean boundaryDiffersFrom(MicrovoxelVolume other) {
+        if (other == null) return true;
+        byte[] mine = cells;
+        byte[] theirs = other.cells;
+        int length = Math.min(mine.length, theirs.length);
+        for (int i = 0; i < length; i++) {
+            if (mine[i] != theirs[i]) {
+                int cx = x(i);
+                int cy = y(i);
+                int cz = z(i);
+                if (cx == 0 || cx == RESOLUTION - 1 || cy == 0 || cy == RESOLUTION - 1
+                        || cz == 0 || cz == RESOLUTION - 1) {
+                    return true;
+                }
+            }
+        }
+        return mine.length != theirs.length;
+    }
+
+    /**
+     * Dominant occupied material: the full material string of the most frequent cell, ties
+     * resolve to the first maximum. Shared by server parentage and client break feedback so a
+     * predicted break reads as the same block the server breaks as. Null when the volume holds
+     * no named material.
+     */
+    public static String dominantMaterial(MicrovoxelVolume volume) {
+        if (volume == null) return null;
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        String best = null;
+        int bestCount = 0;
+        for (int cell = 0; cell < CELL_COUNT; cell++) {
+            if (!volume.occupied(cell)) continue;
+            String material = volume.material(cell);
+            if (material == null || material.isEmpty()) continue;
+            int count = counts.getOrDefault(material, 0) + 1;
+            counts.put(material, count);
+            if (count > bestCount) {
+                bestCount = count;
+                best = material;
+            }
+        }
+        return best;
     }
 
     public boolean remove(int cell) {

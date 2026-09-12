@@ -178,14 +178,12 @@ public final class MicrovoxelMiningTest {
 
     private static void testProtocolMineStage() throws Exception {
         MicrovoxelKey key = new MicrovoxelKey(UUID.randomUUID(), 12, 64, -34);
-        byte[] frame = MicrovoxelProtocol.mineStage(key, 4095, 9);
-        DataInputStream input = new DataInputStream(new ByteArrayInputStream(frame));
-        require(input.readUnsignedByte() == MicrovoxelProtocol.MAGIC,
-                "MINE_STAGE must start with the protocol magic");
-        require(MicrovoxelProtocol.readVarInt(input) == MicrovoxelProtocol.VERSION,
-                "MINE_STAGE must carry the protocol version");
-        require(input.readUnsignedByte() == MicrovoxelProtocol.MINE_STAGE,
+        byte[] packet = MicrovoxelProtocol.mineStage(key, 4095, 9);
+        ua.rp.chat.microvoxel.MicrovoxelWire.Frame frame =
+                ua.rp.chat.microvoxel.MicrovoxelWire.readFrame(packet);
+        require(frame.type() == MicrovoxelProtocol.MINE_STAGE,
                 "MINE_STAGE must use opcode 13");
+        DataInputStream input = new DataInputStream(new ByteArrayInputStream(frame.payload()));
         require(input.readInt() == key.x() && input.readInt() == key.y()
                         && input.readInt() == key.z(),
                 "MINE_STAGE must carry the marker position");

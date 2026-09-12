@@ -169,6 +169,30 @@ public final class FluidVolume {
     }
 
     /**
+     * Reverse-direction companion of {@link #equalizeInto}. Face pairs are always stored as
+     * {@code [thisSideCell, otherSideCell]}; when the source is the <em>other</em> volume, the
+     * source cell is {@code pairs[index+1]} and the sink cell is {@code pairs[index]}. Reusing
+     * the forward pair order for the reverse pass would move water between the far faces of the
+     * two volumes instead of their shared face. Conserves the combined total exactly.
+     */
+    public static long equalizeIntoReversed(byte[] from, byte[] to, int[] pairs, long maxTransfer) {
+        long moved = 0;
+        for (int index = 0; index + 1 < pairs.length && moved < maxTransfer; index += 2) {
+            int source = pairs[index + 1];
+            int sink = pairs[index];
+            int sourceLevel = Byte.toUnsignedInt(from[source]);
+            int sinkLevel = Byte.toUnsignedInt(to[sink]);
+            int delta = (sourceLevel - sinkLevel) / 2;
+            if (delta <= 0) continue;
+            long allowed = Math.min(delta, maxTransfer - moved);
+            from[source] = (byte) (sourceLevel - allowed);
+            to[sink] = (byte) (sinkLevel + allowed);
+            moved += allowed;
+        }
+        return moved;
+    }
+
+    /**
      * Settles one column stack against the sibling microvoxel geometry: purges levels out of
      * freshly solid cells (displaced upward into the topmost air segment, overflow deleted
      * like vanilla), then compacts every air segment bottom-up to brimful cells. Returns how
@@ -399,7 +423,7 @@ public final class FluidVolume {
      */
     public long equalizeWith(FluidVolume other, int[] pairs, long maxTransfer) {
         long moved = equalizeInto(this.levels, other.levels, pairs, maxTransfer);
-        moved += equalizeInto(other.levels, this.levels, pairs, maxTransfer - moved);
+        moved += equalizeIntoReversed(other.levels, this.levels, pairs, maxTransfer - moved);
         if (moved > 0) {
             bumpRevision();
             other.bumpRevision();

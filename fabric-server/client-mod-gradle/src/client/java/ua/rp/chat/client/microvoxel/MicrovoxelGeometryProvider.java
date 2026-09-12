@@ -29,4 +29,11 @@ public interface MicrovoxelGeometryProvider {
 
     /** Fluid revision for one volume, or {@code Integer.MIN_VALUE} when dry/unknown. */
     int fluidRevisionOf(BlockPos position);
+
+    /**
+     * Revision of the active mining crack on one volume, or {@code 0} when none. Part of the
+     * section geometry key so a stage transition rebuilds the section instead of freezing the
+     * first frame.
+     */
+    int crackRevisionOf(BlockPos position);
 }

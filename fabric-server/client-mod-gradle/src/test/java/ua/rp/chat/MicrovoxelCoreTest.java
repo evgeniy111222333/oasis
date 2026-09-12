@@ -4,6 +4,7 @@ import ua.rp.chat.microvoxel.MicrovoxelAnchorRules;
 import ua.rp.chat.microvoxel.MicrovoxelBrush;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
 import ua.rp.chat.microvoxel.MicrovoxelLodTiers;
+import ua.rp.chat.microvoxel.MicrovoxelMeshBackpressure;
 import ua.rp.chat.microvoxel.MicrovoxelItemScale;
 import ua.rp.chat.microvoxel.MicrovoxelPrediction;
 import ua.rp.chat.microvoxel.MicrovoxelPortableVolume;
@@ -33,6 +34,7 @@ public final class MicrovoxelCoreTest {
         verifyStrideFour();
         verifyLodPayoff();
         verifySeamCulling();
+        verifyMeshBackpressure();
         verifyLightSealingMirror();
         verifyFluidCodecMirror();
         verifyVisualIdentityAndBounds();
@@ -863,6 +865,27 @@ public final class MicrovoxelCoreTest {
         byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
         cells[cell] = 1;
         return cells;
+    }
+
+    /**
+     * Mesh-job backpressure: the admit count must never exceed the free room under the in-flight
+     * cap, must never exceed the queue, and must hit exactly zero when the workers are saturated
+     * so the queue is preserved for the next tick instead of piling up unreachable jobs.
+     */
+    private static void verifyMeshBackpressure() {
+        require(MicrovoxelMeshBackpressure.admitCount(0, 10, 4) == 4,
+                "empty pool must admit up to the cap");
+        require(MicrovoxelMeshBackpressure.admitCount(3, 10, 4) == 1,
+                "admit count must be the free room under the cap");
+        require(MicrovoxelMeshBackpressure.admitCount(4, 10, 4) == 0,
+                "a saturated pool must admit nothing and keep the queue");
+        require(MicrovoxelMeshBackpressure.admitCount(0, 0, 4) == 0,
+                "an empty queue must admit nothing");
+        require(MicrovoxelMeshBackpressure.admitCount(0, 2, 4) == 2,
+                "never admit more than the queue holds");
+        require(MicrovoxelMeshBackpressure.admitCount(0, 10, 0) == 0,
+                "a zero cap disables submission");
+        System.out.println("MicrovoxelMeshBackpressureTest: admit count, saturation and queue caps passed");
     }
 
     private static void require(boolean condition, String message) {

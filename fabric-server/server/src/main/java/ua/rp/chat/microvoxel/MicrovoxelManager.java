@@ -17,6 +17,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import ua.rp.chat.RPChat;
+import ua.rp.chat.antiabuse.ActionRateLimiter;
 import ua.rp.chat.microvoxel.collision.MicrovoxelCollision;
 import ua.rp.chat.microvoxel.fluid.FluidSim;
 import ua.rp.chat.microvoxel.fluid.FluidStore;
@@ -66,8 +67,12 @@ public final class MicrovoxelManager {
     private static final boolean DEBUG = Boolean.getBoolean("rpchat.microvoxel.debug");
     private static final int SYNC_RADIUS_CHUNKS = 8;
     private static final double MAX_REACH = 6.25;
-    private static final long ACTION_WINDOW_MS = 1_000L;
-    private static final int MAX_ACTIONS_PER_WINDOW = 40;
+    /** General edit/handshake budget: 40 actions per second with a matching burst. */
+    private static final double ACTION_RATE_PER_SECOND = 40.0;
+    private static final double ACTION_BURST = 40.0;
+    /** Stricter budget for READY/RESYNC so a client cannot flood full-volume resyncs. */
+    private static final double SYNC_RATE_PER_SECOND = 8.0;
+    private static final double SYNC_BURST = 8.0;
     private static final int[][] BOUNDARY_DIRECTIONS = {
             {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
     };
@@ -86,7 +91,10 @@ public final class MicrovoxelManager {
     private final FluidTuning fluidTuning;
     private final FluidSim fluidSim;
     private MicrovoxelFlags volumeFlags;
-    private final Map<UUID, RateWindow> actionRates = new ConcurrentHashMap<>();
+    private final ActionRateLimiter actionRates =
+            new ActionRateLimiter(ACTION_RATE_PER_SECOND, ACTION_BURST);
+    private final ActionRateLimiter syncRates =
+            new ActionRateLimiter(SYNC_RATE_PER_SECOND, SYNC_BURST);
     private Path storagePath;
     private Path fluidFile;
 
@@ -258,6 +266,9 @@ public final class MicrovoxelManager {
                 legacyStore.load();
                 for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry
                         : legacyStore.snapshot().entries()) {
+                    // Never import a shell with no cells: it would become an unbreakable,
+                    // empty marker. Legacy stores should only hold real geometry.
+                    if (entry.getValue().occupiedCount() == 0) continue;
                     worldStore.put(entry.getKey(), entry.getValue().copy());
                     imported++;
                 }
@@ -368,18 +379,34 @@ public final class MicrovoxelManager {
             plugin.getServer().execute(() -> sync.acknowledgeSnapshot(player, transactionId));
             return;
         }
+        if (action == MicrovoxelProtocol.ACTION_HELLO) {
+            // Capability handshake. x = major, y = minor, z = capability bitset.
+            if (!MicrovoxelWire.compatibleMajor(x)) {
+                player.sendSystemMessage(Component.literal(
+                        "Клиент микровокселей несовместим с сервером (protocol "
+                                + x + "." + y + ")."), true);
+                return;
+            }
+            int negotiated = z & MicrovoxelWire.CAP_ALL;
+            plugin.getServer().execute(() -> {
+                sync.setCapabilities(player.getUUID(), negotiated);
+                sync.sendPacket(player, MicrovoxelProtocol.helloAck(
+                        MicrovoxelWire.MAJOR, MicrovoxelWire.MINOR, negotiated));
+            });
+            return;
+        }
         if (action == MicrovoxelProtocol.ACTION_READY) {
-            if (!allowAction(player)) return;
+            if (!allowAction(player) || !allowSyncAction(player)) return;
             plugin.getServer().execute(() -> sync.onReady(player));
             return;
         }
         if (action == MicrovoxelProtocol.ACTION_RESYNC_VOLUME) {
-            if (!allowAction(player)) return;
+            if (!allowAction(player) || !allowSyncAction(player)) return;
             plugin.getServer().execute(() -> resyncVolume(player, x, y, z));
             return;
         }
         if (action == MicrovoxelProtocol.ACTION_RESYNC_CHUNK) {
-            if (!allowAction(player)) return;
+            if (!allowAction(player) || !allowSyncAction(player)) return;
             plugin.getServer().execute(() -> resyncChunk(player, x, z));
             return;
         }
@@ -460,15 +487,12 @@ public final class MicrovoxelManager {
     }
 
     private boolean allowAction(ServerPlayer player) {
-        long now = System.currentTimeMillis();
-        RateWindow previous = actionRates.get(player.getUUID());
-        if (previous == null || now - previous.startedAt >= ACTION_WINDOW_MS) {
-            actionRates.put(player.getUUID(), new RateWindow(now, 1));
-            return true;
-        }
-        if (previous.count >= MAX_ACTIONS_PER_WINDOW) return false;
-        actionRates.put(player.getUUID(), new RateWindow(previous.startedAt, previous.count + 1));
-        return true;
+        return actionRates.tryAcquire(player.getUUID());
+    }
+
+    /** Stricter companion gate for READY/RESYNC: bounds unsolicited resync floods. */
+    private boolean allowSyncAction(ServerPlayer player) {
+        return syncRates.tryAcquire(player.getUUID());
     }
 
     public void onJoin(ServerPlayer player) {
@@ -486,7 +510,8 @@ public final class MicrovoxelManager {
         engine.onQuit(uuid);
         mining.onQuit(uuid);
         history.onQuit(uuid);
-        actionRates.remove(uuid);
+        actionRates.reset(uuid);
+        syncRates.reset(uuid);
     }
 
     public boolean protectsMarker(ServerLevel level, BlockPos pos) {
@@ -576,8 +601,27 @@ public final class MicrovoxelManager {
         }
         MicrovoxelKey key = new MicrovoxelKey(worldId, pos.getX(), pos.getY(), pos.getZ());
         MicrovoxelVolume volume = runtime.store().get(key);
-        if (volume == null) return false;
+        if (volume == null) {
+            // Orphan marker: a marker block with no authoritative volume. Clear it so a stale
+            // marker is always removable; vanilla alone can never break it (marker hardness -1).
+            if (MicrovoxelBlocks.isMarker(((ServerLevel) player.level()).getBlockState(pos))) {
+                runtime.projection().clearOrphanMarker(key);
+                sync.broadcastRemove(key);
+                return true;
+            }
+            return false;
+        }
         if (isProtected(key)) return true;
+        if (volume.occupiedCount() == 0) {
+            // Empty volume: nothing left to mine. Clear the marker on any break and never drop
+            // an item for a shell with no cells. (The projection single-writer guard already
+            // prevents new empty volumes; this catches legacy/loaded shells.)
+            collision.invalidate(key);
+            runtime.projection().dematerialize(key);
+            sync.broadcastRemove(key);
+            return true;
+        }
+
 
         if (player.gameMode.getGameModeForPlayer() == GameType.CREATIVE) {
             BlockState current = ((ServerLevel) player.level()).getBlockState(pos);
@@ -874,7 +918,11 @@ public final class MicrovoxelManager {
         }
         FluidVolume fluid = FluidVolume.empty();
         fluid.fillMasked(FluidSim.airMask(volume));
-        fluidStore.put(key, fluid);
+        if (!fluidStore.put(key, fluid)) {
+            player.sendSystemMessage(Component.literal(
+                    "Достигнут глобальный лимит объёмов жидкости; заливка отменена."), true);
+            return false;
+        }
         // Full recompute, not a flag flip: underwater wicks burn out, so the light level
         // must be re-derived or a dowsed torch would keep glowing at 14.
         level.setBlock(pos, markerState(volume, true), 3);
@@ -986,7 +1034,7 @@ public final class MicrovoxelManager {
         }
         FluidVolume fluid = FluidVolume.empty(kind);
         fluid.fillMasked(FluidSim.airMask(volume));
-        fluidStore.put(key, fluid);
+        if (!fluidStore.put(key, fluid)) return false;
         level.setBlock(pos, markerState(volume, kind), 3);
         for (ServerPlayer observer : sync.nearbyPlayers(key)) {
             sync.sendFluidUpsert(observer, key, fluid.revision(),
@@ -1034,7 +1082,11 @@ public final class MicrovoxelManager {
         }
         FluidVolume fluid = FluidVolume.empty(FluidVolume.Kind.LAVA);
         fluid.fillMasked(FluidSim.airMask(volume));
-        fluidStore.put(key, fluid);
+        if (!fluidStore.put(key, fluid)) {
+            player.sendSystemMessage(Component.literal(
+                    "Достигнут глобальный лимит объёмов жидкости; заливка отменена."), true);
+            return false;
+        }
         level.setBlock(pos, markerState(volume, FluidVolume.Kind.LAVA), 3);
         consumeLavaBucket(player, hand);
         level.playSound(null, pos, net.minecraft.sounds.SoundEvents.BUCKET_EMPTY_LAVA,
@@ -1275,15 +1327,22 @@ public final class MicrovoxelManager {
             player.sendSystemMessage(Component.literal("Подивіться на microvoxel-блок у межах досяжності."));
             return false;
         }
+        if (isProtected(hit.key())) {
+            player.sendSystemMessage(Component.literal(
+                    "Этот микровоксельный объём защищён от изменений."));
+            return false;
+        }
         MicrovoxelVolume volume = runtime.store().get(hit.key());
         if (volume == null) return false;
         collision.invalidate(hit.key());
+        // Restore the dominant material, matching break drops, mining speed and sounds;
+        // the old first-palette entry could surface a tiny detail material instead.
         BlockState restored = Blocks.STONE.defaultBlockState();
-        for (int index = 1; index < volume.palette().size(); index++) {
-            String material = volume.palette().get(index);
-            if (material != null && !material.isBlank()) {
-                restored = MicrovoxelBlockStates.parseBlockState(material);
-                break;
+        String dominant = ua.rp.chat.microvoxel.MicrovoxelParentage.dominantMaterial(volume);
+        if (dominant != null) {
+            try {
+                restored = MicrovoxelBlockStates.parseBlockState(dominant);
+            } catch (RuntimeException ignored) {
             }
         }
         ServerLevel level = (ServerLevel) player.level();
@@ -1383,19 +1442,31 @@ public final class MicrovoxelManager {
      */
     static BlockState markerState(MicrovoxelVolume volume, FluidVolume.Kind kind) {
         int lightLevel = markerLightLevel(volume, kind);
+        // Sound follows the dominant material, exactly like break feedback and tool checks.
+        // The first-used palette entry can be a tiny detail and made mixed sculptures sound
+        // wrong relative to how they break; fall back to it only if dominance is unusable.
         int soundProfile = 0;
         boolean soundSelected = false;
-        boolean[] usedMaterials = new boolean[volume.palette().size()];
-        volume.collectUsedMaterials(usedMaterials);
-        for (int index = 1; index < volume.palette().size(); index++) {
-            if (!usedMaterials[index]) continue;
+        String dominant = ua.rp.chat.microvoxel.MicrovoxelParentage.dominantMaterial(volume);
+        if (dominant != null) {
             try {
-                BlockState material = MicrovoxelBlockStates.parseBlockState(volume.palette().get(index));
-                if (!soundSelected) {
-                    soundProfile = MicrovoxelBlocks.soundProfile(material);
-                    soundSelected = true;
-                }
+                soundProfile = MicrovoxelBlocks.soundProfile(
+                        MicrovoxelBlockStates.parseBlockState(dominant));
+                soundSelected = true;
             } catch (RuntimeException ignored) {
+            }
+        }
+        if (!soundSelected) {
+            boolean[] usedMaterials = new boolean[volume.palette().size()];
+            volume.collectUsedMaterials(usedMaterials);
+            for (int index = 1; index < volume.palette().size() && !soundSelected; index++) {
+                if (!usedMaterials[index]) continue;
+                try {
+                    soundProfile = MicrovoxelBlocks.soundProfile(
+                            MicrovoxelBlockStates.parseBlockState(volume.palette().get(index)));
+                    soundSelected = true;
+                } catch (RuntimeException ignored) {
+                }
             }
         }
         return MicrovoxelBlocks.markerState(
@@ -1469,7 +1540,4 @@ public final class MicrovoxelManager {
     }
 
     public enum Axis { X, Y, Z }
-
-    private record RateWindow(long startedAt, int count) {
-    }
 }

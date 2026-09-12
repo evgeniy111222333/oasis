@@ -25,22 +25,8 @@ public final class MicrovoxelParentage {
      * explicitly what an empty volume means (usually "nothing to break").
      */
     public static String dominantMaterial(MicrovoxelVolume volume) {
-        if (volume == null) return null;
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        String best = null;
-        int bestCount = 0;
-        for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
-            if (!volume.occupied(cell)) continue;
-            String material = volume.material(cell);
-            if (material == null || material.isEmpty()) continue;
-            int count = counts.getOrDefault(material, 0) + 1;
-            counts.put(material, count);
-            if (count > bestCount) {
-                bestCount = count;
-                best = material;
-            }
-        }
-        return best;
+        // Single source of truth: the shared volume owns the rule; this is the server spelling.
+        return MicrovoxelVolume.dominantMaterial(volume);
     }
 
     /** Parsed parent state, or null when the volume is empty or unparsable. */

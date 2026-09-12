@@ -1,156 +1,144 @@
 package ua.rp.chat.microvoxel;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Server-side microvoxel message builders. Frame layout, message/action codes, capabilities and
+ * the primitive codecs live in the shared {@link MicrovoxelWire}; this class only serialises the
+ * server-produced payloads so no side keeps a private mirror of the wire contract.
+ */
 public final class MicrovoxelProtocol {
-    public static final int MAGIC = 0x4D;
-    /** Version 6 adds the fluid kind byte to FLUID_UPSERT (lava engine). */
-    public static final int VERSION = 6;
+    public static final int MAGIC = MicrovoxelWire.MAGIC;
+    public static final int VERSION = MicrovoxelWire.MAJOR;
+    public static final int MINOR = MicrovoxelWire.MINOR;
     public static final String SYNC_CHANNEL = "rpchat:microvoxels";
     public static final String ACTION_CHANNEL = "rpchat:microvoxel_action";
-    public static final int CLEAR = 1;
-    public static final int UPSERT = 2;
-    public static final int REMOVE = 3;
-    public static final int MESSAGE = 4;
-    public static final int REGISTER_MATERIAL = 5;
-    public static final int BATCH_UPSERT = 6;
-    public static final int CLEAR_CHUNK = 7;
-    public static final int DELTA_UPSERT = 8;
+    public static final int CLEAR = MicrovoxelWire.CLEAR;
+    public static final int UPSERT = MicrovoxelWire.UPSERT;
+    public static final int REMOVE = MicrovoxelWire.REMOVE;
+    public static final int MESSAGE = MicrovoxelWire.MESSAGE;
+    public static final int BATCH_UPSERT = MicrovoxelWire.BATCH_UPSERT;
+    public static final int CLEAR_CHUNK = MicrovoxelWire.CLEAR_CHUNK;
+    public static final int DELTA_UPSERT = MicrovoxelWire.DELTA_UPSERT;
     /** One all-or-nothing client-visible edit spanning any number of blocks/chunks. */
-    public static final int TRANSACTION = 9;
-    public static final int EDIT_RESULT = 10;
-    /** Opens one ordered, authoritative snapshot delivery. */
-    public static final int SNAPSHOT_BEGIN = 11;
-    /** Closes a snapshot delivery; the client must acknowledge this id. */
-    public static final int SNAPSHOT_END = 12;
-    /** Authoritative per-cell mining crack stage (stage -1 clears the crack). */
-    public static final int MINE_STAGE = 13;
-    /** Authoritative voxel fluid levels for one volume (RLE bytes, 0..16 per cell). */
-    public static final int FLUID_UPSERT = 14;
-    /** Fluid data dropped (scooped, spilled, evaporated). */
-    public static final int FLUID_REMOVE = 15;
-    public static final int ACTION_CONVERT = 1;
-    public static final int ACTION_REMOVE = 2;
-    public static final int ACTION_ADD = 3;
-    /** Carves the first 1/16 cell from an eligible, still-vanilla full block. */
-    public static final int ACTION_CARVE_STANDARD = 4;
-    public static final int ACTION_READY = 5;
-    public static final int ACTION_RESYNC_VOLUME = 6;
-    public static final int ACTION_RESYNC_CHUNK = 7;
-    public static final int ACTION_UNDO = 8;
-    public static final int ACTION_REDO = 9;
-    public static final int ACTION_BRUSH_REMOVE = 10;
-    public static final int ACTION_BRUSH_ADD = 11;
-    public static final int ACTION_COPY = 12;
-    public static final int ACTION_PASTE = 13;
-    public static final int ACTION_SNAPSHOT_ACK = 14;
+    public static final int TRANSACTION = MicrovoxelWire.TRANSACTION;
+    public static final int EDIT_RESULT = MicrovoxelWire.EDIT_RESULT;
+    public static final int SNAPSHOT_BEGIN = MicrovoxelWire.SNAPSHOT_BEGIN;
+    public static final int SNAPSHOT_END = MicrovoxelWire.SNAPSHOT_END;
+    public static final int MINE_STAGE = MicrovoxelWire.MINE_STAGE;
+    public static final int FLUID_UPSERT = MicrovoxelWire.FLUID_UPSERT;
+    public static final int FLUID_REMOVE = MicrovoxelWire.FLUID_REMOVE;
+    public static final int HELLO_ACK = MicrovoxelWire.HELLO_ACK;
+    public static final int ACTION_CONVERT = MicrovoxelWire.ACTION_CONVERT;
+    public static final int ACTION_REMOVE = MicrovoxelWire.ACTION_REMOVE;
+    public static final int ACTION_ADD = MicrovoxelWire.ACTION_ADD;
+    public static final int ACTION_CARVE_STANDARD = MicrovoxelWire.ACTION_CARVE_STANDARD;
+    public static final int ACTION_READY = MicrovoxelWire.ACTION_READY;
+    public static final int ACTION_RESYNC_VOLUME = MicrovoxelWire.ACTION_RESYNC_VOLUME;
+    public static final int ACTION_RESYNC_CHUNK = MicrovoxelWire.ACTION_RESYNC_CHUNK;
+    public static final int ACTION_UNDO = MicrovoxelWire.ACTION_UNDO;
+    public static final int ACTION_REDO = MicrovoxelWire.ACTION_REDO;
+    public static final int ACTION_BRUSH_REMOVE = MicrovoxelWire.ACTION_BRUSH_REMOVE;
+    public static final int ACTION_BRUSH_ADD = MicrovoxelWire.ACTION_BRUSH_ADD;
+    public static final int ACTION_COPY = MicrovoxelWire.ACTION_COPY;
+    public static final int ACTION_PASTE = MicrovoxelWire.ACTION_PASTE;
+    public static final int ACTION_SNAPSHOT_ACK = MicrovoxelWire.ACTION_SNAPSHOT_ACK;
+    public static final int ACTION_HELLO = MicrovoxelWire.ACTION_HELLO;
 
     private MicrovoxelProtocol() {
     }
 
     public static byte[] clear() {
-        return writeMessage(CLEAR, output -> {
+        return message(CLEAR, output -> {
+        });
+    }
+
+    public static byte[] helloAck(int major, int minor, int capabilities) {
+        return message(HELLO_ACK, output -> {
+            MicrovoxelWire.writeVarInt(output, major);
+            MicrovoxelWire.writeVarInt(output, minor);
+            MicrovoxelWire.writeVarInt(output, capabilities);
         });
     }
 
     public static byte[] snapshotBegin(long snapshotId) {
-        return writeMessage(SNAPSHOT_BEGIN, output -> output.writeLong(snapshotId));
+        return message(SNAPSHOT_BEGIN, output -> output.writeLong(snapshotId));
     }
 
     public static byte[] snapshotEnd(long snapshotId) {
-        return writeMessage(SNAPSHOT_END, output -> output.writeLong(snapshotId));
+        return message(SNAPSHOT_END, output -> output.writeLong(snapshotId));
     }
 
     public static boolean isSynchronizationAction(int action) {
         return action == ACTION_READY
+                || action == ACTION_HELLO
                 || action == ACTION_RESYNC_VOLUME
                 || action == ACTION_RESYNC_CHUNK
                 || action == ACTION_SNAPSHOT_ACK;
     }
 
     public static byte[] remove(MicrovoxelKey key) {
-        return writeMessage(REMOVE, output -> {
-            writePosition(output, key);
-        });
+        return message(REMOVE, output -> writePosition(output, key));
     }
 
     public static byte[] message(String message) {
-        return writeMessage(MESSAGE, output -> {
-            writeUtf8(output, message);
-        });
-    }
-
-    public static byte[] registerMaterial(int id, String material) {
-        return writeMessage(REGISTER_MATERIAL, output -> {
-            writeVarInt(output, id);
-            writeUtf8(output, material);
-        });
+        return message(MESSAGE, output -> writeUtf8(output, message));
     }
 
     public static byte[] clearChunk(int chunkX, int chunkZ) {
-        return writeMessage(CLEAR_CHUNK, output -> {
+        return message(CLEAR_CHUNK, output -> {
             output.writeInt(chunkX);
             output.writeInt(chunkZ);
         });
     }
 
     public static byte[] upsert(MicrovoxelKey key, MicrovoxelVolume volume) {
-        return writeMessage(UPSERT, output -> {
+        return message(UPSERT, output -> {
             writePosition(output, key);
-            writeVarInt(output, volume.revision());
-            writeVarInt(output, volume.palette().size());
-            for (String material : volume.palette()) writeUtf8(output, material);
-            writeCells(output, volume);
+            writeRawVolume(output, volume);
         });
     }
 
     public static byte[] batchUpsert(int chunkX, int chunkZ,
                                      java.util.List<java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume>> entries) {
-        return writeMessage(BATCH_UPSERT, output -> {
+        return message(BATCH_UPSERT, output -> {
             output.writeInt(chunkX);
             output.writeInt(chunkZ);
-            writeVarInt(output, entries.size());
+            MicrovoxelWire.writeVarInt(output, entries.size());
             for (java.util.Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : entries) {
                 MicrovoxelKey key = entry.getKey();
                 MicrovoxelVolume volume = entry.getValue();
-
                 int relX = key.x() - (chunkX << 4);
                 int relZ = key.z() - (chunkZ << 4);
                 output.writeByte(((relX & 15) << 4) | (relZ & 15));
                 output.writeShort(key.y());
-
-                writeVarInt(output, volume.revision());
-                writeVarInt(output, volume.palette().size());
-                for (String material : volume.palette()) writeUtf8(output, material);
-
-                writeCells(output, volume);
+                writeRawVolume(output, volume);
             }
         });
     }
 
     public static byte[] deltaUpsert(int chunkX, int chunkZ, MicrovoxelKey key,
                                      int revision, int cellIndex, String material) {
-        return writeMessage(DELTA_UPSERT, output -> {
+        return message(DELTA_UPSERT, output -> {
             output.writeInt(chunkX);
             output.writeInt(chunkZ);
             int relX = key.x() - (chunkX << 4);
             int relZ = key.z() - (chunkZ << 4);
             output.writeByte(((relX & 15) << 4) | (relZ & 15));
             output.writeShort(key.y());
-            writeVarInt(output, revision);
-            writeVarInt(output, cellIndex);
+            MicrovoxelWire.writeVarInt(output, revision);
+            MicrovoxelWire.writeVarInt(output, cellIndex);
             writeUtf8(output, material == null ? "" : material);
         });
     }
 
     public static byte[] editResult(long transactionId, boolean accepted,
                                     MicrovoxelKey key, MicrovoxelVolume volume) {
-        return writeMessage(EDIT_RESULT, output -> {
+        return message(EDIT_RESULT, output -> {
             output.writeLong(transactionId);
             output.writeBoolean(accepted);
             writePosition(output, key);
@@ -160,9 +148,9 @@ public final class MicrovoxelProtocol {
     }
 
     public static byte[] transaction(long transactionId, java.util.List<StateChange> changes) {
-        return writeMessage(TRANSACTION, output -> {
+        return message(TRANSACTION, output -> {
             output.writeLong(transactionId);
-            writeVarInt(output, changes.size());
+            MicrovoxelWire.writeVarInt(output, changes.size());
             for (StateChange change : changes) {
                 writePosition(output, change.key());
                 MicrovoxelVolume volume = change.volume();
@@ -174,9 +162,9 @@ public final class MicrovoxelProtocol {
     }
 
     public static byte[] mineStage(MicrovoxelKey key, int cell, int stage) {
-        return writeMessage(MINE_STAGE, output -> {
+        return message(MINE_STAGE, output -> {
             writePosition(output, key);
-            writeVarInt(output, cell);
+            MicrovoxelWire.writeVarInt(output, cell);
             output.writeByte(stage);
         });
     }
@@ -186,122 +174,42 @@ public final class MicrovoxelProtocol {
     }
 
     public static byte[] fluidUpsert(MicrovoxelKey key, int revision, int kindCode, byte[] levels) {
-        return writeMessage(FLUID_UPSERT, output -> {
+        return message(FLUID_UPSERT, output -> {
             writePosition(output, key);
-            writeVarInt(output, revision);
+            MicrovoxelWire.writeVarInt(output, revision);
             output.writeByte(kindCode);
-            byte[] encoded = encodeLevels(levels);
-            writeVarInt(output, encoded.length);
+            byte[] encoded = MicrovoxelWire.encodeLevels(levels);
+            MicrovoxelWire.writeVarInt(output, encoded.length);
             output.write(encoded);
         });
     }
 
     public static byte[] fluidRemove(MicrovoxelKey key) {
-        return writeMessage(FLUID_REMOVE, output -> {
-            writePosition(output, key);
-        });
+        return message(FLUID_REMOVE, output -> writePosition(output, key));
     }
 
-    /**
-     * Run-length codec for fluid levels. Levels are smooth (whole basins share one value),
-     * so RLE typically compresses 4096 bytes to a handful. Pure and mirrored by the client
-     * decoder; round-trip unit-tested.
-     */
+    // Delegating codec helpers keep existing server call sites untouched.
     public static byte[] encodeLevels(byte[] levels) {
-        try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            try (DataOutputStream output = new DataOutputStream(bytes)) {
-                writeVarInt(output, levels.length);
-                for (int index = 0; index < levels.length;) {
-                    byte level = levels[index];
-                    int end = index + 1;
-                    while (end < levels.length && levels[end] == level && end - index < 65535) end++;
-                    writeVarInt(output, end - index);
-                    output.writeByte(level);
-                    index = end;
-                }
-            }
-            return bytes.toByteArray();
-        } catch (IOException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return MicrovoxelWire.encodeLevels(levels);
     }
 
-    /** Decodes {@link #encodeLevels}; throws on truncation, overflow or trailing bytes. */
     public static byte[] decodeLevels(byte[] encoded) throws IOException {
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(encoded))) {
-            int total = readVarInt(input);
-            if (total < 0 || total > 65536) throw new IOException("Invalid fluid level count");
-            byte[] levels = new byte[total];
-            int cursor = 0;
-            while (cursor < total) {
-                int run = readVarInt(input);
-                int level = input.readUnsignedByte();
-                if (run < 1 || cursor + run > total || level > 16) {
-                    throw new IOException("Invalid fluid level run");
-                }
-                java.util.Arrays.fill(levels, cursor, cursor + run, (byte) level);
-                cursor += run;
-            }
-            if (input.read() != -1) throw new IOException("Trailing fluid level bytes");
-            return levels;
-        }
-    }
-
-    private static void writeRawVolume(DataOutputStream output, MicrovoxelVolume volume) throws IOException {
-        writeVarInt(output, volume.revision());
-        writeVarInt(output, volume.palette().size());
-        for (String material : volume.palette()) writeUtf8(output, material);
-        writeCells(output, volume);
+        return MicrovoxelWire.decodeLevels(encoded);
     }
 
     public static void writeVarInt(DataOutputStream out, int value) throws IOException {
-        while ((value & 0xFFFFFF80) != 0L) {
-            out.writeByte((value & 0x7F) | 0x80);
-            value >>>= 7;
-        }
-        out.writeByte(value & 0x7F);
+        MicrovoxelWire.writeVarInt(out, value);
     }
 
-    public static int readVarInt(java.io.DataInputStream in) throws IOException {
-        int value = 0;
-        int position = 0;
-        byte currentByte;
-        while (true) {
-            currentByte = in.readByte();
-            value |= (currentByte & 0x7F) << position;
-            if ((currentByte & 0x80) == 0) break;
-            position += 7;
-            if (position >= 32) throw new IOException("VarInt is too big");
-        }
-        return value;
+    public static int readVarInt(DataInputStream in) throws IOException {
+        return MicrovoxelWire.readVarInt(in);
     }
 
-    private static void writeCells(DataOutputStream output, MicrovoxelVolume volume) throws IOException {
-        byte[] cells = volume.cellsCopy();
-        int runs = 0;
-        for (int index = 0; index < cells.length;) {
-            byte material = cells[index];
-            int end = index + 1;
-            while (end < cells.length && cells[end] == material && end - index < 65535) end++;
-            runs++;
-            index = end;
-        }
-        boolean useRuns = runs * 3 + 2 < cells.length;
-        output.writeByte(useRuns ? 1 : 0);
-        if (useRuns) {
-            writeVarInt(output, runs);
-            for (int index = 0; index < cells.length;) {
-                byte material = cells[index];
-                int end = index + 1;
-                while (end < cells.length && cells[end] == material && end - index < 65535) end++;
-                writeVarInt(output, end - index);
-                output.writeByte(material);
-                index = end;
-            }
-        } else {
-            output.write(cells);
-        }
+    private static void writeRawVolume(DataOutputStream output, MicrovoxelVolume volume) throws IOException {
+        MicrovoxelWire.writeVarInt(output, volume.revision());
+        MicrovoxelWire.writeVarInt(output, volume.palette().size());
+        for (String material : volume.palette()) writeUtf8(output, material);
+        output.write(MicrovoxelWire.encodeCells(volume.cellsCopy()));
     }
 
     private static void writePosition(DataOutputStream output, MicrovoxelKey key) throws IOException {
@@ -312,7 +220,7 @@ public final class MicrovoxelProtocol {
 
     private static void writeUtf8(DataOutputStream output, String value) throws IOException {
         byte[] bytes = String.valueOf(value).getBytes(StandardCharsets.UTF_8);
-        writeVarInt(output, bytes.length);
+        MicrovoxelWire.writeVarInt(output, bytes.length);
         output.write(bytes);
     }
 
@@ -328,13 +236,8 @@ public final class MicrovoxelProtocol {
         }
     }
 
-    private static byte[] writeMessage(int type, IoWriter writer) {
-        return write(output -> {
-            output.writeByte(MAGIC);
-            writeVarInt(output, VERSION);
-            output.writeByte(type);
-            writer.write(output);
-        });
+    private static byte[] message(int type, IoWriter writer) {
+        return MicrovoxelWire.frame(type, write(writer));
     }
 
     @FunctionalInterface

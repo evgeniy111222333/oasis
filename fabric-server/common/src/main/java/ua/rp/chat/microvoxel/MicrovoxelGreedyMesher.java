@@ -1,10 +1,22 @@
 package ua.rp.chat.microvoxel;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntPredicate;
 
+/**
+ * Greedy mesher shared by both sides. The hot loops are allocation-free by design: the per-slice
+ * mask/region/used buffers are flat arrays reused across all six directions and sixteen slices of
+ * one build, and local coordinates are computed with switch expressions instead of the historical
+ * {@code new int[3]} per cell. A full 16^3 build used to churn ~24 000 coordinate arrays plus 288
+ * jagged mask arrays; it now allocates a handful of flat buffers, which is what removes the
+ * per-edit tick spike on the client. All buffers are per-call (never static), so concurrent mesh
+ * workers stay isolated.
+ */
 public final class MicrovoxelGreedyMesher {
+    private static final int SIZE = 16;
+
     private MicrovoxelGreedyMesher() {
     }
 
@@ -53,28 +65,51 @@ public final class MicrovoxelGreedyMesher {
         }
         int cells = 16 / stride;
         List<Face> faces = new ArrayList<>();
+        int[] mask = new int[cells * cells];
+        boolean[] used = new boolean[cells * cells];
+        int[] histogram = new int[MicrovoxelVolume.MAX_PALETTE];
         for (Direction direction : Direction.values()) {
             for (int slice = 0; slice < cells; slice++) {
-                int[][] mask = new int[cells][cells];
+                Arrays.fill(mask, 0);
                 for (int v = 0; v < cells; v++) {
                     for (int u = 0; u < cells; u++) {
-                        int[] xyz = lodCoordinates(direction, slice, u, v, stride);
-                        int material = dominantMaterial(volume, xyz[0], xyz[1], xyz[2], stride);
+                        int baseX;
+                        int baseY;
+                        int baseZ;
+                        switch (direction) {
+                            case UP, DOWN -> {
+                                baseX = u * stride;
+                                baseY = slice * stride;
+                                baseZ = v * stride;
+                            }
+                            case NORTH, SOUTH -> {
+                                baseX = u * stride;
+                                baseY = v * stride;
+                                baseZ = slice * stride;
+                            }
+                            default -> {
+                                baseX = slice * stride;
+                                baseY = v * stride;
+                                baseZ = u * stride;
+                            }
+                        }
+                        int material = dominantMaterial(volume, baseX, baseY, baseZ, stride, histogram);
                         if (material != 0 && lodNeighbourFree(
-                                volume, neighbours, direction, xyz[0], xyz[1], xyz[2], stride)) {
-                            mask[v][u] = material;
+                                volume, neighbours, direction, baseX, baseY, baseZ, stride)) {
+                            mask[v * cells + u] = material;
                         }
                     }
                 }
-                greedyLod(direction, slice, stride, mask, faces);
+                greedyLod(direction, slice, stride, cells, mask, used, faces);
             }
         }
         return List.copyOf(faces);
     }
 
     /** Dominant (most frequent, ties broken by lowest id) material of one stride block. */
-    private static int dominantMaterial(MicrovoxelVolume volume, int baseX, int baseY, int baseZ, int stride) {
-        int[] histogram = new int[MicrovoxelVolume.MAX_PALETTE];
+    private static int dominantMaterial(MicrovoxelVolume volume, int baseX, int baseY, int baseZ,
+                                        int stride, int[] histogram) {
+        Arrays.fill(histogram, 0);
         boolean occupied = false;
         for (int dz = 0; dz < stride; dz++) {
             for (int dy = 0; dy < stride; dy++) {
@@ -111,29 +146,30 @@ public final class MicrovoxelGreedyMesher {
         return false;
     }
 
-    private static int[] lodCoordinates(Direction direction, int slice, int u, int v, int stride) {
-        int[] base = coordinates(direction, slice, u, v);
-        return new int[]{base[0] * stride, base[1] * stride, base[2] * stride};
-    }
-
-    private static void greedyLod(Direction direction, int slice, int stride,
-                                  int[][] mask, List<Face> output) {
-        int cells = mask.length;
-        boolean[][] used = new boolean[cells][cells];
+    private static void greedyLod(Direction direction, int slice, int stride, int cells,
+                                  int[] mask, boolean[] used, List<Face> output) {
+        Arrays.fill(used, false);
         for (int v = 0; v < cells; v++) {
             for (int u = 0; u < cells; u++) {
-                int material = mask[v][u];
-                if (material == 0 || used[v][u]) continue;
+                int material = mask[v * cells + u];
+                if (material == 0 || used[v * cells + u]) continue;
                 int width = 1;
-                while (u + width < cells && !used[v][u + width] && mask[v][u + width] == material) width++;
+                while (u + width < cells && !used[v * cells + u + width]
+                        && mask[v * cells + u + width] == material) {
+                    width++;
+                }
                 int height = 1;
                 outer: while (v + height < cells) {
+                    int row = (v + height) * cells;
                     for (int x = u; x < u + width; x++) {
-                        if (used[v + height][x] || mask[v + height][x] != material) break outer;
+                        if (used[row + x] || mask[row + x] != material) break outer;
                     }
                     height++;
                 }
-                for (int y = v; y < v + height; y++) for (int x = u; x < u + width; x++) used[y][x] = true;
+                for (int y = 0; y < height; y++) {
+                    int row = (v + y) * cells + u;
+                    for (int x = 0; x < width; x++) used[row + x] = true;
+                }
                 // LOD faces sit on stride-grid planes (multiples of stride), spanning whole
                 // stride blocks: the outer plane is base+stride on the positive side, base on
                 // the negative side, so merged quads keep exact silhouette bounds.
@@ -167,24 +203,50 @@ public final class MicrovoxelGreedyMesher {
     private static List<Face> buildExact(MicrovoxelVolume volume, NeighbourLookup neighbours,
                                          IntPredicate hidden, RegionLookup region) {
         List<Face> faces = new ArrayList<>();
+        // One set of flat buffers for the whole build; cleared per slice. Hoisting the bound
+        // method reference stops a captured lambda allocation per cell.
+        NeighbourLookup volumeLookup = volume::materialAt;
+        int[] mask = new int[SIZE * SIZE];
+        int[] regionMask = region == null ? null : new int[SIZE * SIZE];
+        boolean[] used = new boolean[SIZE * SIZE];
         for (Direction direction : Direction.values()) {
-            for (int slice = 0; slice < 16; slice++) {
-                int[][] mask = new int[16][16];
-                int[][] regionMask = region == null ? null : new int[16][16];
-                for (int v = 0; v < 16; v++) {
-                    for (int u = 0; u < 16; u++) {
-                        int[] xyz = coordinates(direction, slice, u, v);
-                        int material = maskedMaterial(volume::materialAt, hidden, xyz[0], xyz[1], xyz[2]);
+            for (int slice = 0; slice < SIZE; slice++) {
+                Arrays.fill(mask, 0);
+                if (regionMask != null) Arrays.fill(regionMask, 0);
+                for (int v = 0; v < SIZE; v++) {
+                    for (int u = 0; u < SIZE; u++) {
+                        int x;
+                        int y;
+                        int z;
+                        switch (direction) {
+                            case UP, DOWN -> {
+                                x = u;
+                                y = slice;
+                                z = v;
+                            }
+                            case NORTH, SOUTH -> {
+                                x = u;
+                                y = v;
+                                z = slice;
+                            }
+                            default -> {
+                                x = slice;
+                                y = v;
+                                z = u;
+                            }
+                        }
+                        int material = maskedMaterial(volumeLookup, hidden, x, y, z);
                         if (material != 0 && maskedMaterial(neighbours, hidden,
-                                xyz[0] + direction.dx, xyz[1] + direction.dy, xyz[2] + direction.dz) == 0) {
-                            mask[v][u] = material;
+                                x + direction.dx, y + direction.dy, z + direction.dz) == 0) {
+                            int cell = v * SIZE + u;
+                            mask[cell] = material;
                             if (regionMask != null) {
-                                regionMask[v][u] = region.regionAt(xyz[0], xyz[1], xyz[2]);
+                                regionMask[cell] = region.regionAt(x, y, z);
                             }
                         }
                     }
                 }
-                greedy(direction, slice, mask, regionMask, faces);
+                greedy(direction, slice, mask, regionMask, used, faces);
             }
         }
         return List.copyOf(faces);
@@ -205,34 +267,35 @@ public final class MicrovoxelGreedyMesher {
         return lookup.materialAt(x, y, z);
     }
 
-    private static void greedy(Direction direction, int slice, int[][] mask, List<Face> output) {
-        greedy(direction, slice, mask, null, output);
-    }
-
-    private static void greedy(Direction direction, int slice, int[][] mask, int[][] regionMask,
-                               List<Face> output) {
-        boolean[][] used = new boolean[16][16];
-        for (int v = 0; v < 16; v++) {
-            for (int u = 0; u < 16; u++) {
-                int material = mask[v][u];
-                if (material == 0 || used[v][u]) continue;
-                int region = regionMask == null ? 0 : regionMask[v][u];
+    private static void greedy(Direction direction, int slice, int[] mask, int[] regionMask,
+                               boolean[] used, List<Face> output) {
+        Arrays.fill(used, false);
+        for (int v = 0; v < SIZE; v++) {
+            for (int u = 0; u < SIZE; u++) {
+                int material = mask[v * SIZE + u];
+                if (material == 0 || used[v * SIZE + u]) continue;
+                int region = regionMask == null ? 0 : regionMask[v * SIZE + u];
                 int width = 1;
-                while (u + width < 16 && !used[v][u + width] && mask[v][u + width] == material
-                        && (regionMask == null || regionMask[v][u + width] == region)) {
+                while (u + width < SIZE && !used[v * SIZE + u + width]
+                        && mask[v * SIZE + u + width] == material
+                        && (regionMask == null || regionMask[v * SIZE + u + width] == region)) {
                     width++;
                 }
                 int height = 1;
-                outer: while (v + height < 16) {
+                outer: while (v + height < SIZE) {
+                    int row = (v + height) * SIZE;
                     for (int x = u; x < u + width; x++) {
-                        if (used[v + height][x] || mask[v + height][x] != material
-                                || (regionMask != null && regionMask[v + height][x] != region)) {
+                        if (used[row + x] || mask[row + x] != material
+                                || (regionMask != null && regionMask[row + x] != region)) {
                             break outer;
                         }
                     }
                     height++;
                 }
-                for (int y = v; y < v + height; y++) for (int x = u; x < u + width; x++) used[y][x] = true;
+                for (int y = 0; y < height; y++) {
+                    int row = (v + y) * SIZE + u;
+                    for (int x = 0; x < width; x++) used[row + x] = true;
+                }
                 output.add(face(direction, slice, u, v, width, height, material));
             }
         }
@@ -246,14 +309,6 @@ public final class MicrovoxelGreedyMesher {
             case SOUTH -> new Face(direction, material, u, v, slice + 1, u + width, v + height, slice + 1);
             case WEST -> new Face(direction, material, slice, v, u, slice, v + height, u + width);
             case EAST -> new Face(direction, material, slice + 1, v, u, slice + 1, v + height, u + width);
-        };
-    }
-
-    private static int[] coordinates(Direction direction, int slice, int u, int v) {
-        return switch (direction) {
-            case UP, DOWN -> new int[]{u, slice, v};
-            case NORTH, SOUTH -> new int[]{u, v, slice};
-            case WEST, EAST -> new int[]{slice, v, u};
         };
     }
 

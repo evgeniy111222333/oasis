@@ -9,6 +9,7 @@ import ua.rp.chat.microvoxel.MicrovoxelKey;
 import ua.rp.chat.microvoxel.MicrovoxelProtocol;
 import ua.rp.chat.microvoxel.MicrovoxelRuntime;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
+import ua.rp.chat.microvoxel.MicrovoxelWire;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -41,8 +42,22 @@ public final class MicrovoxelSyncHub {
     private final Map<UUID, SnapshotPages> snapshotPages = new ConcurrentHashMap<>();
     /** Tick-coalesced live deltas: one entry per volume, flushed every server tick. */
     private final Map<MicrovoxelKey, PendingDelta> deltaOutbox = new ConcurrentHashMap<>();
+    /** Capabilities negotiated per client via ACTION_HELLO (absent = shipped client defaults). */
+    private final Map<UUID, Integer> capabilities = new ConcurrentHashMap<>();
     private long nextSnapshotId = 1L;
     private int refreshTicks;
+
+    /** Records the capability bitset a client advertised during the handshake. */
+    public void setCapabilities(UUID playerId, int capabilitySet) {
+        capabilities.put(playerId, capabilitySet);
+    }
+
+    /** True when the client can consume a capability-gated message. */
+    public boolean supports(UUID playerId, int capability) {
+        Integer negotiated = capabilities.get(playerId);
+        int set = negotiated == null ? MicrovoxelWire.CLIENT_CAPABILITIES : negotiated;
+        return MicrovoxelWire.supports(set, capability);
+    }
 
     public MicrovoxelSyncHub(MicrovoxelRuntime runtime) {
         this.runtime = runtime;
@@ -54,6 +69,7 @@ public final class MicrovoxelSyncHub {
         playerSubscriptions.remove(uuid);
         pendingSnapshots.remove(uuid);
         snapshotPages.remove(uuid);
+        capabilities.remove(uuid);
     }
 
     public void onQuit(ServerPlayer player) {
@@ -62,6 +78,7 @@ public final class MicrovoxelSyncHub {
         playerSubscriptions.remove(uuid);
         pendingSnapshots.remove(uuid);
         snapshotPages.remove(uuid);
+        capabilities.remove(uuid);
     }
 
     /** ACTION_READY: drop stale state and push a fresh full snapshot. */
@@ -412,7 +429,7 @@ public final class MicrovoxelSyncHub {
         // at flush time. A same-tick upsert/remove supersedes the queued delta entirely.
         markLiveTraffic();
         deltaOutbox.put(key, new PendingDelta(cellIndex, material, volume.revision(),
-                excluded == null ? null : excluded.getUUID()));
+                excluded == null ? null : excluded.getUUID(), volume));
     }
 
     /**
@@ -429,14 +446,22 @@ public final class MicrovoxelSyncHub {
             ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.delta");
             for (ServerPlayer player : nearbyPlayers(key)) {
                 if (delta.excluded != null && delta.excluded.equals(player.getUUID())) continue;
-                sendPacket(player, MicrovoxelProtocol.deltaUpsert(
-                        key.chunkX(), key.chunkZ(), key, delta.revision, delta.cell, delta.material));
+                if (supports(player.getUUID(), MicrovoxelWire.CAP_DELTA)) {
+                    sendPacket(player, MicrovoxelProtocol.deltaUpsert(
+                            key.chunkX(), key.chunkZ(), key, delta.revision, delta.cell, delta.material));
+                } else {
+                    // Peer never negotiated cell deltas: fall back to a full volume so the edit is
+                    // not silently lost (the old shipped behaviour that caused the dropped-stroke bug).
+                    ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.delta.fallback_upsert");
+                    sendUpsert(player, key, delta.volume);
+                }
             }
         }
         ua.rp.chat.microvoxel.MicrovoxelMetrics.add("net.delta.coalesced", drained.size());
     }
 
-    private record PendingDelta(int cell, String material, int revision, UUID excluded) {
+    private record PendingDelta(int cell, String material, int revision, UUID excluded,
+                                MicrovoxelVolume volume) {
     }
 
     public void broadcastTransaction(long transactionId, List<MicrovoxelProtocol.StateChange> changes) {
@@ -500,6 +525,10 @@ public final class MicrovoxelSyncHub {
     /** Kind-aware variant: water renders water, lava renders lava. */
     public void sendFluidUpsert(ServerPlayer player, MicrovoxelKey key,
                                 int revision, int kindCode, byte[] levels) {
+        if (!supports(player.getUUID(), MicrovoxelWire.CAP_FLUID)) {
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.fluid.skipped");
+            return;
+        }
         markLiveTraffic();
         ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.fluid");
         sendPacket(player, MicrovoxelProtocol.fluidUpsert(key, revision, kindCode, levels));
