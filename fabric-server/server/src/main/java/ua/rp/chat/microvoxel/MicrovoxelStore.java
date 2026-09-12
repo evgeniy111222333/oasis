@@ -32,11 +32,11 @@ public final class MicrovoxelStore {
     private static final int VERSION = 1;
     private static final int MAX_ENTRIES = 1_000_000;
     private static final int JOURNAL_MAGIC = 0x4D564A31;
-    private static final int JOURNAL_VERSION = 1;
+    private static final int JOURNAL_VERSION = 2;
     private static final int MAX_JOURNAL_BATCH_BYTES = 64 * 1024 * 1024;
     private static final long COMPACT_AFTER_BYTES = 32L * 1024L * 1024L;
     private static final int REGION_MAGIC = 0x4D565232;
-    private static final int REGION_VERSION = 2;
+    private static final int REGION_VERSION = 3;
     private static final int REGION_CHUNKS = 32;
     private static final int MAX_LOADED_REGIONS = 96;
 
@@ -725,14 +725,17 @@ public final class MicrovoxelStore {
     private RegionData readRegion(Path source, RegionKey expected) throws IOException {
         try (DataInputStream input = new DataInputStream(
                 new BufferedInputStream(Files.newInputStream(source)))) {
-            if (input.readInt() != REGION_MAGIC || input.readInt() != REGION_VERSION) {
+            int regionMagic = input.readInt();
+            int regionVersion = input.readInt();
+            // v2 stores cells only; v3 appends an optional geometry section per volume.
+            if (regionMagic != REGION_MAGIC || regionVersion < 2 || regionVersion > REGION_VERSION) {
                 throw new IOException("Unsupported microvoxel region format: " + source);
             }
+            boolean geometryFormat = regionVersion >= 3;
             int length = input.readInt();
             if (length < 32 || length > MAX_JOURNAL_BATCH_BYTES * 16) {
                 throw new IOException("Invalid microvoxel region length: " + length);
-            }
-            byte[] body = input.readNBytes(length);
+            }            byte[] body = input.readNBytes(length);
             if (body.length != length) throw new EOFException("Truncated microvoxel region");
             int expectedCrc = input.readInt();
             if (input.read() != -1) throw new IOException("Trailing microvoxel region bytes");
@@ -754,7 +757,7 @@ public final class MicrovoxelStore {
                     if (!RegionKey.of(volumeKey).equals(expected) || !result.keys.add(volumeKey)) {
                         throw new IOException("Invalid or duplicate key in microvoxel region");
                     }
-                    volumes.put(volumeKey, readVolume(data));
+                    volumes.put(volumeKey, readVolume(data, geometryFormat));
                     actualCounts.merge(ChunkKey.of(volumeKey), 1, Integer::sum);
                 }
                 if (data.read() != -1) throw new IOException("Trailing region payload bytes");
@@ -831,7 +834,10 @@ public final class MicrovoxelStore {
     private static byte[] readCrcEnvelope(Path source) throws IOException {
         try (DataInputStream input = new DataInputStream(
                 new BufferedInputStream(Files.newInputStream(source)))) {
-            if (input.readInt() != REGION_MAGIC || input.readInt() != REGION_VERSION) {
+            int magic = input.readInt();
+            int version = input.readInt();
+            // Index bodies carry no volumes, so v2 and v3 are byte-identical; accept both.
+            if (magic != REGION_MAGIC || version < 2 || version > REGION_VERSION) {
                 throw new IOException("Unsupported region index format");
             }
             int length = input.readInt();
@@ -911,10 +917,15 @@ public final class MicrovoxelStore {
         Path journal = journalFile();
         if (!Files.isRegularFile(journal)) return;
         try (DataInputStream input = new DataInputStream(new BufferedInputStream(Files.newInputStream(journal)))) {
-            if (input.readInt() != JOURNAL_MAGIC || input.readInt() != JOURNAL_VERSION) {
+            int journalMagic = input.readInt();
+            int journalVersion = input.readInt();
+            // v1 entries have no geometry section; v2 appends an optional one per volume. Accept
+            // both so an upgrade never discards the un-flushed write-behind tail.
+            if (journalMagic != JOURNAL_MAGIC || journalVersion < 1 || journalVersion > JOURNAL_VERSION) {
                 recoveredJournalTail = true;
                 return;
             }
+            boolean journalGeometry = journalVersion >= 2;
             while (true) {
                 int length;
                 try {
@@ -945,7 +956,7 @@ public final class MicrovoxelStore {
                     return;
                 }
                 try {
-                    replayJournalBatch(body);
+                    replayJournalBatch(body, journalGeometry);
                     MicrovoxelMetrics.inc("store.journal.replayed");
                 } catch (IOException corruptBatch) {
                     // One corrupt inner batch truncates the tail instead of discarding the
@@ -958,7 +969,7 @@ public final class MicrovoxelStore {
         }
     }
 
-    private void replayJournalBatch(byte[] body) throws IOException {
+    private void replayJournalBatch(byte[] body, boolean geometryFormat) throws IOException {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(body))) {
             int count = input.readInt();
             if (count < 0 || count > MAX_ENTRIES) throw new IOException("Invalid journal entry count");
@@ -966,7 +977,7 @@ public final class MicrovoxelStore {
                 long sequence = input.readLong();
                 MicrovoxelKey key = readKey(input);
                 if (input.readBoolean()) {
-                    put(key, readVolume(input));
+                    put(key, readVolume(input, geometryFormat));
                 } else {
                     remove(key);
                 }
@@ -999,9 +1010,17 @@ public final class MicrovoxelStore {
             output.write(utf8);
         }
         output.write(volume.cellsCopy());
+        // v3/v2 geometry section: an all-cube volume writes a single false byte (zero-cost).
+        MicrovoxelGeometry geometry = volume.geometryOrNull();
+        output.writeBoolean(geometry != null && !geometry.isEmpty());
+        if (geometry != null && !geometry.isEmpty()) {
+            byte[] encoded = geometry.encode();
+            output.writeInt(encoded.length);
+            output.write(encoded);
+        }
     }
 
-    private static MicrovoxelVolume readVolume(DataInputStream input) throws IOException {
+    private static MicrovoxelVolume readVolume(DataInputStream input, boolean geometryFormat) throws IOException {
         int revision = input.readInt();
         int paletteSize = input.readUnsignedByte();
         if (paletteSize < 1 || paletteSize > MicrovoxelVolume.MAX_PALETTE) {
@@ -1016,6 +1035,16 @@ public final class MicrovoxelStore {
         }
         byte[] cells = input.readNBytes(MicrovoxelVolume.CELL_COUNT);
         if (cells.length != MicrovoxelVolume.CELL_COUNT) throw new EOFException("Truncated journal volume");
-        return MicrovoxelVolume.restore(revision, palette, cells);
+        MicrovoxelGeometry geometry = null;
+        if (geometryFormat && input.readBoolean()) {
+            int length = input.readInt();
+            if (length < 0 || length > MAX_JOURNAL_BATCH_BYTES) {
+                throw new IOException("Invalid microvoxel geometry length " + length);
+            }
+            byte[] encoded = input.readNBytes(length);
+            if (encoded.length != length) throw new EOFException("Truncated microvoxel geometry");
+            geometry = MicrovoxelGeometry.decode(encoded);
+        }
+        return MicrovoxelVolume.restore(revision, palette, cells, geometry);
     }
 }

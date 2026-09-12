@@ -43,6 +43,7 @@ public final class MicrovoxelServerCoreTest {
         verifyMicrovoxelShapes();
         verifyMicrovoxelGeometryChannel();
         verifyVolumeGeometryIntegration();
+        verifyGeometryPersistence();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -1495,6 +1496,38 @@ public final class MicrovoxelServerCoreTest {
         require(!FluidSim.acceptsRain(false, FluidVolume.empty(FluidVolume.Kind.LAVA)),
                 "Rain must never top a lava basin or waterlog it");
         System.out.println("MicrovoxelFluidHardeningTest: orientation and rain gate passed");
+    }
+
+    /** The geometry channel must survive the v3 region store, and all-cube volumes stay lean. */
+    private static void verifyGeometryPersistence() throws Exception {
+        Path directory = Files.createTempDirectory("geometry-store-test");
+        Path file = directory.resolve("microvoxels.dat");
+        UUID world = UUID.randomUUID();
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+
+        MicrovoxelKey shapedKey = new MicrovoxelKey(world, 3, 64, 3);
+        MicrovoxelVolume shaped = MicrovoxelVolume.full("minecraft:stone");
+        shaped.setShape(42, ramp);
+        MicrovoxelStore store = new MicrovoxelStore(file);
+        store.put(shapedKey, shaped);
+        store.save();
+
+        MicrovoxelStore reloaded = new MicrovoxelStore(file);
+        reloaded.load();
+        MicrovoxelVolume loaded = reloaded.get(shapedKey);
+        require(loaded != null && loaded.shapeAt(42) == ramp && loaded.shapeAt(0) == 0,
+                "The geometry channel must survive a v3 region save/load round-trip");
+
+        MicrovoxelKey plainKey = new MicrovoxelKey(world, 4, 64, 4);
+        reloaded.put(plainKey, MicrovoxelVolume.full("minecraft:stone"));
+        reloaded.save();
+        MicrovoxelStore again = new MicrovoxelStore(file);
+        again.load();
+        require(again.get(plainKey) != null && !again.get(plainKey).hasGeometry(),
+                "An all-cube volume must persist without a geometry section");
+        require(again.get(shapedKey).shapeAt(42) == ramp,
+                "A later save must not drop the shaped volume's geometry");
+        System.out.println("MicrovoxelGeometryPersistenceTest: v3 region round-trip passed");
     }
 
     /**
