@@ -1505,31 +1505,47 @@ public final class MicrovoxelServerCoreTest {
         require(MicrovoxelGenerator.typeCount() == MicrovoxelGenerator.Type.values().length,
                 "Every generator type must be enumerated exactly once");
 
+        // RAMP: a continuous 45° slope, so cell k along the run sits k cells higher and stitches.
         var ramp = MicrovoxelGenerator.generate(MicrovoxelGenerator.Type.RAMP, 3, 2, 1, 0);
         require(ramp.size() == 6, "A 3x2 ramp must place six cells");
         require(ramp.stream().allMatch(p -> p.shapeId() == MicrovoxelShape.Type.RAMP_S.ordinal()),
                 "A +Z ramp run must use the south ramp shape");
-        require(ramp.stream().anyMatch(p -> p.dz() == 2) && ramp.stream().anyMatch(p -> p.dx() == 1),
+        require(ramp.stream().allMatch(p -> p.dy() == p.dz()),
+                "A +Z ramp must rise one cell per cell along Z (continuous 45°, not a sawtooth)");
+        require(ramp.stream().anyMatch(p -> p.dz() == 2 && p.dy() == 2)
+                        && ramp.stream().anyMatch(p -> p.dx() == 1),
                 "A +Z ramp must span the requested length and width");
 
         var east = MicrovoxelGenerator.generate(MicrovoxelGenerator.Type.RAMP, 2, 1, 1, 2);
-        require(east.stream().allMatch(p -> p.shapeId() == MicrovoxelShape.Type.RAMP_E.ordinal())
-                        && east.stream().anyMatch(p -> p.dx() == 1),
-                "A +X ramp must ascend along X and use the east shape");
+        require(east.stream().allMatch(p -> p.shapeId() == MicrovoxelShape.Type.RAMP_E.ordinal()
+                        && p.dy() == p.dx()),
+                "A +X ramp must rise along X and use the east shape");
 
+        // COLUMN: vertical — the same X-Z quarter discs at every layer, stacked straight up.
         var column = MicrovoxelGenerator.generate(MicrovoxelGenerator.Type.COLUMN, 1, 1, 3, 0);
         require(column.size() == 12, "A 3-high column must place four quarter cells per layer");
         java.util.Set<Integer> columnShapes = new java.util.HashSet<>();
         column.forEach(p -> columnShapes.add(p.shapeId()));
         require(columnShapes.size() == 4
-                        && columnShapes.contains(MicrovoxelShape.Type.QUARTER_ROUND_NE.ordinal())
-                        && columnShapes.contains(MicrovoxelShape.Type.QUARTER_ROUND_SW.ordinal()),
-                "A round column must use all four quarter-round orientations");
+                        && columnShapes.contains(MicrovoxelShape.Type.QUARTER_ROUND_XZ_NE.ordinal())
+                        && columnShapes.contains(MicrovoxelShape.Type.QUARTER_ROUND_XZ_SW.ordinal()),
+                "A round column must use all four X-Z (vertical) quarter-round orientations");
+        require(column.stream().filter(p -> p.dy() == 0).count() == 4
+                        && column.stream().filter(p -> p.dy() == 2).count() == 4
+                        && column.stream().allMatch(p -> p.dx() >= 0 && p.dx() <= 1
+                        && p.dz() >= 0 && p.dz() <= 1),
+                "A column must stack identical 2x2 layers straight up");
 
+        // ROOF: the ridge runs along the facing axis, so slopes use the perpendicular ramp shapes
+        // and the height forms a symmetric tent (a real ridge, not a flat plateau).
         var roof = MicrovoxelGenerator.generate(MicrovoxelGenerator.Type.ROOF, 1, 4, 1, 0);
-        require(roof.size() == 4 && roof.get(0).shapeId() == MicrovoxelShape.Type.RAMP_S.ordinal()
-                        && roof.get(3).shapeId() == MicrovoxelShape.Type.RAMP_N.ordinal(),
-                "A gable roof must mirror its two ramp runs across the ridge");
+        require(roof.size() == 4
+                        && roof.stream().allMatch(p -> p.shapeId() == MicrovoxelShape.Type.RAMP_E.ordinal()
+                        || p.shapeId() == MicrovoxelShape.Type.RAMP_W.ordinal()),
+                "A +Z-ridge roof must slope across X using east/west ramps");
+        require(roof.stream().mapToInt(MicrovoxelGenerator.Placement::dy).max().orElse(-1) == 1
+                        && roof.stream().filter(p -> p.dy() == 1).count() == 2,
+                "A gable roof must peak at the ridge, not stay flat");
 
         var clamped = MicrovoxelGenerator.generate(MicrovoxelGenerator.Type.RAMP, 999, 999, 1, 0);
         require(clamped.size() == MicrovoxelGenerator.MAX_LENGTH * MicrovoxelGenerator.MAX_WIDTH,

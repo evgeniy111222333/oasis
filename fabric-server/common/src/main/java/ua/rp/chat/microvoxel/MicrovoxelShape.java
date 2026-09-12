@@ -52,7 +52,12 @@ public final class MicrovoxelShape {
         QUARTER_ROUND_SW,
         QUARTER_ROUND_SE,
         QUARTER_ROUND_NW,
-        QUARTER_ROUND_NE
+        QUARTER_ROUND_NE,
+        /** Quarter discs in the X-Z plane (extruded along Y): vertical round columns. */
+        QUARTER_ROUND_XZ_SW,
+        QUARTER_ROUND_XZ_SE,
+        QUARTER_ROUND_XZ_NW,
+        QUARTER_ROUND_XZ_NE
     }
 
     private static final MicrovoxelShape[] BY_ID;
@@ -141,6 +146,10 @@ public final class MicrovoxelShape {
             case QUARTER_ROUND_SE -> (last - x) * (last - x) + y * y <= last * last;
             case QUARTER_ROUND_NW -> x * x + (last - y) * (last - y) <= last * last;
             case QUARTER_ROUND_NE -> (last - x) * (last - x) + (last - y) * (last - y) <= last * last;
+            case QUARTER_ROUND_XZ_SW -> x * x + z * z <= last * last;
+            case QUARTER_ROUND_XZ_SE -> (last - x) * (last - x) + z * z <= last * last;
+            case QUARTER_ROUND_XZ_NW -> x * x + (last - z) * (last - z) <= last * last;
+            case QUARTER_ROUND_XZ_NE -> (last - x) * (last - x) + (last - z) * (last - z) <= last * last;
         };
     }
 

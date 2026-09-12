@@ -41,7 +41,14 @@ public final class MicrovoxelGenerator {
     }
 
     /**
-     * @param facing 0 = +Z, 1 = -Z, 2 = +X, 3 = -X (the ramp ascends along this axis).
+     * Expands a structure into shaped-cell placements relative to the anchor cell.
+     *
+     * <p>Parameters are used per type: {@code length} and {@code width} drive RAMP and ROOF, while
+     * {@code height} drives COLUMN (RAMP/ROOF ignore {@code height}, RAMP/COLUMN ignore
+     * {@code width}). Unused parameters are clamped but otherwise have no effect.</p>
+     *
+     * @param facing 0 = +Z, 1 = -Z, 2 = +X, 3 = -X (a ramp ascends along this axis; a roof ridge
+     *               runs along it).
      */
     public static List<Placement> generate(Type type, int length, int width, int height, int facing) {
         int len = clamp(length, 1, MAX_LENGTH);
@@ -62,21 +69,24 @@ public final class MicrovoxelGenerator {
             for (int across = 0; across < width; across++) {
                 int dx = facing == 2 ? along : facing == 3 ? -along : across;
                 int dz = facing == 0 ? along : facing == 1 ? -along : across;
-                out.add(new Placement(dx, 0, dz, shape));
+                // Each ramp cell already rises one full cell over its own span, so the next cell
+                // along the run must sit one cell higher to stitch into a continuous 45° slope.
+                out.add(new Placement(dx, along, dz, shape));
             }
         }
         return out;
     }
 
     /**
-     * A round column as four quarter-round cells per layer: the disc is centred on the shared
-     * 2x2 corner, so each cell carries the quarter facing that corner.
+     * A round column: a 2x2 footprint of X-Z quarter discs stacked {@code height} cells high. Each
+     * quarter disc is centred on the shared 2x2 corner, so the four cells form one vertical circle
+     * of diameter 1/8 block.
      */
     private static List<Placement> column(int height) {
-        int northEast = MicrovoxelShape.Type.QUARTER_ROUND_NE.ordinal();
-        int northWest = MicrovoxelShape.Type.QUARTER_ROUND_NW.ordinal();
-        int southEast = MicrovoxelShape.Type.QUARTER_ROUND_SE.ordinal();
-        int southWest = MicrovoxelShape.Type.QUARTER_ROUND_SW.ordinal();
+        int northEast = MicrovoxelShape.Type.QUARTER_ROUND_XZ_NE.ordinal();
+        int northWest = MicrovoxelShape.Type.QUARTER_ROUND_XZ_NW.ordinal();
+        int southEast = MicrovoxelShape.Type.QUARTER_ROUND_XZ_SE.ordinal();
+        int southWest = MicrovoxelShape.Type.QUARTER_ROUND_XZ_SW.ordinal();
         List<Placement> out = new ArrayList<>(height * 4);
         for (int y = 0; y < height; y++) {
             out.add(new Placement(0, y, 0, northEast));
@@ -88,21 +98,33 @@ public final class MicrovoxelGenerator {
     }
 
     /**
-     * A gable roof: two 45° runs rising toward a ridge. The cells on the descending half carry the
-     * mirrored ramp so the silhouette reads as a symmetric pitched roof.
+     * A gable roof: two 45° runs rising to a ridge. The ridge runs along the {@code facing} axis
+     * (Z for 0/1, X for 2/3), so the two slopes run on the perpendicular axis; each cell's height
+     * follows a symmetric tent so a real ridge (not a flat plateau) forms.
      */
     private static List<Placement> roof(int length, int width, int facing) {
-        int rise = rampShape(facing);
-        int fall = rampShape(facing ^ 1);
+        boolean ridgeAlongX = facing == 2 || facing == 3;
         List<Placement> out = new ArrayList<>(length * width);
         int half = width / 2;
         for (int along = 0; along < length; along++) {
             for (int across = 0; across < width; across++) {
                 boolean ascending = across < half || (width % 2 == 1 && across == half);
-                int shape = ascending ? rise : fall;
-                int dx = facing == 2 ? along : facing == 3 ? -along : across;
-                int dz = facing == 0 ? along : facing == 1 ? -along : across;
-                out.add(new Placement(dx, 0, dz, shape));
+                int dy = Math.min(across, width - 1 - across);
+                int dx;
+                int dz;
+                int shape;
+                if (ridgeAlongX) {
+                    dx = facing == 2 ? along : -along;
+                    dz = across;
+                    shape = (ascending ? MicrovoxelShape.Type.RAMP_S
+                            : MicrovoxelShape.Type.RAMP_N).ordinal();
+                } else {
+                    dx = across;
+                    dz = facing == 0 ? along : -along;
+                    shape = (ascending ? MicrovoxelShape.Type.RAMP_E
+                            : MicrovoxelShape.Type.RAMP_W).ordinal();
+                }
+                out.add(new Placement(dx, dy, dz, shape));
             }
         }
         return out;
