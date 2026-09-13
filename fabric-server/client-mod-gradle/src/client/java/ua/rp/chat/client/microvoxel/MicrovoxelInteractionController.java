@@ -58,8 +58,13 @@ public final class MicrovoxelInteractionController {
     private static boolean clipboardMirror;
     /** Material chosen in the radial palette; sent with place/brush actions so the server can source it. */
     private static String selectedMaterialId = "";
-    /** True while a radial-chosen tool is engaged: LMB erases, RMB places continuously. */
+    /** True while a radial-chosen tool is engaged. */
     private static boolean toolActive;
+    private static final int TOOL_NONE = 0;
+    private static final int TOOL_PLACE = 1;
+    private static final int TOOL_ERASE = 2;
+    /** Radial-chosen primary action: LMB runs it, RMB runs the opposite. */
+    private static int toolMode = TOOL_NONE;
     /** One-time raw-block conversion pause before the tool engages (~0.6 s at 20 tps). */
     private static int conversionTicks;
     private static KeyMapping radialKey;
@@ -107,11 +112,23 @@ public final class MicrovoxelInteractionController {
         MicrovoxelActionBatcher.flush(minecraft);
     }
 
+    /** Radial-chosen tool: LMB runs it directly, RMB runs the opposite. */
+    public static boolean handleAttack(Minecraft minecraft) {
+        if (!editing) return false;
+        return toolMode == TOOL_PLACE ? performPlace(minecraft) : performErase(minecraft);
+    }
+
+    /** Radial-chosen tool on the secondary button runs the opposite action. */
+    public static boolean handleUse(Minecraft minecraft) {
+        if (!editing) return false;
+        return toolMode == TOOL_PLACE ? performErase(minecraft) : performPlace(minecraft);
+    }
+
     public static void handleContinuousAttack(Minecraft minecraft) {
         handleAttack(minecraft);
     }
 
-    public static boolean handleAttack(Minecraft minecraft) {
+    private static boolean performErase(Minecraft minecraft) {
         if (!editing || minecraft.player == null) return false;
         if (lastAttackSentTick == interactionTick) return true;
         // Minecraft calls continueAttack before the END_CLIENT_TICK callback refreshes the
@@ -186,7 +203,7 @@ public final class MicrovoxelInteractionController {
         return true;
     }
 
-    public static boolean handleUse(Minecraft minecraft) {
+    private static boolean performPlace(Minecraft minecraft) {
         if (!editing || minecraft.player == null) return false;
         MicrovoxelRaycaster.Hit hit = currentHit != null ? currentHit : resolveHit(minecraft);
         if (hit == null) {
@@ -576,14 +593,18 @@ public final class MicrovoxelInteractionController {
             case "shape.set" -> {
                 if (shapeId >= 0) withEditing(minecraft, m -> applyShape(m, shapeId));
             }
-            // Material picked from the palette: swap the active material for the next placement.
+            // Material picked from the palette: swap the active material and (if no tool yet) engage
+            // placing, so a bare material pick is not a no-op.
             case "material" -> {
                 selectedMaterialId = material == null ? "" : material;
+                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 if (!fragment) {
                     toolActive = false;
                     conversionTicks = 12;
                     minecraft.gui.setOverlayMessage(
                             Component.literal("Конвертация блока в микровоксели…"), false);
+                } else {
+                    toolActive = true;
                 }
             }
             case "gen.ramp" -> withEditing(minecraft, m -> generateTarget(m, 0, length, width, height));
@@ -593,8 +614,10 @@ public final class MicrovoxelInteractionController {
             // then the tool stays engaged for continuous LMB/RMB building.
             case "place" -> {
                 selectedMaterialId = material == null ? "" : material;
+                toolMode = TOOL_PLACE;
                 if (fragment) {
                     toolActive = true;
+                    minecraft.gui.setOverlayMessage(Component.literal("Режим: поставить"), false);
                 } else {
                     toolActive = false;
                     conversionTicks = 12;
@@ -602,7 +625,11 @@ public final class MicrovoxelInteractionController {
                             Component.literal("Конвертация блока в микровоксели…"), false);
                 }
             }
-            case "erase" -> toolActive = true;
+            case "erase" -> {
+                toolMode = TOOL_ERASE;
+                toolActive = true;
+                minecraft.gui.setOverlayMessage(Component.literal("Режим: убрать"), false);
+            }
             case "clip.copy" -> withEditing(minecraft, MicrovoxelInteractionController::copyTarget);
             case "clip.paste" -> withEditing(minecraft, MicrovoxelInteractionController::pasteTarget);
             case "clip.rotate" -> withEditing(minecraft, m -> {
@@ -615,21 +642,25 @@ public final class MicrovoxelInteractionController {
             });
             case "brush.single" -> {
                 brushShape = MicrovoxelBrush.SINGLE;
+                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 toolActive = true;
                 showBrush(minecraft);
             }
             case "brush.line" -> {
                 brushShape = MicrovoxelBrush.PLANE;
+                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 toolActive = true;
                 showBrush(minecraft);
             }
             case "brush.square" -> {
                 brushShape = MicrovoxelBrush.BOX;
+                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 toolActive = true;
                 showBrush(minecraft);
             }
             case "brush.circle" -> {
                 brushShape = MicrovoxelBrush.SPHERE;
+                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 toolActive = true;
                 showBrush(minecraft);
             }
