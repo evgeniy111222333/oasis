@@ -14,32 +14,29 @@ public final class CarverKeybinds {
     public static KeyMapping redo;
     public static KeyMapping mirrorX;
     public static KeyMapping mirrorZ;
-    public static KeyMapping layerUp;
-    public static KeyMapping layerDown;
-    public static KeyMapping depthUp;
-    public static KeyMapping depthDown;
-    public static KeyMapping boxMode;
-    public static KeyMapping toolToggle;
 
     private CarverKeybinds() {
     }
 
     public static void register() {
-        undo = key("key.eclipse.carver_undo", GLFW.GLFW_KEY_Z);
-        redo = key("key.eclipse.carver_redo", GLFW.GLFW_KEY_Y);
+        // Undo/redo carry a real Ctrl modifier (shown as Ctrl+Z / Ctrl+Y in Controls) instead
+        // of a bare key plus a hidden runtime check.
+        undo = ctrlKey("key.eclipse.carver_undo", GLFW.GLFW_KEY_Z);
+        redo = ctrlKey("key.eclipse.carver_redo", GLFW.GLFW_KEY_Y);
         mirrorX = key("key.eclipse.carver_mirror_x", GLFW.GLFW_KEY_X);
         mirrorZ = key("key.eclipse.carver_mirror_z", GLFW.GLFW_KEY_C);
-        layerUp = key("key.eclipse.carver_layer_up", GLFW.GLFW_KEY_R);
-        layerDown = key("key.eclipse.carver_layer_down", GLFW.GLFW_KEY_F);
-        depthUp = key("key.eclipse.carver_depth_up", GLFW.GLFW_KEY_T);
-        depthDown = key("key.eclipse.carver_depth_down", GLFW.GLFW_KEY_G);
-        boxMode = key("key.eclipse.carver_box", GLFW.GLFW_KEY_B);
-        toolToggle = key("key.eclipse.carver_tool", GLFW.GLFW_KEY_E);
+        // Box mode and tool toggle also have on-screen buttons, so no bare shortcuts remain.
     }
 
     private static KeyMapping key(String translationKey, int defaultCode) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey,
                 InputConstants.Type.KEYSYM, defaultCode, KeyMapping.Category.GAMEPLAY));
+    }
+
+    private static KeyMapping ctrlKey(String translationKey, int defaultCode) {
+        return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey,
+                InputConstants.Type.KEYSYM, defaultCode, KeyMapping.Category.GAMEPLAY,
+                GLFW.GLFW_KEY_LEFT_CONTROL));
     }
 
 }

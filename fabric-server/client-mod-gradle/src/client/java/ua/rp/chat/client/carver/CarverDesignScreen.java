@@ -270,11 +270,12 @@ public class CarverDesignScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int code = event.key();
-        if (isCtrlDown() && CarverKeybinds.undo.matches(event)) {
+        // The Ctrl modifier is part of the key mapping now, so a plain Z/Y stays free.
+        if (CarverKeybinds.undo.matches(event)) {
             CarverClientState.sendUndo();
             return true;
         }
-        if (isCtrlDown() && CarverKeybinds.redo.matches(event)) {
+        if (CarverKeybinds.redo.matches(event)) {
             CarverClientState.sendRedo();
             return true;
         }
@@ -289,16 +290,6 @@ public class CarverDesignScreen extends Screen {
         }
         if (code == KEY_ESCAPE) {
             onClose();
-            return true;
-        }
-        if (CarverKeybinds.boxMode.matches(event)) {
-            boxMode = !boxMode;
-            boxButton.label = boxLabel();
-            return true;
-        }
-        if (CarverKeybinds.toolToggle.matches(event)) {
-            erasing = !erasing;
-            toolButton.label = toolLabel();
             return true;
         }
         if (CarverKeybinds.mirrorX.matches(event)) {

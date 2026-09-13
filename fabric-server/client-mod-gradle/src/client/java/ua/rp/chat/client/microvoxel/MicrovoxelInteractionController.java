@@ -70,7 +70,7 @@ public final class MicrovoxelInteractionController {
         // Only Undo survives as a plain binding; everything else lives in the radial menu.
         undoKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.microvoxel_undo", InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_Z, KeyMapping.Category.GAMEPLAY));
+                GLFW.GLFW_KEY_Z, KeyMapping.Category.GAMEPLAY, GLFW.GLFW_KEY_LEFT_CONTROL));
         radialKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.eclipseclient.microvoxel_radial", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_G, KeyMapping.Category.GAMEPLAY));
