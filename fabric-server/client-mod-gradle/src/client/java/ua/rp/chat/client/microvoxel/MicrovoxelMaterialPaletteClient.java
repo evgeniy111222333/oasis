@@ -80,11 +80,35 @@ public final class MicrovoxelMaterialPaletteClient {
             first = false;
             json.append("{\"id\":\"").append(escape(entry.material())).append('"')
                     .append(",\"name\":\"").append(escape(displayName(entry.material()))).append('"')
+                    .append(",\"color\":\"").append(colorHex(entry.material())).append('"')
                     .append(",\"units\":").append(entry.units())
                     .append(",\"fragment\":").append(entry.fromFragment())
                     .append('}');
         }
         return json.append(']').toString();
+    }
+
+    /** Swatch colour derived from the block's own map colour, so plaques match their material. */
+    private static String colorHex(String material) {
+        try {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft == null || minecraft.level == null || minecraft.player == null) {
+                return "#8a8a8a";
+            }
+            int bracket = material.indexOf('[');
+            String blockId = bracket < 0 ? material : material.substring(0, bracket);
+            net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.parse(blockId);
+            var reference = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(id);
+            if (reference.isEmpty()) return "#8a8a8a";
+            BlockState state = reference.get().value().defaultBlockState();
+            net.minecraft.world.level.material.MapColor mapColor =
+                    state.getMapColor(minecraft.level, minecraft.player.blockPosition());
+            int argb = mapColor.calculateARGBColor(
+                    net.minecraft.world.level.material.MapColor.Brightness.NORMAL);
+            return String.format("#%06X", argb & 0xFFFFFF);
+        } catch (RuntimeException ignored) {
+            return "#8a8a8a";
+        }
     }
 
     private static String displayName(String material) {

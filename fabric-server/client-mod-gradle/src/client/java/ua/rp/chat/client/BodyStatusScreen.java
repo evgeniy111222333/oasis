@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
+import ua.rp.chat.client.mcef.McefGlStateGuard;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -61,6 +62,7 @@ public class BodyStatusScreen extends Screen {
             String targetUrl = getLocalBodyUrl(url);
             log("Opening local body URL: " + targetUrl);
             browser = MCEF.createBrowser(targetUrl, true);
+            McefGlStateGuard.onBrowserActive();
             log("browser created: " + McefDiagnostics.browserState(browser));
             browserClosed = false;
             resizeBrowser();
@@ -150,6 +152,7 @@ public class BodyStatusScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        McefGlStateGuard.restore();
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
         if (browser != null && browser.isTextureReady()) {
@@ -356,6 +359,7 @@ public class BodyStatusScreen extends Screen {
         browser.setFocus(false);
         browser.close();
         browser = null;
+        McefGlStateGuard.restore();
         log("browser close returned: reason=" + reason);
     }
 

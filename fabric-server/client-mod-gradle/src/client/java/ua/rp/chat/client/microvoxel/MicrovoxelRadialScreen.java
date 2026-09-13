@@ -16,6 +16,7 @@ import org.cef.CefSettings;
 import org.cef.browser.CefBrowser;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.client.mcef.McefGlStateGuard;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -37,17 +38,21 @@ public final class MicrovoxelRadialScreen extends Screen {
     @FunctionalInterface
     public interface Listener {
         void onSelect(String action, String material, boolean fragment, int shapeId,
-                      int length, int width, int height);
+                      int length, int width, int height, int brushShape, int brushRadius);
     }
 
     private static final String RESOURCE = "/assets/eclipseclient/web/radial/radial.html";
     private static final String BRIDGE_PREFIX = "@eclipse/radial:";
+    /** Palette handshake: stop re-injecting once the page acknowledges (or after this many tries). */
+    private static final int MAX_PALETTE_ATTEMPTS = 60;
 
     private final Listener listener;
     private final Screen returnScreen;
     private MCEFBrowser browser;
     private CefDisplayHandlerAdapter displayHandler;
     private boolean paletteInjected;
+    private volatile boolean paletteReady;
+    private int paletteAttempts;
     private int ticks;
 
     public MicrovoxelRadialScreen(Listener listener) {
@@ -71,6 +76,7 @@ public final class MicrovoxelRadialScreen extends Screen {
             String url = "file:///" + page.getAbsolutePath().replace("\\", "/") + "#open&ingame";
             browser = MCEF.createBrowser(url, true);
             if (browser != null) {
+                McefGlStateGuard.onBrowserActive();
                 browser.setFocus(true);
                 int scale = guiScale();
                 browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
@@ -104,13 +110,22 @@ public final class MicrovoxelRadialScreen extends Screen {
             public boolean onConsoleMessage(CefBrowser source, CefSettings.LogSeverity level,
                                             String message, String scriptUrl, int line) {
                 if (message != null && message.startsWith(BRIDGE_PREFIX)) {
-                    handleSelection(message.substring(BRIDGE_PREFIX.length()));
+                    handleBridge(message.substring(BRIDGE_PREFIX.length()));
                     return true;
                 }
                 return false;
             }
         };
         client.addDisplayHandler(displayHandler);
+    }
+
+    /** Routes the palette handshake separately from a real selection; both ride the same channel. */
+    private void handleBridge(String json) {
+        if (json.contains("\"bridge\":\"palette-ready\"")) {
+            paletteReady = true;
+            return;
+        }
+        handleSelection(json);
     }
 
     private void handleSelection(String json) {
@@ -121,9 +136,12 @@ public final class MicrovoxelRadialScreen extends Screen {
         int length = jsonInt(json, "length", 5);
         int width = jsonInt(json, "width", 3);
         int height = jsonInt(json, "height", 1);
+        int brushShape = jsonInt(json, "brushShape", -1);
+        int brushRadius = jsonInt(json, "brushRadius", 0);
         Minecraft minecraft = this.minecraft;
         if (minecraft != null) minecraft.execute(() -> {
-            if (listener != null) listener.onSelect(action, material, fragment, shapeId, length, width, height);
+            if (listener != null) listener.onSelect(action, material, fragment, shapeId,
+                    length, width, height, brushShape, brushRadius);
             if (minecraft.screen == this) minecraft.setScreen(returnScreen);
         });
     }
@@ -160,13 +178,20 @@ public final class MicrovoxelRadialScreen extends Screen {
         super.tick();
         ticks++;
         if (browser != null && !paletteInjected && browser.isTextureReady() && ticks >= 2) {
-            paletteInjected = true;
-            try {
-                browser.executeJavaScript(
-                        "window.EclipseRadial && window.EclipseRadial.setMaterials("
-                                + MicrovoxelMaterialPaletteClient.toJson() + ");", "", 0);
-            } catch (Throwable ignored) {
-                // palette stays empty; the wheel still opens
+            if (paletteReady || paletteAttempts >= MAX_PALETTE_ATTEMPTS) {
+                // The page acknowledged the palette (possibly empty) — stop re-injecting.
+                paletteInjected = true;
+            } else {
+                // Re-inject until the page is ready and acks; a CEF "texture ready" frame can
+                // arrive before the page script has defined EclipseRadial.
+                paletteAttempts++;
+                try {
+                    browser.executeJavaScript(
+                            "window.EclipseRadial && window.EclipseRadial.setMaterials("
+                                    + MicrovoxelMaterialPaletteClient.toJson() + ");", "", 0);
+                } catch (Throwable ignored) {
+                    // retry on the next tick; the wheel still opens
+                }
             }
         }
     }
@@ -178,6 +203,7 @@ public final class MicrovoxelRadialScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        McefGlStateGuard.restore();
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
@@ -289,6 +315,9 @@ public final class MicrovoxelRadialScreen extends Screen {
                 // best effort
             }
             browser = null;
+            // MCEFRenderer.cleanup() deletes the browser GpuTexture; make sure the frame that
+            // reclaims the screen never inherits the browser's texture/unpack state.
+            McefGlStateGuard.restore();
         }
     }
 

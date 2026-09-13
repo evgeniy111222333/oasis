@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import ua.rp.chat.client.carver.CarverClientState;
+import ua.rp.chat.client.mcef.McefGlStateGuard;
 
 /**
  * The carver drafting screen resolves cells through the free mouse pointer, while the vanilla
@@ -18,6 +19,19 @@ import ua.rp.chat.client.carver.CarverClientState;
  */
 @Mixin(Gui.class)
 public class GuiMixin {
+    /**
+     * MCEF's message loop runs at the head of {@code GameRenderer.render} and its offscreen paint
+     * leaves the GL texture/unpack state dirty. This runs after that paint and before the frame's
+     * GUI pass is built (both the HUD and any open screen are extracted on top of this call), so
+     * the embedded browser can never make Minecraft text render as solid bars.
+     */
+    @Inject(method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V",
+            at = @At("HEAD"))
+    private void eclipse$restoreGlStateAfterMcef(GuiGraphicsExtractor graphics,
+                                                 DeltaTracker deltaTracker, CallbackInfo ci) {
+        McefGlStateGuard.restore();
+    }
+
     @Inject(method = "extractCrosshair(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V",
             at = @At("HEAD"), cancellable = true)
     private void eclipse$hideCrosshairWhileDesigning(GuiGraphicsExtractor graphics,

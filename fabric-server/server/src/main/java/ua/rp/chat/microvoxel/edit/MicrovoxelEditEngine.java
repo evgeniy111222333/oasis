@@ -401,11 +401,8 @@ public final class MicrovoxelEditEngine {
     }
 
     private void pasteClipboard(ServerPlayer player, QueuedAction action) {
-        if (player.gameMode.getGameModeForPlayer() != GameType.CREATIVE) {
-            context.sync().feedback(player,
-                    "Вставка доступна в creative: это исключает создание материала из ничего.");
-            return;
-        }
+        // Paste creates new voxels, so in survival it is charged like place/generate; creative is free.
+        boolean creative = player.gameMode.getGameModeForPlayer() == GameType.CREATIVE;
         ClipboardVolume clipboard = clipboards.get(player.getUUID());
         if (clipboard == null) {
             context.sync().feedback(player, "Буфер микровокселей пуст. Сначала скопируйте объём.");
@@ -447,6 +444,7 @@ public final class MicrovoxelEditEngine {
         ServerLevel level = (ServerLevel) player.level();
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> before = new LinkedHashMap<>();
         LinkedHashMap<MicrovoxelKey, MicrovoxelVolume> working = new LinkedHashMap<>();
+        LinkedHashMap<String, Integer> materialUnits = new LinkedHashMap<>();
 
         for (int sourceCell = 0; sourceCell < MicrovoxelVolume.CELL_COUNT; sourceCell++) {
             if (!source.occupied(sourceCell)) continue;
@@ -518,6 +516,9 @@ public final class MicrovoxelEditEngine {
                 return;
             }
             volume.put(cell, material);
+            volume.setShape(cell, source.shapeAt(sourceCell));
+            materialUnits.merge(material, MicrovoxelMaterialEconomy.cellCost(source.shapeAt(sourceCell)),
+                    Integer::sum);
         }
         Map<ChunkKey, Integer> newPerChunk = new HashMap<>();
         for (MicrovoxelKey key : working.keySet()) {
@@ -529,6 +530,30 @@ public final class MicrovoxelEditEngine {
                     + entry.getValue() > MicrovoxelRuntime.MAX_PER_CHUNK) {
                 context.sync().feedback(player, "Вставка превысит лимит объёмов в чанке.");
                 return;
+            }
+        }
+
+        if (!creative && !materialUnits.isEmpty()) {
+            // Verify every material before consuming any, so a failed paste never eats resources.
+            java.util.LinkedHashMap<MicrovoxelMaterialEconomy.SelectedMaterial, Integer> charges =
+                    new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, Integer> need : materialUnits.entrySet()) {
+                MicrovoxelMaterialEconomy.SelectedMaterial selected =
+                        economy.findByMaterial(player, need.getKey());
+                if (selected == null) {
+                    context.sync().feedback(player,
+                            "Нет в инвентаре материала для вставки: " + need.getKey() + ".");
+                    return;
+                }
+                if (economy.availableMaterialUnits(player, selected) < need.getValue()) {
+                    context.sync().feedback(player,
+                            "Недостаточно материала для вставки: " + need.getKey() + ".");
+                    return;
+                }
+                charges.put(selected, need.getValue());
+            }
+            for (Map.Entry<MicrovoxelMaterialEconomy.SelectedMaterial, Integer> charge : charges.entrySet()) {
+                economy.consumeMaterialUnits(player, charge.getKey(), charge.getValue());
             }
         }
 

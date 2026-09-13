@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import net.minecraft.world.level.GameType;
+import ua.rp.chat.client.mcef.McefGlStateGuard;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -84,6 +85,7 @@ public class AuthScreen extends Screen {
                 // The React appearance workshop is a transparent CEF surface so
                 // the game world remains visible outside its dossier panel.
                 browser = MCEF.createBrowser(targetUrl, appearanceEditor);
+                McefGlStateGuard.onBrowserActive();
                 log("browser created: " + McefDiagnostics.browserState(browser));
                 McefDiagnostics.registerHandlers(browser, traceId);
             }
@@ -227,6 +229,7 @@ public class AuthScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        McefGlStateGuard.restore();
         if (browser != null && browser.isTextureReady()) {
             int texWidth = browser.getRenderer().getTextureWidth();
             int texHeight = browser.getRenderer().getTextureHeight();
@@ -392,6 +395,7 @@ public class AuthScreen extends Screen {
             }
             browser.close();
             browser = null;
+            McefGlStateGuard.restore();
             log("browser close returned: reason=" + reason);
         }
 
@@ -424,6 +428,7 @@ public class AuthScreen extends Screen {
             log("exit button selected; disconnecting to title screen");
             browser.close();
             browser = null;
+            McefGlStateGuard.restore();
         }
         if (minecraft == null) {
             return;

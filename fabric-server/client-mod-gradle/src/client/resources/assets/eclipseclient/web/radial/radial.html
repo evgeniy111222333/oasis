@@ -430,6 +430,9 @@
     transition: transform 0.14s var(--ease-open), border-color 0.14s, background 0.14s, color 0.14s; }
   .shape-tile:hover { transform: translateY(-2px); border-color: rgba(240,220,174,0.5); color: #fff6e4;
     background: linear-gradient(150deg, rgba(232,164,91,0.22), rgba(232,164,91,0.06)); }
+  .shape-tile.is-on { border-color: rgba(240,220,174,0.9); color: #fff6e4;
+    background: linear-gradient(150deg, rgba(232,164,91,0.34), rgba(201,168,106,0.14)); }
+  .gen-step button:disabled { opacity: 0.35; cursor: default; }
   .shape-tile__ico { width: 34px; height: 34px; }
   .shape-tile__ico svg { width: 100%; height: 100%; }
   .shape-tile__cap { font-size: 10.5px; line-height: 1.05; }
@@ -510,7 +513,7 @@
       <div class="palette" id="palette">
         <div>
           <div class="palette__title">Материал</div>
-          <div class="palette__meta" id="paletteMeta">дубовая доска</div>
+          <div class="palette__meta" id="paletteMeta">—</div>
         </div>
         <div class="swatches" id="swatches"></div>
       </div>
@@ -589,12 +592,7 @@
     { id: "shape",  label: "Форма",     icon: "shape", picker: "shape" },
     { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
     { id: "gen",    label: "Генератор", icon: "gen" },
-    { id: "brush",  label: "Кисть",     icon: "brush", children: [
-        { id: "brush.single", label: "Одна",    icon: "single" },
-        { id: "brush.line",   label: "Линия",   icon: "line" },
-        { id: "brush.square", label: "Квадрат", icon: "square" },
-        { id: "brush.circle", label: "Круг",    icon: "circle" }
-    ]},
+    { id: "brush",  label: "Кисть",     icon: "brush", picker: "brush" },
     { id: "clip",   label: "Буфер",     icon: "clip", children: [
         { id: "clip.copy",   label: "Копировать", icon: "clip" },
         { id: "clip.paste",  label: "Вставить",   icon: "paste" },
@@ -607,15 +605,19 @@
     ]}
   ];
 
-  const MATERIALS = [
-    { name: "дубовая доска",    color: "#b58a4e" },
-    { name: "каменный кирпич",  color: "#8a8a8a" },
-    { name: "кварц",            color: "#e6e2d6" },
-    { name: "изумрудный блок",  color: "#2fae6b" },
-    { name: "кирпич",           color: "#9a4b3b" },
-    { name: "синяя керамика",   color: "#2f5fae" },
-    { name: "песчаник",         color: "#d8c68a" }
+  // Populated exclusively by EclipseRadial.setMaterials(...) from the player's real inventory.
+  // Intentionally empty: an absent palette must read as "no blocks", never as fake demo names.
+  const MATERIALS = [];
+
+  // Brush catalog order must match MicrovoxelBrush (SINGLE, SPHERE, BOX, PLANE).
+  const BRUSHES = [
+    { shape: 0, label: "Одна",    icon: "single", radius: false },
+    { shape: 3, label: "Площина", icon: "line",   radius: true },
+    { shape: 2, label: "Куб",     icon: "square", radius: true },
+    { shape: 1, label: "Сфера",   icon: "circle", radius: true }
   ];
+  let brushShape = 0;
+  let brushRadius = 1;
 
   /* ============================ refs ============================ */
   const root        = document.getElementById("radial");
@@ -687,7 +689,9 @@
       el.addEventListener("click", () => selectMaterial(i));
       swatches.appendChild(el);
     });
-    if (MATERIALS.length) paletteMeta.textContent = MATERIALS[materialIndex].name;
+    if (paletteMeta) {
+      paletteMeta.textContent = MATERIALS.length ? MATERIALS[materialIndex].name : "нет блоков";
+    }
   }
 
   const angleFor = (index, total) => (360 / total) * index;           // 0° = вгорі
@@ -705,7 +709,12 @@
     return parent.children || null;
   }
 
-  const hasOptions = (sector) => !!optionsFor(sector);
+  const hasOptions = (sector) => {
+    const options = optionsFor(sector);
+    return !!options && options.length > 0;
+  };
+  const materialSectorEmpty = (sector) =>
+    !!sector && sector.dynamic === "materials" && MATERIALS.length === 0;
 
   const prettify = (name) => name.replace(/_/g, " ").toLowerCase();
   function svgShape(name) {
@@ -717,9 +726,10 @@
     panelOpen = true;
     root.classList.add("panel-open");
     foliant.setAttribute("data-open", "true");
-    foliantTitle.textContent = kind === "shape" ? "Форма" : "Генератор";
+    foliantTitle.textContent = kind === "shape" ? "Форма" : kind === "brush" ? "Кисть" : "Генератор";
     foliantBody.innerHTML = "";
     if (kind === "shape") buildShapeGrid();
+    else if (kind === "brush") buildBrushPanel();
     else buildGeneratorPanel();
   }
 
@@ -742,6 +752,60 @@
       grid.appendChild(tile);
     });
     foliantBody.appendChild(grid);
+  }
+
+  function buildBrushPanel() {
+    const grid = document.createElement("div");
+    grid.className = "shape-grid shape-grid--brush";
+    BRUSHES.forEach((brush) => {
+      const tile = document.createElement("button");
+      tile.className = "shape-tile" + (brush.shape === brushShape ? " is-on" : "");
+      tile.innerHTML = '<span class="shape-tile__ico">' + svg(brush.icon) + "</span>"
+        + '<span class="shape-tile__cap">' + brush.label + "</span>";
+      tile.addEventListener("click", () => { brushShape = brush.shape; openPanel("brush"); });
+      grid.appendChild(tile);
+    });
+    foliantBody.appendChild(grid);
+
+    const radiusEnabled = BRUSHES.find((b) => b.shape === brushShape).radius;
+    const row = document.createElement("div");
+    row.className = "gen-row";
+    const caption = document.createElement("label");
+    caption.textContent = "Радиус";
+    row.appendChild(caption);
+    const step = document.createElement("div");
+    step.className = "gen-step";
+    const minus = document.createElement("button");
+    minus.textContent = "\u2212";
+    const value = document.createElement("span");
+    value.textContent = radiusEnabled ? brushRadius : "\u2014";
+    const plus = document.createElement("button");
+    plus.textContent = "+";
+    minus.addEventListener("click", () => {
+      brushRadius = Math.max(1, brushRadius - 1);
+      value.textContent = brushRadius;
+    });
+    plus.addEventListener("click", () => {
+      brushRadius = Math.min(4, brushRadius + 1);
+      value.textContent = brushRadius;
+    });
+    minus.disabled = plus.disabled = !radiusEnabled;
+    step.appendChild(minus);
+    step.appendChild(value);
+    step.appendChild(plus);
+    row.appendChild(step);
+    foliantBody.appendChild(row);
+
+    const apply = document.createElement("button");
+    apply.className = "gen-create";
+    apply.textContent = "Применить";
+    const brush = BRUSHES.find((b) => b.shape === brushShape);
+    apply.addEventListener("click", () => emit("brush.apply", {
+      brushShape: brush.shape,
+      brushRadius: brush.radius ? brushRadius : 0,
+      label: "Кисть: " + brush.label
+    }));
+    foliantBody.appendChild(apply);
   }
 
   function buildGeneratorPanel() {
@@ -982,7 +1046,17 @@
       : SECTORS[hotOuter];
 
     hubLabel.textContent = focus.label;
-    hubSub.textContent = hotInner !== -1 ? SECTORS[selectedOuter].label : (focus.children ? "выберите вариант" : "ЛКМ — выбрать");
+    if (hotInner !== -1) {
+      hubSub.textContent = SECTORS[selectedOuter].label;
+    } else if (materialSectorEmpty(focus)) {
+      hubSub.textContent = "нет блоков в инвентаре";
+    } else if (focus.picker) {
+      hubSub.textContent = "открыть панель";
+    } else if (hasOptions(focus)) {
+      hubSub.textContent = "выберите вариант";
+    } else {
+      hubSub.textContent = "ЛКМ — выбрать";
+    }
     if (hubIcon.dataset.id !== focus.id) {
       hubIcon.dataset.id = focus.id;
       hubIcon.innerHTML = svg(focus.icon);
@@ -1014,19 +1088,23 @@
         const idx = MATERIALS.findIndex((m) => m.id === el.dataset.material);
         if (idx >= 0) materialIndex = idx;
       }
-      if (el.dataset.shapeId) extra.shapeId = parseInt(el.dataset.shapeId, 10);
       emit(el.dataset.id, extra);
       return;
     }
+    if (hotOuter === -1) return;          // hub dead-zone: nothing focused yet
     const sector = SECTORS[hotOuter];
+    if (!sector) return;
     if (hasOptions(sector)) {
       renderInner(hotOuter);              // розкрити, не закривати
       hotInner = -1;
       updateHot();
       return;
     }
-    if (sector.id === "shape") { openPanel("shape"); return; }
-    if (sector.id === "gen") { openPanel("gen"); return; }
+    if (materialSectorEmpty(sector)) {
+      showToast("Нет блоков в инвентаре");
+      return;
+    }
+    if (sector.picker) { openPanel(sector.picker); return; }
     emit(sector.id);
   }
 
@@ -1061,13 +1139,15 @@
   }
 
   function selectMaterial(index) {
+    if (!MATERIALS.length) return;
     materialIndex = index;
     [...swatches.children].forEach((el, i) => el.classList.toggle("is-hot", i === index));
-    paletteMeta.textContent = MATERIALS[index].name;
+    if (paletteMeta) paletteMeta.textContent = MATERIALS[index].name;
     showToast("Материал: " + MATERIALS[index].name);
   }
 
   function cycleMaterial(delta) {
+    if (!MATERIALS.length) return;
     selectMaterial((materialIndex + delta + MATERIALS.length) % MATERIALS.length);
   }
 
@@ -1123,15 +1203,25 @@
     setMaterials: (list) => {
       if (!Array.isArray(list)) return;
       MATERIALS.length = 0;
-      list.forEach((m) => MATERIALS.push({
-        id: m.id,
-        name: m.name || m.id,
-        color: m.color || "#8a8a8a",
-        units: m.units,
-        fragment: !!m.fragment
-      }));
+      list.forEach((m) => {
+        if (!m || !m.id) return;                 // demo/nameless entries never enter the live palette
+        MATERIALS.push({
+          id: m.id,
+          name: m.name || m.id,
+          color: m.color || "#8a8a8a",
+          units: m.units,
+          fragment: !!m.fragment
+        });
+      });
       materialIndex = 0;
       buildPalette();
+      // Handshake ack: Java keeps retrying until it sees this, so a page that was not ready yet
+      // cannot leave the palette in its empty/demo state.
+      try {
+        console.log("@eclipse/radial:" + JSON.stringify({ bridge: "palette-ready", count: MATERIALS.length }));
+      } catch (ignore) {
+        // no bridge (plain browser preview) — ignore
+      }
     }
   };
 

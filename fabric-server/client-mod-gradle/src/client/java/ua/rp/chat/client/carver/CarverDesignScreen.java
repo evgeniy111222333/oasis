@@ -41,6 +41,8 @@ public class CarverDesignScreen extends Screen {
     private boolean painting;
     private int[] dragStart;
     private int[] dragNow;
+    /** Volume cell under the free cursor; the microvoxel radial freezes this as its action target. */
+    private ua.rp.chat.microvoxel.MicrovoxelRaycaster.Hit hoveredVolumeHit;
     private final List<UiButton> buttons = new ArrayList<>();
     /** One-shot pick diagnostics: logs the first few cursor resolves of each drafting session. */
     private static int pickDiag;
@@ -257,6 +259,15 @@ public class CarverDesignScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        // Keep the hovered volume cell fresh so G can freeze the target the free cursor points at.
+        if (minecraft != null && minecraft.screen == this) {
+            pickAt(mouseX, mouseY);
+        }
+        super.mouseMoved(mouseX, mouseY);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (isShiftDown()) {
             CarverClientState.setViewLayer(CarverClientState.viewLayer()
@@ -353,6 +364,7 @@ public class CarverDesignScreen extends Screen {
     private CarverCursorPick.Hit pickAt(double mouseX, double mouseY) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.player == null) return null;
+        hoveredVolumeHit = null;
         BlockPos focus = CarverClientState.focus();
         if (focus == null || !CarverClientState.designing()) return null;
         net.minecraft.client.Camera camera = minecraft.gameRenderer.getMainCamera();
@@ -394,6 +406,11 @@ public class CarverDesignScreen extends Screen {
         return result;
     }
 
+    /** Raw volume hit under the free cursor; consumed by the microvoxel radial when it opens. */
+    public ua.rp.chat.microvoxel.MicrovoxelRaycaster.Hit hoveredVolumeHit() {
+        return hoveredVolumeHit;
+    }
+
     private CarverCursorPick.Hit pickVolume(net.minecraft.world.phys.Vec3 pos,
                                             net.minecraft.client.Camera camera, float fov,
                                             double mouseX, double mouseY, BlockPos focus,
@@ -430,6 +447,7 @@ public class CarverDesignScreen extends Screen {
             return null;
         }
         if (hit == null) return null;
+        hoveredVolumeHit = hit;
         CarverFaceSlicer.Face face;
         try {
             face = CarverFaceSlicer.Face.valueOf(hit.face().name());

@@ -101,8 +101,6 @@ public final class MicrovoxelInteractionController {
                 && ClientPlayNetworking.canSend(MicrovoxelActionPayload.TYPE);
         currentHit = editing ? raycast(minecraft) : null;
         currentStandardTarget = editing && currentHit == null ? standardTarget(minecraft) : null;
-        currentHit = null;
-        currentStandardTarget = null;
         while (undoKey != null && undoKey.consumeClick()) {
             send(minecraft, ACTION_UNDO, 0, 0, 0, 0, 0);
         }
@@ -378,7 +376,7 @@ public final class MicrovoxelInteractionController {
     }
 
     private static void copyTarget(Minecraft minecraft) {
-        MicrovoxelRaycaster.Hit hit = currentHit != null ? currentHit : resolveHit(minecraft);
+        MicrovoxelRaycaster.Hit hit = resolveActionHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal(
                     "Наведитесь на микровоксельный объём для копирования."), false);
@@ -389,7 +387,7 @@ public final class MicrovoxelInteractionController {
     }
 
     private static void pasteTarget(Minecraft minecraft) {
-        MicrovoxelRaycaster.Hit hit = currentHit != null ? currentHit : resolveHit(minecraft);
+        MicrovoxelRaycaster.Hit hit = resolveActionHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal(
                     "Наведитесь на грань микровокселя для вставки."), false);
@@ -505,24 +503,23 @@ public final class MicrovoxelInteractionController {
     public record PreviewCell(BlockPos position, int cell) {
     }
 
-    /** Cycles the looked-at occupied cell through the shape catalog (H). The server authorises it. */
-    private static void cycleShape(Minecraft minecraft) {
-        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
-        if (hit == null) {
-            minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
-            return;
-        }
-        BlockPos position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
-        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
-        if (cached == null) return;
-        int current = cached.volume.shapeAt(hit.cell());
-        int next = (current + 1) % ua.rp.chat.microvoxel.MicrovoxelShape.count();
-        int encoded = MicrovoxelWire.packSetShape(hit.cell(), next);
-        send(minecraft, ACTION_SET_SHAPE, position.getX(), position.getY(), position.getZ(),
-                encoded, cached.volume.revision());
-        minecraft.gui.setOverlayMessage(Component.literal("Форма: "
-                + ua.rp.chat.microvoxel.MicrovoxelShape.byId(next).type().name()), false);
+    /**
+     * Target for radial actions: the cell the Carver had hovered at the moment the wheel was
+     * opened (so its free cursor is honoured), otherwise a fresh camera raycast. One-shot — the
+     * pending target is consumed by the first action of that wheel session.
+     */
+    private static MicrovoxelRaycaster.Hit resolveActionHit(Minecraft minecraft) {
+        MicrovoxelRaycaster.Hit pending = pendingActionHit;
+        pendingActionHit = null;
+        // The camera ray stays first choice: the server re-validates the action against the client
+        // look, so a cell under the crosshair always round-trips. The frozen Carver cell is a
+        // best-effort fallback for when the camera has no microvoxel under it at all.
+        MicrovoxelRaycaster.Hit camera = resolveHit(minecraft);
+        return camera != null ? camera : pending;
     }
+
+    /** Set by {@link #openRadial()} when the wheel is opened over the Carver design screen. */
+    private static MicrovoxelRaycaster.Hit pendingActionHit;
 
     /**
      * Generates a default ramp anchored at the looked-at cell, material taken from the held block
@@ -530,7 +527,7 @@ public final class MicrovoxelInteractionController {
      */
     /** Applies a specific shape id to the looked-at cell (radial shape picker). */
     private static void applyShape(Minecraft minecraft, int shapeId) {
-        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        MicrovoxelRaycaster.Hit hit = resolveActionHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
             return;
@@ -554,7 +551,7 @@ public final class MicrovoxelInteractionController {
     }
 
     private static void generateTarget(Minecraft minecraft, int type, int length, int width, int height) {
-        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        MicrovoxelRaycaster.Hit hit = resolveActionHit(minecraft);
         if (hit == null) {
             minecraft.gui.setOverlayMessage(Component.literal("Наведитесь на микровоксель."), false);
             return;
@@ -585,11 +582,11 @@ public final class MicrovoxelInteractionController {
      * used; the radial is now the only way to reach them (Undo stays on its own key).
      */
     static void handleRadialSelection(String action, String material, boolean fragment, int shapeId,
-                                      int length, int width, int height) {
+                                      int length, int width, int height,
+                                      int chosenBrushShape, int chosenBrushRadius) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.player == null || action == null) return;
         switch (action) {
-            case "shape" -> withEditing(minecraft, MicrovoxelInteractionController::cycleShape);
             case "shape.set" -> {
                 if (shapeId >= 0) withEditing(minecraft, m -> applyShape(m, shapeId));
             }
@@ -597,7 +594,8 @@ public final class MicrovoxelInteractionController {
             // placing, so a bare material pick is not a no-op.
             case "material" -> {
                 selectedMaterialId = material == null ? "" : material;
-                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
+                // Picking a material is always a placing intent, even if erase was engaged before.
+                toolMode = TOOL_PLACE;
                 if (!fragment) {
                     toolActive = false;
                     conversionTicks = 12;
@@ -640,26 +638,13 @@ public final class MicrovoxelInteractionController {
                 clipboardMirror = !clipboardMirror;
                 showClipboardTransform(m);
             });
-            case "brush.single" -> {
-                brushShape = MicrovoxelBrush.SINGLE;
-                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
-                toolActive = true;
-                showBrush(minecraft);
-            }
-            case "brush.line" -> {
-                brushShape = MicrovoxelBrush.PLANE;
-                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
-                toolActive = true;
-                showBrush(minecraft);
-            }
-            case "brush.square" -> {
-                brushShape = MicrovoxelBrush.BOX;
-                if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
-                toolActive = true;
-                showBrush(minecraft);
-            }
-            case "brush.circle" -> {
-                brushShape = MicrovoxelBrush.SPHERE;
+            case "brush.apply" -> {
+                if (chosenBrushShape < MicrovoxelBrush.SINGLE || chosenBrushShape > MicrovoxelBrush.PLANE) {
+                    return;
+                }
+                brushShape = chosenBrushShape;
+                brushRadius = chosenBrushShape == MicrovoxelBrush.SINGLE ? 1
+                        : Math.max(1, Math.min(MicrovoxelBrush.MAX_RADIUS, chosenBrushRadius));
                 if (toolMode == TOOL_NONE) toolMode = TOOL_PLACE;
                 toolActive = true;
                 showBrush(minecraft);
@@ -689,7 +674,13 @@ public final class MicrovoxelInteractionController {
                     "Сначала возьмите свиток архитектора и войдите в режим."), false);
             return;
         }
+        // Freeze the target the wheel will act on. Over the Carver the free cursor is authoritative,
+        // so use the volume cell it was hovering; in the world a fresh camera raycast is used.
+        pendingActionHit = null;
         Screen previous = minecraft.screen;
+        if (previous instanceof ua.rp.chat.client.carver.CarverDesignScreen carver) {
+            pendingActionHit = carver.hoveredVolumeHit();
+        }
         minecraft.setScreen(new MicrovoxelRadialScreen(
                 MicrovoxelInteractionController::handleRadialSelection, previous));
     }
@@ -699,13 +690,9 @@ public final class MicrovoxelInteractionController {
         boolean previous = editing;
         editing = true;
         try {
-            currentHit = raycast(minecraft);
-            currentStandardTarget = currentHit == null ? standardTarget(minecraft) : null;
             action.accept(minecraft);
         } finally {
             editing = previous;
-            currentHit = null;
-            currentStandardTarget = null;
         }
     }
 

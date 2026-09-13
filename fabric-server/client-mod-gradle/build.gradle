@@ -367,6 +367,103 @@ tasks.register("verifyMicrovoxelOcclusionRefresh") {
 	}
 }
 
+tasks.register("verifyRadialMenuWiring") {
+	group = "verification"
+	description = "Checks the radial menu: live palette handshake, honest brush panel, no demo data, charging paste."
+	def radial = layout.projectDirectory.file(
+			"src/client/resources/assets/eclipseclient/web/radial/radial.html")
+	def radialScreen = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelRadialScreen.java")
+	def controller = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelInteractionController.java")
+	def paletteClient = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelMaterialPaletteClient.java")
+	def carverScreen = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/carver/CarverDesignScreen.java")
+	def editEngine = layout.projectDirectory.file(
+			"../server/src/main/java/ua/rp/chat/microvoxel/edit/MicrovoxelEditEngine.java")
+	inputs.files(radial, radialScreen, controller, paletteClient, carverScreen, editEngine)
+	doLast {
+		def html = radial.asFile.getText("UTF-8")
+		assert html.contains("const MATERIALS = [];"):
+				"The radial must ship no demo palette; it is filled only by setMaterials"
+		assert !html.contains("дубовая доска") && !html.contains("brush.line") && !html.contains("dataset.shapeId"):
+				"Demo material names / dead shape plumbing must be gone"
+		assert html.contains("palette-ready"):
+				"The page must acknowledge the palette handshake"
+		assert html.contains("brush.apply") && html.contains("BRUSHES"):
+				"The brush must be a real panel with shape + radius"
+		assert html.contains("if (hotOuter === -1) return;"):
+				"A hub click must be a safe no-op (no SECTORS[-1] TypeError)"
+
+		def screen = radialScreen.asFile.getText("UTF-8")
+		assert screen.contains("palette-ready") && screen.contains("MAX_PALETTE_ATTEMPTS")
+				&& screen.contains("paletteReady"):
+				"The overlay must retry setMaterials until the page acks"
+
+		def palette = paletteClient.asFile.getText("UTF-8")
+		assert palette.contains("colorHex") && palette.contains("getMapColor")
+				&& palette.contains("\\\"color\\\""):
+				"The palette JSON must carry a per-material swatch colour"
+
+		def controllerText = controller.asFile.getText("UTF-8")
+		assert controllerText.contains("case \"brush.apply\"")
+				&& controllerText.contains("resolveActionHit")
+				&& !controllerText.contains("cycleShape"):
+				"Brush radius must be wired and the dead shape-cycle path removed"
+		assert !controllerText.contains("currentHit = null;\n        currentStandardTarget = null;"):
+				"The edit hover/preview state must survive the tick (continuous edit + preview must work)"
+		assert controllerText.contains("pendingActionHit") && controllerText.contains("hoveredVolumeHit"):
+				"Radial target actions must freeze the Carver's hovered cell"
+
+		def carver = carverScreen.asFile.getText("UTF-8")
+		assert carver.contains("hoveredVolumeHit") && carver.contains("mouseMoved"):
+				"The Carver screen must track the hovered volume cell for the radial"
+
+		def engine = editEngine.asFile.getText("UTF-8")
+		assert engine.contains("boolean creative = player.gameMode.getGameModeForPlayer() == GameType.CREATIVE;")
+				&& engine.contains("materialUnits.merge")
+				&& engine.contains("volume.setShape(cell, source.shapeAt(sourceCell));"):
+				"Paste must charge material in survival and preserve shapes"
+	}
+}
+
+tasks.register("verifyMcefGlStateGuard") {
+	group = "verification"
+	description = "Checks MCEF's leaked GL state is reset everywhere a browser can paint."
+	def guard = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/mcef/McefGlStateGuard.java")
+	def guiMixin = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/mixin/render/GuiMixin.java")
+	def screens = [
+			layout.projectDirectory.file("src/client/java/ua/rp/chat/client/AuthScreen.java"),
+			layout.projectDirectory.file("src/client/java/ua/rp/chat/client/BodyStatusScreen.java"),
+			layout.projectDirectory.file("src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelRadialScreen.java")
+	]
+	inputs.files(guard, guiMixin)
+	inputs.files(screens)
+	doLast {
+		def guardText = guard.asFile.getText("UTF-8")
+		assert guardText.contains("GL_UNPACK_ROW_LENGTH")
+				&& guardText.contains("GL_UNPACK_SKIP_ROWS")
+				&& guardText.contains("GL_UNPACK_SKIP_PIXELS")
+				&& guardText.contains("_pixelStore")
+				&& guardText.contains("_bindTexture(0)")
+				&& guardText.contains("isOnRenderThread"):
+				"The guard must reset the unpack stride and texture bindings MCEF leaves behind"
+		def guiText = guiMixin.asFile.getText("UTF-8")
+		assert guiText.contains("extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V")
+				&& guiText.contains("McefGlStateGuard.restore()"):
+				"The GUI hook must restore the GL baseline every frame before the GUI pass is built"
+		screens.each { screen ->
+			def text = screen.asFile.getText("UTF-8")
+			assert text.contains("McefGlStateGuard.onBrowserActive()")
+					&& text.contains("McefGlStateGuard.restore()"):
+					"${screen.asFile.name} must mark the browser active and restore the GL baseline"
+		}
+	}
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
@@ -395,6 +492,8 @@ tasks.named("check") {
 	dependsOn tasks.named("verifyMicrovoxelOcclusionRefresh")
 	dependsOn tasks.named("verifyMicrovoxelCrackOverlay")
 	dependsOn tasks.named("verifyMicrovoxelBreakFeedback")
+	dependsOn tasks.named("verifyMcefGlStateGuard")
+	dependsOn tasks.named("verifyRadialMenuWiring")
 }
 
 java {
