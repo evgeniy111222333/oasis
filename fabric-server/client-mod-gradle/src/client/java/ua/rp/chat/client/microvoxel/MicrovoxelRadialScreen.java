@@ -44,14 +44,21 @@ public final class MicrovoxelRadialScreen extends Screen {
     private static final String BRIDGE_PREFIX = "@eclipse/radial:";
 
     private final Listener listener;
+    private final Screen returnScreen;
     private MCEFBrowser browser;
     private CefDisplayHandlerAdapter displayHandler;
     private boolean paletteInjected;
     private int ticks;
 
     public MicrovoxelRadialScreen(Listener listener) {
+        this(listener, null);
+    }
+
+    /** {@code returnScreen} is restored on close so the radial can be opened over the Carver UI. */
+    public MicrovoxelRadialScreen(Listener listener, Screen returnScreen) {
         super(Component.literal("Eclipse: микровоксели"));
         this.listener = listener;
+        this.returnScreen = returnScreen;
     }
 
     @Override
@@ -116,7 +123,7 @@ public final class MicrovoxelRadialScreen extends Screen {
         Minecraft minecraft = this.minecraft;
         if (minecraft != null) minecraft.execute(() -> {
             if (listener != null) listener.onSelect(action, material, fragment, shapeId, length, width, height);
-            if (minecraft.screen == this) minecraft.setScreen(null);
+            if (minecraft.screen == this) minecraft.setScreen(returnScreen);
         });
     }
 
@@ -259,7 +266,7 @@ public final class MicrovoxelRadialScreen extends Screen {
     @Override
     public void onClose() {
         closeBrowser();
-        if (minecraft != null) minecraft.setScreen(null);
+        if (minecraft != null) minecraft.setScreen(returnScreen);
     }
 
     @Override

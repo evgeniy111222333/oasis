@@ -270,6 +270,12 @@ public class CarverDesignScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int code = event.key();
+        // Global key binds are not processed while a screen is open, so the microvoxel radial
+        // key must be honoured here too (the player opens the wheel from inside the Carver UI).
+        if (ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.isRadialKey(event)) {
+            ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.openRadial();
+            return true;
+        }
         // The Ctrl modifier is part of the key mapping now, so a plain Z/Y stays free.
         if (CarverKeybinds.undo.matches(event)) {
             CarverClientState.sendUndo();

@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -100,14 +101,7 @@ public final class MicrovoxelInteractionController {
         while (undoKey != null && undoKey.consumeClick()) {
             send(minecraft, ACTION_UNDO, 0, 0, 0, 0, 0);
         }
-        while (radialKey != null && radialKey.consumeClick()) {
-            if (CarverClientState.inSession()) {
-                minecraft.setScreen(new MicrovoxelRadialScreen(MicrovoxelInteractionController::handleRadialSelection));
-            } else {
-                minecraft.gui.setOverlayMessage(Component.literal(
-                        "Сначала возьмите свиток архитектора и войдите в режим."), false);
-            }
-        }
+        while (radialKey != null && radialKey.consumeClick()) openRadial();
         // End of the 50ms coalescing window: lone clicks keep single-packet latency,
         // bursts leave as one batch packet per 16 entries.
         MicrovoxelActionBatcher.flush(minecraft);
@@ -645,6 +639,28 @@ public final class MicrovoxelInteractionController {
                 // place/erase/material/close with no handler: nothing to do
             }
         }
+    }
+
+    /** True when the event is the radial key; used by screens that swallow global key binds. */
+    public static boolean isRadialKey(net.minecraft.client.input.KeyEvent event) {
+        return radialKey != null && radialKey.matches(event);
+    }
+
+    /**
+     * Opens the radial overlay, remembering any screen it was opened over (the Carver design
+     * screen) so closing the radial returns there instead of dropping the player into the world.
+     */
+    public static void openRadial() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) return;
+        if (!CarverClientState.inSession()) {
+            minecraft.gui.setOverlayMessage(Component.literal(
+                    "Сначала возьмите свиток архитектора и войдите в режим."), false);
+            return;
+        }
+        Screen previous = minecraft.screen;
+        minecraft.setScreen(new MicrovoxelRadialScreen(
+                MicrovoxelInteractionController::handleRadialSelection, previous));
     }
 
     /** Runs a hit-driven edit action with the click-edit gate temporarily open. */
