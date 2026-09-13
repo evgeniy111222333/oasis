@@ -3,8 +3,8 @@ let isRegisteredUser = false;
 let mcUsername = "";
 let mcUuid = "";
 let appearanceData = "";
-let sessionRecoveryTried = false;
-const savedCredentialsKey = "oasisAuth.savedCredentials.v1";
+let sessionRecoveryInFlight = null;
+const savedCredentialsKey = "eclipseAuth.savedCredentials.v1";
 
 document.addEventListener("DOMContentLoaded", () => {
     const params = new URLSearchParams(window.location.search);
@@ -26,7 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
     restoreSavedCredentials();
 
     if (!authToken) {
-        recoverAuthSession("Восстанавливаем сессию авторизации...");
+        recoverAuthSession("Восстанавливаем сессию авторизации...").then((recovered) => {
+            if (!recovered) {
+                showGlobalError("Сессия авторизации не найдена. Перезайдите на сервер.");
+            }
+        });
         return;
     }
 
@@ -71,49 +75,79 @@ async function fetchStatus() {
 }
 
 async function recoverAuthSession(message) {
-    if (sessionRecoveryTried) {
-        return false;
+    if (sessionRecoveryInFlight) {
+        return sessionRecoveryInFlight;
     }
-    sessionRecoveryTried = true;
-    const username = mcUsername || new URLSearchParams(window.location.search).get("username") || "";
-    if (!username) {
-        showGlobalError("Сессия авторизации не найдена. Перезайдите на сервер.");
-        return false;
-    }
-
-    showGlobalError(message);
-    try {
-        const response = await fetch(`/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
-            cache: "no-store"
-        });
-        if (response.status === 204) {
+    sessionRecoveryInFlight = (async () => {
+        const username = mcUsername || new URLSearchParams(window.location.search).get("username") || "";
+        if (!username) {
             return false;
         }
-        const data = await response.json();
-        if (data.success && data.authUrl) {
-            window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
-            return true;
+
+        switchTab("login");
+        showError(document.getElementById("loginError"), message);
+        for (let attempt = 0; attempt < 16; attempt++) {
+            try {
+                const response = await fetch(`/api/client-session?username=${encodeURIComponent(username)}&ts=${Date.now()}`, {
+                    cache: "no-store"
+                });
+                if (response.status === 200) {
+                    const data = await response.json();
+                    if (data.success && data.authUrl) {
+                        window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
+                        return true;
+                    }
+                }
+            } catch (error) {
+                // The server or token may still be starting; retry inside the bounded window.
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, attempt < 5 ? 350 : 650));
         }
-    } catch (error) {
         return false;
+    })();
+
+    try {
+        return await sessionRecoveryInFlight;
+    } finally {
+        sessionRecoveryInFlight = null;
     }
-    return false;
 }
 
 function hydratePlayerCard(appearanceUrl = "") {
     document.getElementById("playerName").textContent = mcUsername;
     document.getElementById("playerMode").textContent = isRegisteredUser ? "Облик найден" : "Новый персонаж";
     document.getElementById("playerSeal").textContent = getInitials(mcUsername);
-    setSkinPreview(appearanceUrl || `https://minotar.net/armor/body/${encodeURIComponent(mcUsername)}/320.png`);
+    setSkinPreview(appearanceUrl || `https://minotar.net/skin/${encodeURIComponent(mcUsername)}`);
 }
 
 function setSkinPreview(src) {
-    const skinImage = document.getElementById("skinImage");
-    skinImage.src = src;
-    skinImage.onerror = () => {
-        skinImage.onerror = null;
-        skinImage.src = "https://minotar.net/armor/body/Steve/320.png";
+    const skinModel = document.getElementById("skinModel");
+    if (!skinModel || !src) {
+        return;
+    }
+
+    skinModel.classList.add("skin-model-loading");
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "high";
+    image.onload = () => {
+        skinModel.style.setProperty("--skin-url", toCssUrl(src));
+        skinModel.classList.remove("skin-model-empty");
+        skinModel.classList.remove("skin-model-loading");
     };
+    image.onerror = () => {
+        if (src.includes("/Steve")) {
+            skinModel.classList.remove("skin-model-loading");
+            skinModel.classList.add("skin-model-empty");
+            return;
+        }
+        setSkinPreview("https://minotar.net/skin/Steve");
+    };
+    image.src = src;
+}
+
+function toCssUrl(src) {
+    return `url("${String(src).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
 }
 
 function getInitials(username) {
@@ -227,12 +261,12 @@ async function handleLoginSubmit(event) {
 
 function restoreSavedCredentials(expectedLogin = "") {
     try {
-        const saved = JSON.parse(localStorage.getItem(savedCredentialsKey) || "{}");
+        const saved = readSavedCredentials();
         const rememberInput = document.getElementById("rememberMe");
         const loginInput = document.getElementById("loginName");
         const passwordInput = document.getElementById("loginPassword");
         if (!rememberInput || !loginInput || !passwordInput || !saved.remember) {
-            return;
+            return false;
         }
         if (saved.loginName && (!expectedLogin || saved.loginName.toLowerCase() === expectedLogin.toLowerCase())) {
             if (!loginInput.value) {
@@ -240,10 +274,38 @@ function restoreSavedCredentials(expectedLogin = "") {
             }
             passwordInput.value = saved.password || "";
             rememberInput.checked = true;
+            return Boolean(saved.password);
+        }
+        if (expectedLogin) {
+            passwordInput.value = "";
+            rememberInput.checked = false;
         }
     } catch (error) {
         localStorage.removeItem(savedCredentialsKey);
     }
+    return false;
+}
+
+function readSavedCredentials() {
+    const current = localStorage.getItem(savedCredentialsKey);
+    if (current) {
+        return JSON.parse(current);
+    }
+
+    const legacyKey = Object.keys(localStorage).find((key) =>
+        key !== savedCredentialsKey && key.endsWith("Auth.savedCredentials.v1")
+    );
+    if (!legacyKey) {
+        return {};
+    }
+
+    const legacy = localStorage.getItem(legacyKey);
+    if (!legacy) {
+        return {};
+    }
+    localStorage.setItem(savedCredentialsKey, legacy);
+    localStorage.removeItem(legacyKey);
+    return JSON.parse(legacy);
 }
 
 function persistSavedCredentials(loginName, password) {

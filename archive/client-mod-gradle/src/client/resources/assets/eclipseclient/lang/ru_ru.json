@@ -1,0 +1,21 @@
+{
+  "key.eclipseclient.microvoxel_mode": "Режим микровокселей",
+  "key.eclipseclient.microvoxel_convert": "Преобразовать блок в микровоксели",
+  "key.eclipseclient.body_status": "Состояние персонажа",
+  "item.eclipseclient.microvoxel_carved_prefix": "Резной ",
+  "item.eclipseserver.stonemason_bag": "Сумка каменщика",
+  "item.eclipseserver.architect_scroll": "Архитектурный свиток",
+  "screen.eclipse.stonemason_design": "Чертёжный стол",
+  "screen.eclipse.stonemason_layer_down": "Слой -",
+  "screen.eclipse.stonemason_layer_up": "Слой +",
+  "screen.eclipse.stonemason_layer": "Слой: %s",
+  "screen.eclipse.stonemason_tool": "Инструмент",
+  "screen.eclipse.stonemason_pencil": "Карандаш",
+  "screen.eclipse.stonemason_eraser": "Ластик",
+  "screen.eclipse.stonemason_clear": "Очистить",
+  "screen.eclipse.stonemason_hint": "ПРОБЕЛ — начать работу, ESC — отмена",
+  "screen.eclipse.stonemason_material": "Камень: %s",
+  "template.eclipse.bath": "Ванна",
+  "template.eclipse.basin": "Чаша для воды",
+  "template.eclipse.column": "Резная колонна"
+}

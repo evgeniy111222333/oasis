@@ -1,0 +1,21 @@
+[Unit]
+Description=Eclipse RP Fabric Minecraft Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/eclipse-rp
+EnvironmentFile=-/etc/eclipse-rp.env
+ExecStart=/opt/java25/bin/java -Xms2G -Xmx5G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC -XX:+AlwaysPreTouch --enable-native-access=ALL-UNNAMED -jar fabric-server-launch.jar nogui
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=120
+KillSignal=SIGINT
+SuccessExitStatus=0 130
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

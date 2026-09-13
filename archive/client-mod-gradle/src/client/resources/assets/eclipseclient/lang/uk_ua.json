@@ -1,0 +1,18 @@
+{
+  "item.eclipseclient.microvoxel_carved_prefix": "Різьблений ",
+  "item.eclipseserver.stonemason_bag": "Сумка каменяра",
+  "item.eclipseserver.architect_scroll": "Архітектурний сувій",
+  "screen.eclipse.stonemason_design": "Креслярський стіл",
+  "screen.eclipse.stonemason_layer_down": "Шар -",
+  "screen.eclipse.stonemason_layer_up": "Шар +",
+  "screen.eclipse.stonemason_layer": "Шар: %s",
+  "screen.eclipse.stonemason_tool": "Інструмент",
+  "screen.eclipse.stonemason_pencil": "Олівець",
+  "screen.eclipse.stonemason_eraser": "Гумка",
+  "screen.eclipse.stonemason_clear": "Очистити",
+  "screen.eclipse.stonemason_hint": "ПРОБІЛ — почати роботу, ESC — скасувати",
+  "screen.eclipse.stonemason_material": "Камінь: %s",
+  "template.eclipse.bath": "Ванна",
+  "template.eclipse.basin": "Чаша для води",
+  "template.eclipse.column": "Різьблена колона"
+}

@@ -1,0 +1,5 @@
+﻿"Scenario","ParentPart","ParentRotationDeg","OldWorldLayerRotationDeg","NewWorldLayerRotationDeg","ExtraOldRotationDeg","Diagnosis"
+"Head look, third-person","head","45","90","45","45","hat/headwear was rotated twice"
+"Arm walk swing","arm","60","120","60","60","sleeve diverged while moving"
+"Leg walk swing","leg","50","100","50","50","pants layer dropped/lagged around stride"
+"Breathing chest tilt","body","1,2","2,4","1,2","1,2","jacket edge shimmer/detach under breathing"

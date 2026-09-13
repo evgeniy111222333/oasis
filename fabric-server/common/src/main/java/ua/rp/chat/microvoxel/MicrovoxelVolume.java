@@ -1,0 +1,788 @@
+package ua.rp.chat.microvoxel;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+
+public final class MicrovoxelVolume {
+    public static final int RESOLUTION = 16;
+    public static final int CELL_COUNT = RESOLUTION * RESOLUTION * RESOLUTION;
+    public static final int MAX_PALETTE = 32;
+    public static final int SIMPLE_COLLISION_CUBOID_LIMIT = 64;
+    /** Sub-cell units per block: {@link #RESOLUTION} cells times {@link MicrovoxelShape#SUB} per cell. */
+    public static final int SUB_BLOCK_UNITS = RESOLUTION * MicrovoxelShape.SUB;
+
+    private int revision;
+    private final List<String> palette;
+    private final byte[] cells;
+    /**
+     * Optional geometry channel (tier S/D shapes). Null when every cell is a full cube, which keeps
+     * an all-cube volume byte-for-byte identical to before this layer existed (zero extra memory,
+     * zero extra bytes on the wire, zero extra render work).
+     */
+    private MicrovoxelGeometry geometry;
+    private transient volatile List<Cuboid> collisionCuboids;
+    private transient volatile CollisionPlan collisionPlan;
+    /** Sub-cell colliders of shaped cells, in 1/256-block units; null until first requested. */
+    private transient volatile List<SubBox> shapeBoxes;
+    /**
+     * Publication flag. Once the store owns this instance it is immutable: the persistence
+     * worker reads the live cells concurrently with the server thread, so mutating a published
+     * volume would tear the bytes it serialises. Every state change must publish a fresh
+     * {@link #copy()} instead. Derived transient caches (collision plan/cuboids) stay writable —
+     * they are never serialised and never affect the published state.
+     */
+    private boolean frozen;
+
+    public MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
+        this(revision, palette, cells, null);
+    }
+
+    public MicrovoxelVolume(int revision, List<String> palette, byte[] cells,
+                            MicrovoxelGeometry geometry) {
+        this(revision, palette, cells, geometry, true);
+    }
+
+    private MicrovoxelVolume(int revision, List<String> palette, byte[] cells,
+                             MicrovoxelGeometry geometry, boolean validate) {
+        this.revision = Math.max(1, revision);
+        this.palette = new ArrayList<>(palette);
+        this.cells = cells.clone();
+        this.geometry = geometry == null || geometry.isEmpty() ? null : geometry.copy();
+        if (validate) validate();
+    }
+
+    public static MicrovoxelVolume full(String blockData) {
+        if (blockData == null || blockData.isBlank()) {
+            throw new IllegalArgumentException("Block data cannot be empty");
+        }
+        byte[] cells = new byte[CELL_COUNT];
+        Arrays.fill(cells, (byte) 1);
+        return new MicrovoxelVolume(1, List.of("", blockData), cells);
+    }
+
+    public static MicrovoxelVolume empty() {
+        return new MicrovoxelVolume(1, List.of(""), new byte[CELL_COUNT]);
+    }
+
+    public static MicrovoxelVolume restore(int revision, List<String> palette, byte[] cells) {
+        return new MicrovoxelVolume(revision, palette, cells);
+    }
+
+    public static MicrovoxelVolume restore(int revision, List<String> palette, byte[] cells,
+                                           MicrovoxelGeometry geometry) {
+        return new MicrovoxelVolume(revision, palette, cells, geometry);
+    }
+
+    public MicrovoxelVolume copy() {
+        // The source is already validated, so the copy skips the 4096-cell validation scan.
+        return new MicrovoxelVolume(revision, palette, cells, geometry, false);
+    }
+
+    /** True when at least one cell carries a non-full shape. */
+    public boolean hasGeometry() {
+        return geometry != null && !geometry.isEmpty();
+    }
+
+    /** Global shape id at one cell (0 = full cube). */
+    public int shapeAt(int cell) {
+        requireCell(cell);
+        return geometry == null ? 0 : geometry.shapeAt(cell);
+    }
+
+    /** The geometry channel, or null when the volume is all full cubes (zero-cost default). */
+    public MicrovoxelGeometry geometryOrNull() {
+        return geometry;
+    }
+
+    /**
+     * Sets the geometry of one occupied cell. Returns true when the volume changed. Shape 0 clears
+     * the cell back to a full cube. The channel is created lazily, so an all-cube volume still
+     * costs nothing until the first shaped cell exists.
+     */
+    public boolean setShape(int cell, int shapeId) {
+        requireMutable();
+        requireCell(cell);
+        if (cells[cell] == 0) {
+            if (shapeId == 0) return false;
+            throw new IllegalStateException("Cannot shape an empty microvoxel cell");
+        }
+        if (shapeId == 0) {
+            if (geometry == null) return false;
+            if (!geometry.setShape(cell, 0)) return false;
+            if (geometry.isEmpty()) geometry = null;
+            changed();
+            return true;
+        }
+        if (geometry == null) geometry = MicrovoxelGeometry.empty();
+        if (!geometry.setShape(cell, shapeId)) return false;
+        changed();
+        return true;
+    }
+
+    private void clearShapeInternal(int cell) {
+        if (geometry == null) return;
+        if (geometry.setShape(cell, 0) && geometry.isEmpty()) geometry = null;
+    }
+
+    /** True once this instance has been published to the store and may no longer be mutated. */
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    /**
+     * Marks this instance immutable for publication. Package-private: only the store publishes
+     * volumes, so the single-writer boundary stays in one place.
+     */
+    void freeze() {
+        frozen = true;
+    }
+
+    private void requireMutable() {
+        if (frozen) {
+            throw new IllegalStateException(
+                    "Frozen microvoxel volume is immutable; copy() before mutating");
+        }
+    }
+
+    public int revision() {
+        return revision;
+    }
+
+    public List<String> palette() {
+        return Collections.unmodifiableList(palette);
+    }
+
+    public byte[] cellsCopy() {
+        return cells.clone();
+    }
+
+    public int materialIndex(int cell) {
+        requireCell(cell);
+        return Byte.toUnsignedInt(cells[cell]);
+    }
+
+    public String material(int cell) {
+        return palette.get(materialIndex(cell));
+    }
+
+    public boolean occupied(int cell) {
+        return materialIndex(cell) != 0;
+    }
+
+    public boolean occupied(int x, int y, int z) {
+        return inside(x, y, z) && cells[x | (z << 4) | (y << 8)] != 0;
+    }
+
+    /** Material index at a local cell coordinate, 0 outside the volume. Shared render/raycast read. */
+    public int materialAt(int x, int y, int z) {
+        // Inlines the index bit-pack instead of calling index(), which re-checks bounds. This is
+        // the single hottest read in meshing/AO/neighbour lambdas.
+        return inside(x, y, z) ? Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)]) : 0;
+    }
+
+    /**
+     * Compares only the outer shell (any coordinate 0 or 15) against another volume without
+     * copying either cell array. Edit hot paths call this per click to decide whether neighbours
+     * need a mesh rebuild; two 4 KB clones per click were pure waste with an early exit on the
+     * first boundary difference in the common single-cell case.
+     */
+    public boolean boundaryDiffersFrom(MicrovoxelVolume other) {
+        if (other == null) return true;
+        byte[] mine = cells;
+        byte[] theirs = other.cells;
+        int length = Math.min(mine.length, theirs.length);
+        for (int i = 0; i < length; i++) {
+            if (mine[i] != theirs[i]) {
+                int cx = x(i);
+                int cy = y(i);
+                int cz = z(i);
+                if (cx == 0 || cx == RESOLUTION - 1 || cy == 0 || cy == RESOLUTION - 1
+                        || cz == 0 || cz == RESOLUTION - 1) {
+                    return true;
+                }
+            }
+        }
+        return mine.length != theirs.length;
+    }
+
+    /**
+     * Dominant occupied material: the full material string of the most frequent cell, ties
+     * resolve to the first maximum. Shared by server parentage and client break feedback so a
+     * predicted break reads as the same block the server breaks as. Null when the volume holds
+     * no named material.
+     */
+    public static String dominantMaterial(MicrovoxelVolume volume) {
+        if (volume == null) return null;
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        String best = null;
+        int bestCount = 0;
+        for (int cell = 0; cell < CELL_COUNT; cell++) {
+            if (!volume.occupied(cell)) continue;
+            String material = volume.material(cell);
+            if (material == null || material.isEmpty()) continue;
+            int count = counts.getOrDefault(material, 0) + 1;
+            counts.put(material, count);
+            if (count > bestCount) {
+                bestCount = count;
+                best = material;
+            }
+        }
+        return best;
+    }
+
+    public boolean remove(int cell) {
+        requireMutable();
+        requireCell(cell);
+        if (cells[cell] == 0) {
+            return false;
+        }
+        cells[cell] = 0;
+        clearShapeInternal(cell);
+        changed();
+        return true;
+    }
+
+    public boolean put(int cell, String blockData) {
+        requireMutable();
+        requireCell(cell);
+        if (blockData == null || blockData.isBlank()) {
+            throw new IllegalArgumentException("Block data cannot be empty");
+        }
+        if (cells[cell] != 0) {
+            return false;
+        }
+        int paletteIndex = palette.indexOf(blockData);
+        if (paletteIndex < 0) {
+            if (palette.size() >= MAX_PALETTE) {
+                throw new IllegalStateException("Microvoxel palette limit reached");
+            }
+            palette.add(blockData);
+            paletteIndex = palette.size() - 1;
+        }
+        cells[cell] = (byte) paletteIndex;
+        changed();
+        return true;
+    }
+
+    public void update(int cell, String blockData) {
+        requireMutable();
+        requireCell(cell);
+        if (blockData == null || blockData.isBlank()) {
+            cells[cell] = 0;
+            clearShapeInternal(cell);
+        } else {
+            int paletteIndex = palette.indexOf(blockData);
+            if (paletteIndex < 0) {
+                if (palette.size() >= MAX_PALETTE) {
+                    throw new IllegalStateException("Microvoxel palette limit reached");
+                }
+                palette.add(blockData);
+                paletteIndex = palette.size() - 1;
+            }
+            cells[cell] = (byte) paletteIndex;
+        }
+        changed();
+    }
+
+    public void setRevision(int revision) {
+        requireMutable();
+        this.revision = revision;
+    }
+
+    /**
+     * Removes palette entries no cell references and remaps indices without changing geometry or
+     * revision. Callers must send a full upsert before any later delta because indices may move.
+     */
+    public boolean compactPalette() {
+        requireMutable();
+        boolean[] used = new boolean[palette.size()];
+        used[0] = true;
+        for (byte cell : cells) used[Byte.toUnsignedInt(cell)] = true;
+        int retained = 0;
+        for (boolean present : used) if (present) retained++;
+        if (retained == palette.size()) return false;
+
+        int[] remap = new int[palette.size()];
+        List<String> compacted = new ArrayList<>(retained);
+        for (int oldIndex = 0; oldIndex < palette.size(); oldIndex++) {
+            if (!used[oldIndex]) continue;
+            remap[oldIndex] = compacted.size();
+            compacted.add(palette.get(oldIndex));
+        }
+        for (int cell = 0; cell < cells.length; cell++) {
+            cells[cell] = (byte) remap[Byte.toUnsignedInt(cells[cell])];
+        }
+        palette.clear();
+        palette.addAll(compacted);
+        return true;
+    }
+
+    /**
+     * Marks every palette index referenced by at least one cell. Reads the live array without
+     * copying: marker-state derivation and palette compaction run in hot edit paths where a
+     * 4096-byte copy per call is pure waste. The caller must hold no lock expectations; the
+     * result is a point-in-time view of a server-thread-owned volume.
+     */
+    public void collectUsedMaterials(boolean[] used) {
+        for (byte cell : cells) {
+            int index = Byte.toUnsignedInt(cell);
+            if (index < used.length) used[index] = true;
+        }
+    }
+
+    /** Face bits for {@link #sealedOpaqueFaces}: -X, +X, -Y, +Y, -Z, +Z. */
+    public static final int FACE_WEST = 1;
+    public static final int FACE_EAST = 2;
+    public static final int FACE_DOWN = 4;
+    public static final int FACE_UP = 8;
+    public static final int FACE_NORTH = 16;
+    public static final int FACE_SOUTH = 32;
+    /** Mask value meaning every boundary face is fully covered by opaque cells. */
+    public static final int ALL_FACES_SEALED = 63;
+    /**
+     * Dense-volume fallback for light sealing. The light engine only understands whole-block
+     * opacity, so a wall with a carved detail can never occlude per-face; volumes this dense
+     * (vanilla slabs and stairs block skylight the same way) report as light-sealed instead
+     * of flipping the entire block transparent over one missing voxel.
+     */
+    public static final double LIGHT_SEAL_MIN_OPAQUE_FRACTION = 0.5;
+    /**
+     * Minimum contiguous opaque run (in cells) for the axial rule below. A 4-cell plate reads
+     * as a wall; thinner detail stays transparent. Deliberately below the 8-cell vanilla slab
+     * precedent so common 4-6 voxel decorative walls seal.
+     */
+    public static final int LIGHT_SEAL_MIN_AXIAL_RUN = 4;
+
+    /**
+     * Whether the light engine should treat this position as the parent material: all six
+     * faces sealed opaque, or at least half the cells opaque, or a solid plate across any
+     * axis (thin walls that span the block). Sparse lattices stay transparent. Pure and
+     * unit-tested; the block-granularity approximation is documented, not hidden.
+     */
+    public boolean isLightSealed(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return sealedFaces(opaquePalette) == ALL_FACES_SEALED
+                || opaqueFraction(opaquePalette) >= LIGHT_SEAL_MIN_OPAQUE_FRACTION
+                || axialRunCovered(opaquePalette, LIGHT_SEAL_MIN_AXIAL_RUN);
+    }
+
+    /**
+     * Fraction of cells occupied by opaque materials, 0.0 when empty. One linear scan, no
+     * allocation; opacity is resolved per palette entry, not per cell.
+     */
+    public double opaqueFraction(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return opaqueFraction(opaquePalette);
+    }
+
+    private double opaqueFraction(boolean[] opaquePalette) {
+        int opaqueCells = 0;
+        for (byte cell : cells) {
+            if (opaquePalette[Byte.toUnsignedInt(cell)]) opaqueCells++;
+        }
+        return opaqueCells / (double) CELL_COUNT;
+    }
+
+    /**
+     * Axial plate rule: true when every 16x16 column along ANY axis contains a contiguous
+     * opaque run of at least {@code minRun} cells. Coverage requires ALL columns of the
+     * axis (a single empty column fails it), so hollow structures stay transparent: their
+     * empty columns break every axis, while a thin solid wall spanning the block seals its
+     * normal axis. One pass per axis, early exit, no allocation.
+     */
+    public boolean axialRunCovered(boolean[] opaquePalette, int minRun) {
+        return axisRunCovered(opaquePalette, minRun, 0)
+                || axisRunCovered(opaquePalette, minRun, 1)
+                || axisRunCovered(opaquePalette, minRun, 2);
+    }
+
+    private int sealedFaces(boolean[] opaquePalette) {
+        int sealed = 0;
+        if (isFaceSealed(0, opaquePalette)) sealed |= FACE_WEST;
+        if (isFaceSealed(1, opaquePalette)) sealed |= FACE_EAST;
+        if (isFaceSealed(2, opaquePalette)) sealed |= FACE_DOWN;
+        if (isFaceSealed(3, opaquePalette)) sealed |= FACE_UP;
+        if (isFaceSealed(4, opaquePalette)) sealed |= FACE_NORTH;
+        if (isFaceSealed(5, opaquePalette)) sealed |= FACE_SOUTH;
+        return sealed;
+    }
+
+    private boolean axisRunCovered(boolean[] opaquePalette, int minRun, int axis) {
+        for (int a = 0; a < RESOLUTION; a++) {
+            for (int b = 0; b < RESOLUTION; b++) {
+                int run = 0;
+                for (int c = 0; c < RESOLUTION; c++) {
+                    // Axis 0 walks X columns (y=a, z=b); axis 1 walks Y (x=a, z=b);
+                    // axis 2 walks Z (x=a, y=b).
+                    int x = axis == 0 ? c : a;
+                    int y = axis == 1 ? c : axis == 0 ? a : b;
+                    int z = axis == 2 ? c : b;
+                    if (opaquePalette[Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)])]) {
+                        if (++run >= minRun) break;
+                    } else {
+                        run = 0;
+                    }
+                }
+                if (run < minRun) return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isFaceSealed(int face, boolean[] opaquePalette) {
+        for (int a = 0; a < RESOLUTION; a++) {
+            for (int b = 0; b < RESOLUTION; b++) {
+                int x = face == 0 ? 0 : face == 1 ? RESOLUTION - 1 : a;
+                int y = face == 2 ? 0 : face == 3 ? RESOLUTION - 1 : face < 2 ? a : b;
+                int z = face == 4 ? 0 : face == 5 ? RESOLUTION - 1 : face < 2 ? b : a;
+                int materialIndex = Byte.toUnsignedInt(cells[x | (z << 4) | (y << 8)]);
+                if (materialIndex == 0 || !opaquePalette[materialIndex]) return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * Exposed emissive cells needed for full glow. A 4x4 emissive patch reads as a full
+     * light source; a lone cell glows dimly (see {@link #emissionLevel}).
+     */
+    public static final int FULL_GLOW_EXPOSED_CELLS = 16;
+
+    /**
+     * Bitmask of boundary faces whose every cell is occupied by an opaque material. The
+     * opacity predicate receives palette strings (never parsed here), keeping this pure and
+     * unit-testable; callers pass real blockstate checks. A fully sealed volume ({@code 63})
+     * blocks skylight and block light exactly like its solid vanilla counterpart.
+     */
+    public int sealedOpaqueFaces(java.util.function.Predicate<String> opaque) {
+        boolean[] opaquePalette = new boolean[palette.size()];
+        for (int index = 1; index < palette.size(); index++) {
+            opaquePalette[index] = opaque.test(palette.get(index));
+        }
+        return sealedFaces(opaquePalette);
+    }
+
+    /**
+     * Counts emissive cells that can actually shine: occupied, with a positive emission value,
+     * and exposed to air through an empty 6-neighbour or the volume boundary. A torch bricked
+     * inside solid stone contributes nothing, fixing the "one torch lights the whole block"
+     * artifact at its root.
+     */
+    public int exposedEmissiveCount(java.util.function.ToIntFunction<String> emissionOf) {
+        int exposed = 0;
+        for (int cell = 0; cell < CELL_COUNT; cell++) {
+            int materialIndex = Byte.toUnsignedInt(cells[cell]);
+            if (materialIndex == 0) continue;
+            if (emissionOf.applyAsInt(palette.get(materialIndex)) <= 0) continue;
+            int x = cell & 15;
+            int y = (cell >>> 8) & 15;
+            int z = (cell >>> 4) & 15;
+            // Empty in-bounds neighbours first (occupied() is false outside bounds, hence
+            // the explicit inside() guard), then the volume boundary facing outside air.
+            boolean openNeighbour = (!occupied(x - 1, y, z) && inside(x - 1, y, z))
+                    || (!occupied(x + 1, y, z) && inside(x + 1, y, z))
+                    || (!occupied(x, y - 1, z) && inside(x, y - 1, z))
+                    || (!occupied(x, y + 1, z) && inside(x, y + 1, z))
+                    || (!occupied(x, y, z - 1) && inside(x, y, z - 1))
+                    || (!occupied(x, y, z + 1) && inside(x, y, z + 1));
+            boolean onBoundary = x == 0 || x == RESOLUTION - 1
+                    || y == 0 || y == RESOLUTION - 1
+                    || z == 0 || z == RESOLUTION - 1;
+            if (openNeighbour || onBoundary) {
+                exposed++;
+            }
+        }
+        return exposed;
+    }
+
+    /**
+     * Fractional block-light level for the whole 1x1x1 position. Scales the strongest exposed
+     * emission by coverage: a lone torch cell glows dimly, a 4x4 patch reads as a full source,
+     * buried sources stay dark. Returns 0 when nothing exposed shines.
+     */
+    public int emissionLevel(java.util.function.ToIntFunction<String> emissionOf) {
+        int strongest = 0;
+        for (int index = 1; index < palette.size(); index++) {
+            strongest = Math.max(strongest, emissionOf.applyAsInt(palette.get(index)));
+        }
+        if (strongest <= 0) return 0;
+        int exposed = exposedEmissiveCount(emissionOf);
+        if (exposed <= 0) return 0;
+        double coverage = Math.min(1.0, exposed / (double) FULL_GLOW_EXPOSED_CELLS);
+        return Math.max(1, (int) Math.round(strongest * (0.25 + 0.75 * coverage)));
+    }
+
+    /**
+     * Counts occupied cells. Used by harvest rules, empty-volume dematerialization
+     * and snapshot budgeting; linear scan is fine at 4096 cells.
+     */
+    public int occupiedCount() {
+        int count = 0;
+        for (byte cell : cells) {
+            if (cell != 0) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Merged full-cube colliders in 1/16-block units (0..16). Shaped cells are deliberately left
+     * out: their collision comes from {@link #shapeBoxes()} at 1/256 precision instead, so a shaped
+     * cell is never a full block. An all-cube volume is unaffected and keeps its merged colliders.
+     */
+    public List<Cuboid> collisionCuboids() {
+        List<Cuboid> existing = collisionCuboids;
+        if (existing != null) return existing;
+        CollisionPlan plan = collisionPlan;
+        if (plan != null && plan.backend() == CollisionBackend.CUBOIDS) return plan.cuboids();
+        List<Cuboid> result = buildCuboids(Integer.MAX_VALUE);
+        collisionCuboids = result;
+        return result;
+    }
+
+    /**
+     * Sub-cell colliders of the shaped cells, merged to AABBs in 1/256-block units (0..256), cached.
+     * A shaped cell contributes the merged collision cuboids of its {@link MicrovoxelShape} offset
+     * into the cell, so a slab collides as a slab and a ramp as a ramp. Empty (and zero-cost) when
+     * the volume has no geometry.
+     */
+    public List<SubBox> shapeBoxes() {
+        if (geometry == null) return List.of();
+        List<SubBox> cached = shapeBoxes;
+        if (cached == null) {
+            synchronized (this) {
+                cached = shapeBoxes;
+                if (cached == null) {
+                    cached = buildShapeBoxes();
+                    shapeBoxes = cached;
+                }
+            }
+        }
+        return cached;
+    }
+
+    private List<SubBox> buildShapeBoxes() {
+        List<SubBox> result = new ArrayList<>();
+        for (int cell : geometry.shapedCellIndex()) {
+            int shapeId = geometry.shapeAt(cell);
+            if (shapeId == 0) continue;
+            int baseX = x(cell) * RESOLUTION;
+            int baseY = y(cell) * RESOLUTION;
+            int baseZ = z(cell) * RESOLUTION;
+            for (Cuboid cuboid : MicrovoxelShape.byId(shapeId).collisionCuboids()) {
+                result.add(new SubBox(
+                        baseX + cuboid.minX(), baseY + cuboid.minY(), baseZ + cuboid.minZ(),
+                        baseX + cuboid.maxX(), baseY + cuboid.maxY(), baseZ + cuboid.maxZ()));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Compiles the volume to the cheapest exact collision representation. Simple shapes retain
+     * merged AABBs; fragmented shapes use three compact sets of 16-bit occupancy lines.
+     */
+    public CollisionPlan collisionPlan() {
+        CollisionPlan existing = collisionPlan;
+        if (existing != null) return existing;
+
+        short[] xLines = new short[RESOLUTION * RESOLUTION];
+        short[] yLines = new short[RESOLUTION * RESOLUTION];
+        short[] zLines = new short[RESOLUTION * RESOLUTION];
+        for (int y = 0; y < RESOLUTION; y++) {
+            for (int z = 0; z < RESOLUTION; z++) {
+                for (int x = 0; x < RESOLUTION; x++) {
+                    if (!collisionCell(index(x, y, z))) continue;
+                    xLines[(y << 4) | z] |= (short) (1 << x);
+                    yLines[(z << 4) | x] |= (short) (1 << y);
+                    zLines[(y << 4) | x] |= (short) (1 << z);
+                }
+            }
+        }
+
+        List<Cuboid> simpleCuboids = buildCuboids(SIMPLE_COLLISION_CUBOID_LIMIT + 1);
+        CollisionBackend backend = simpleCuboids.size() <= SIMPLE_COLLISION_CUBOID_LIMIT
+                ? CollisionBackend.CUBOIDS : CollisionBackend.GRID;
+        List<Cuboid> retained = backend == CollisionBackend.CUBOIDS ? simpleCuboids : List.of();
+        CollisionPlan compiled = new CollisionPlan(backend, retained, xLines, yLines, zLines);
+        if (backend == CollisionBackend.CUBOIDS) collisionCuboids = retained;
+        collisionPlan = compiled;
+        return compiled;
+    }
+
+    private List<Cuboid> buildCuboids(int stopAfter) {
+        boolean[] used = new boolean[CELL_COUNT];
+        List<Cuboid> result = new ArrayList<>();
+        for (int y = 0; y < RESOLUTION; y++) {
+            for (int z = 0; z < RESOLUTION; z++) {
+                for (int x = 0; x < RESOLUTION; x++) {
+                    int start = index(x, y, z);
+                    if (!collisionCell(start) || used[start]) continue;
+                    int maxX = x + 1;
+                    while (maxX < RESOLUTION && canExtendX(used, maxX, y, z)) maxX++;
+                    int maxZ = z + 1;
+                    while (maxZ < RESOLUTION && canExtendZ(used, x, maxX, y, maxZ)) maxZ++;
+                    int maxY = y + 1;
+                    while (maxY < RESOLUTION && canExtendY(used, x, maxX, z, maxZ, maxY)) maxY++;
+                    for (int cy = y; cy < maxY; cy++) {
+                        for (int cz = z; cz < maxZ; cz++) {
+                            for (int cx = x; cx < maxX; cx++) used[index(cx, cy, cz)] = true;
+                        }
+                    }
+                    result.add(new Cuboid(x, y, z, maxX, maxY, maxZ));
+                    if (result.size() >= stopAfter) return List.copyOf(result);
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private boolean canExtendX(boolean[] used, int x, int y, int z) {
+        int cell = index(x, y, z);
+        return collisionCell(cell) && !used[cell];
+    }
+
+    private boolean canExtendZ(boolean[] used, int minX, int maxX, int y, int z) {
+        for (int x = minX; x < maxX; x++) {
+            int cell = index(x, y, z);
+            if (!collisionCell(cell) || used[cell]) return false;
+        }
+        return true;
+    }
+
+    private boolean canExtendY(boolean[] used, int minX, int maxX, int minZ, int maxZ, int y) {
+        for (int z = minZ; z < maxZ; z++) {
+            for (int x = minX; x < maxX; x++) {
+                int cell = index(x, y, z);
+                if (!collisionCell(cell) || used[cell]) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether a cell contributes a full-cube collider. A shaped cell is occupied but is collided
+     * through {@link #shapeBoxes()} instead, so it must never widen a merged full-cube box.
+     */
+    private boolean collisionCell(int cell) {
+        return cells[cell] != 0 && (geometry == null || geometry.shapeAt(cell) == 0);
+    }
+
+    private void changed() {
+        revision = MicrovoxelRevision.next(revision);
+        collisionCuboids = null;
+        collisionPlan = null;
+        shapeBoxes = null;
+    }
+
+    private void validate() {
+        if (cells.length != CELL_COUNT || palette.isEmpty() || !palette.get(0).isEmpty()
+                || palette.size() > MAX_PALETTE) {
+            throw new IllegalArgumentException("Invalid microvoxel volume");
+        }
+        HashSet<String> unique = new HashSet<>();
+        for (int index = 1; index < palette.size(); index++) {
+            String material = palette.get(index);
+            if (material == null || material.isBlank() || !unique.add(material)) {
+                throw new IllegalArgumentException("Invalid or duplicate palette material");
+            }
+        }
+        for (byte cell : cells) {
+            if (Byte.toUnsignedInt(cell) >= palette.size()) {
+                throw new IllegalArgumentException("Cell references missing palette entry");
+            }
+        }
+        if (geometry != null && !geometry.isEmpty()) {
+            for (int cell = 0; cell < CELL_COUNT; cell++) {
+                if (geometry.shapeAt(cell) != 0 && cells[cell] == 0) {
+                    throw new IllegalArgumentException("Shaped cell must be occupied");
+                }
+            }
+        }
+    }
+
+    public static int index(int x, int y, int z) {
+        if (!inside(x, y, z)) throw new IndexOutOfBoundsException("Microvoxel coordinate outside 16x16x16 volume");
+        return x | (z << 4) | (y << 8);
+    }
+
+    public static int x(int cell) {
+        requireCell(cell);
+        return cell & 15;
+    }
+
+    public static int z(int cell) {
+        requireCell(cell);
+        return (cell >>> 4) & 15;
+    }
+
+    public static int y(int cell) {
+        requireCell(cell);
+        return (cell >>> 8) & 15;
+    }
+
+    public static boolean inside(int x, int y, int z) {
+        return (x | y | z) >= 0 && x < RESOLUTION && y < RESOLUTION && z < RESOLUTION;
+    }
+
+    private static void requireCell(int cell) {
+        if (cell < 0 || cell >= CELL_COUNT) throw new IndexOutOfBoundsException("Invalid microvoxel cell " + cell);
+    }
+
+    public record Cuboid(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    }
+
+    /**
+     * An axis-aligned collider in 1/256-block units (0..256), used only by shaped cells. The finer
+     * scale is what lets a slab stop the player at half a block and a ramp at every sub-cell step;
+     * full-cube cells keep the cheaper 1/16 {@link Cuboid} representation.
+     */
+    public record SubBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    }
+
+    public enum CollisionBackend { CUBOIDS, GRID }
+
+    public static final class CollisionPlan {
+        private final CollisionBackend backend;
+        private final List<Cuboid> cuboids;
+        private final short[] xLines;
+        private final short[] yLines;
+        private final short[] zLines;
+
+        private CollisionPlan(CollisionBackend backend, List<Cuboid> cuboids,
+                              short[] xLines, short[] yLines, short[] zLines) {
+            this.backend = backend;
+            this.cuboids = List.copyOf(cuboids);
+            this.xLines = xLines;
+            this.yLines = yLines;
+            this.zLines = zLines;
+        }
+
+        public CollisionBackend backend() {
+            return backend;
+        }
+
+        public List<Cuboid> cuboids() {
+            return cuboids;
+        }
+
+        public int xMask(int y, int z) {
+            return Short.toUnsignedInt(xLines[(y << 4) | z]);
+        }
+
+        public int yMask(int z, int x) {
+            return Short.toUnsignedInt(yLines[(z << 4) | x]);
+        }
+
+        public int zMask(int y, int x) {
+            return Short.toUnsignedInt(zLines[(y << 4) | x]);
+        }
+    }
+}

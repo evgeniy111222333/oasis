@@ -21,11 +21,17 @@ public class AppearanceManager {
     private final File appearanceFolder;
     private final AuthDatabase database;
     private final Logger logger;
+    private final R2AppearanceStorage storage;
 
     public AppearanceManager(File dataFolder, AuthDatabase database, Logger logger) {
+        this(dataFolder, database, logger, null);
+    }
+
+    public AppearanceManager(File dataFolder, AuthDatabase database, Logger logger, R2AppearanceStorage storage) {
         this.appearanceFolder = new File(dataFolder, "appearances");
         this.database = database;
         this.logger = logger;
+        this.storage = storage == null ? R2AppearanceStorage.fromConfig(new org.bukkit.configuration.file.YamlConfiguration(), logger) : storage;
         if (!appearanceFolder.exists()) {
             appearanceFolder.mkdirs();
         }
@@ -66,10 +72,32 @@ public class AppearanceManager {
             String hash = sha1(storedBytes);
             File target = getAppearanceFile(uuid);
             Files.write(target.toPath(), storedBytes);
-            if (!database.updateAppearance(uuid, normalizedModel, hash)) {
+
+            String publicUrl = null;
+            String storageKey = null;
+            if (storage.isEnabled()) {
+                try {
+                    String characterKey = AuthDatabase.characterKey(database.getRpName(uuid));
+                    R2AppearanceStorage.UploadResult upload = characterKey.isBlank()
+                            ? storage.uploadSkin(uuid, hash, storedBytes)
+                            : storage.uploadCharacterSkin(characterKey, hash, storedBytes);
+                    publicUrl = upload.publicUrl();
+                    storageKey = upload.key();
+                } catch (IOException | InterruptedException e) {
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                    logger.warning("R2 appearance upload failed for " + uuid + ": " + e.getMessage());
+                    if (storage.isRequired()) {
+                        return SaveResult.error("Не удалось загрузить образ в облачное хранилище.");
+                    }
+                }
+            }
+
+            if (!database.updateAppearance(uuid, normalizedModel, hash, publicUrl, storageKey)) {
                 return SaveResult.error("Не удалось привязать облик к персонажу.");
             }
-            return SaveResult.saved(normalizedModel, hash);
+            return SaveResult.saved(normalizedModel, hash, publicUrl);
         } catch (IOException e) {
             logger.warning("Failed to save appearance for " + uuid + ": " + e.getMessage());
             return SaveResult.error("Не удалось сохранить облик персонажа.");
@@ -112,7 +140,17 @@ public class AppearanceManager {
 
     public boolean hasAppearance(UUID uuid) {
         AuthDatabase.AppearanceProfile profile = database.getAppearanceProfile(uuid);
-        return profile != null && getAppearanceFile(uuid).isFile();
+        return profile != null && (!isBlank(profile.url()) || getAppearanceFile(uuid).isFile());
+    }
+
+    public String textureUrl(UUID uuid, AuthDatabase.AppearanceProfile profile) {
+        if (profile != null && !isBlank(profile.url())) {
+            return profile.url();
+        }
+        if (profile == null || isBlank(profile.hash())) {
+            return "";
+        }
+        return "/api/appearance/texture/" + uuid + ".png?v=" + profile.hash();
     }
 
     public static String normalizeModel(String model) {
@@ -163,17 +201,25 @@ public class AppearanceManager {
         }
     }
 
-    public record SaveResult(boolean uploaded, boolean success, String message, String model, String hash) {
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    public record SaveResult(boolean uploaded, boolean success, String message, String model, String hash, String url) {
         public static SaveResult empty() {
-            return new SaveResult(false, true, "", "classic", "");
+            return new SaveResult(false, true, "", "classic", "", "");
         }
 
         public static SaveResult saved(String model, String hash) {
-            return new SaveResult(true, true, "", model, hash);
+            return saved(model, hash, "");
+        }
+
+        public static SaveResult saved(String model, String hash, String url) {
+            return new SaveResult(true, true, "", model, hash, url == null ? "" : url);
         }
 
         public static SaveResult error(String message) {
-            return new SaveResult(true, false, message, "classic", "");
+            return new SaveResult(true, false, message, "classic", "", "");
         }
     }
 }

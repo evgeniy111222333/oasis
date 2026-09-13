@@ -1,0 +1,9 @@
+{
+  "textures": [
+    "eclipseclient:blood/wound_0",
+    "eclipseclient:blood/wound_1",
+    "eclipseclient:blood/wound_2",
+    "eclipseclient:blood/wound_3",
+    "eclipseclient:blood/wound_4"
+  ]
+}

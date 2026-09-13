@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Внешность персонажа — Eclipse RP</title>
+  <link rel="stylesheet" href="appearance.css?v=3">
+</head>
+<body>
+  <main class="workshop">
+    <section class="dossier" aria-labelledby="title">
+      <header class="dossier__header">
+        <div class="seal" aria-hidden="true">E</div>
+        <div>
+          <p class="eyebrow">ECLIPSE ROLEPLAY <span>•</span> ЛИЧНОЕ ДЕЛО</p>
+          <h1 id="title">Внешность</h1>
+        </div>
+        <p class="session"><i></i> Сеанс изменения внешности</p>
+      </header>
+
+      <div id="notice" class="notice" aria-live="polite"></div>
+
+      <div class="identity">
+        <div class="portrait-frame">
+          <div id="skinModel" class="skin-model" aria-label="Предпросмотр скина">
+            <span class="part head"></span><span class="part hat"></span>
+            <span class="part body"></span><span class="part jacket"></span>
+            <span class="part arm right-arm"></span><span class="part arm left-arm"></span>
+            <span class="part sleeve right-sleeve"></span><span class="part sleeve left-sleeve"></span>
+            <span class="part leg right-leg"></span><span class="part leg left-leg"></span>
+            <span class="part pants right-pants"></span><span class="part pants left-pants"></span>
+          </div>
+        </div>
+        <div class="identity__copy">
+          <span class="label">ПЕРСОНАЖ</span>
+          <strong id="rpName">Загрузка…</strong>
+          <p>Облик будет обновлён у вас и у игроков поблизости сразу после подтверждения.</p>
+        </div>
+      </div>
+
+      <section class="change" aria-label="Новый облик">
+        <div class="change__top">
+          <div><span class="label">НОВЫЙ ОБЛИК</span><b id="fileName">Файл ещё не выбран</b></div>
+          <span class="format">PNG · 64×64 / 64×32 · до 512 КБ</span>
+        </div>
+        <label class="file-drop" for="skinFile">
+          <span class="file-drop__glyph">＋</span>
+          <span><b>Выбрать PNG-облик</b><small>Нажмите здесь, чтобы открыть файл</small></span>
+          <input id="skinFile" type="file" accept="image/png">
+        </label>
+      </section>
+
+      <div class="model-row" role="radiogroup" aria-label="Тип рук модели">
+        <span class="label">КРОЙ РУКАВОВ</span>
+        <label class="model-option"><input type="radio" name="model" value="classic" checked><span>Обычная модель <em>4 px</em></span></label>
+        <label class="model-option"><input type="radio" name="model" value="slim"><span>Стройная модель <em>3 px</em></span></label>
+      </div>
+
+      <footer class="dossier__footer">
+        <p>Изменяется только внешний облик. Имя, роль и имущество останутся без изменений.</p>
+        <button id="save" disabled><span>Подтвердить облик</span><i>↗</i></button>
+      </footer>
+    </section>
+  </main>
+  <script src="appearance.js?v=3"></script>
+</body>
+</html>

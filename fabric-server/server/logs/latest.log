@@ -1,0 +1,18 @@
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelSnapshotPaginationTest: page order, budget and density passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFlagsAndEventsTest: persistence, fail-open and isolation passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelLoadStandTest: 4873 volumes, 25 pages, 163 batch packets, sort 0ms, paginate 0ms
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelEditAlgebraTest: history identity, brush cap and palette limit passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelCollisionBackendTest: selection and 60-seed sweep fuzz passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelLightSealingTest: sealed faces and fractional emission passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFluidTest: basin, levels, conservation and store passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFluidGuardTest: protection flag contract passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFluidLateralTest: flow, rain and quanta passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelLavaEngineTest: kinds, migration, crust and glow passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFluidFrostTest: crust placement passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelFluidHardeningTest: orientation and rain gate passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelShapeTest: catalog occupancy, faces and fractions passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelGeometryChannelTest: zero-cost empty, round-trip and clear passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelVolumeGeometryTest: channel integration, copy-on-write and clear passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelGeometryPersistenceTest: v3 region round-trip passed
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelEditHistoryGeometryTest: shape-only edits are historical
+[22:32:39] [main/INFO]: [STDOUT]: MicrovoxelServerCoreTest passed

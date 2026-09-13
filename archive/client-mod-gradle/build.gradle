@@ -1,0 +1,274 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"eclipseclient" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	compileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Local MCEF Mod Dependency
+	implementation files('libs/mcef_fabric_2.2.0_MC_26.1.1.jar')
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.compilerArgs << "-Xlint:deprecation"
+}
+
+tasks.register("verifyArticulatedLimbGeometry", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks segmented limb continuity, wearable growth and UV invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ArticulatedLimbLayoutTest"
+}
+
+sourceSets.test.compileClasspath += sourceSets.client.output
+sourceSets.test.runtimeClasspath += sourceSets.client.output
+
+tasks.register("verifyElbowBridgeRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic elbow renderer with base and overlay layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ElbowBridgeRendererTest"
+}
+
+tasks.register("verifyCameraCollisionMath", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks continuous camera-volume collision and fail-closed invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CameraCollisionMathTest"
+}
+
+tasks.register("verifyRespirationModel", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks respiratory phase continuity, FPS independence and recovery timing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.RespirationModelTest"
+}
+
+tasks.register("verifyBreathingTorsoLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks V-shaped torso geometry, phase propagation and layer clearance."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoLayoutTest"
+}
+
+tasks.register("verifyBreathingTorsoRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Executes the dynamic breathing torso renderer for skin and jacket layers."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingTorsoRendererTest"
+}
+
+tasks.register("verifyBreathingShoulderLayout", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks breathing shoulder seam, clearance, symmetry and stability."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BreathingShoulderLayoutTest"
+}
+
+tasks.register("verifyMicrovoxelCore", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks 16x16x16 greedy meshing, neighbour culling, ray traversal and collision merging."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.MicrovoxelCoreTest"
+}
+
+tasks.register("verifyStonemasonMirror", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client stonemason mirrors: template masks, mask codec and workload pricing."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.StonemasonMirrorTest"
+}
+
+tasks.register("verifyPickupPrompt", JavaExec) {
+	dependsOn tasks.named("testClasses")
+	group = "verification"
+	description = "Checks client-side right-click pickup range and prompt fade invariants."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.PickupPromptRulesTest"
+}
+
+tasks.named("test") {
+	failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyArticulatedLimbGeometry")
+	dependsOn tasks.named("verifyElbowBridgeRenderer")
+	dependsOn tasks.named("verifyCameraCollisionMath")
+	dependsOn tasks.named("verifyRespirationModel")
+	dependsOn tasks.named("verifyBreathingTorsoLayout")
+	dependsOn tasks.named("verifyBreathingTorsoRenderer")
+	dependsOn tasks.named("verifyBreathingShoulderLayout")
+	dependsOn tasks.named("verifyMicrovoxelCore")
+	dependsOn tasks.named("verifyStonemasonMirror")
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+tasks.register("syncClientDistribution") {
+	dependsOn tasks.named("jar")
+
+	def remappedJar = tasks.named("jar").flatMap { it.archiveFile }
+	def clientRoot = layout.projectDirectory.dir("../plugins/RPChat/client")
+	def deployedClientRoot = layout.projectDirectory.dir("../fabric-server/plugins/RPChat/client")
+	def fabricConfigClientRoot = layout.projectDirectory.dir("../fabric-server/config/RPChat/client")
+	def modsDir = clientRoot.dir("mods")
+	def manifestFile = clientRoot.file("mods.json")
+	def modFileName = "eclipse-client-${project.version}.jar"
+	def supersededClientSha1 = "d2a7c3b26354307f9a6d504f16aae5a786a11b7f"
+
+	inputs.file(remappedJar)
+	outputs.file(modsDir.file(modFileName))
+	outputs.file(manifestFile)
+	outputs.file(deployedClientRoot.file("mods/${modFileName}"))
+	outputs.file(deployedClientRoot.file("mods.json"))
+	outputs.file(fabricConfigClientRoot.file("mods/${modFileName}"))
+	outputs.file(fabricConfigClientRoot.file("mods.json"))
+
+	doLast {
+		def sourceJar = remappedJar.get().asFile
+		def targetJar = modsDir.file(modFileName).asFile
+		targetJar.parentFile.mkdirs()
+		targetJar.bytes = sourceJar.bytes
+
+		def sha1 = MessageDigest.getInstance("SHA-1")
+			.digest(targetJar.bytes)
+			.collect { String.format("%02x", it) }
+			.join()
+
+		def manifest = []
+		if (manifestFile.asFile.exists()) {
+			manifest = new JsonSlurper().parse(manifestFile.asFile) as List
+		}
+		def obsoleteClientEntries = manifest.findAll {
+			it.sha1 == supersededClientSha1 || (it.name?.startsWith("eclipse-client-") && it.name != modFileName)
+		}
+		obsoleteClientEntries.each { obsolete ->
+			def obsoleteFile = modsDir.file(obsolete.name as String).asFile
+			if (obsoleteFile.exists()) {
+				obsoleteFile.delete()
+			}
+		}
+		manifest.removeAll {
+			it.sha1 == supersededClientSha1 || it.name == modFileName || it.name?.startsWith("eclipse-client-")
+		}
+
+		def entry = [
+			name: modFileName,
+			path: "mods/${modFileName}",
+			url: "https://api.eclipse-roleplay.online/dist/client/mods/${modFileName}"
+		]
+		manifest.add(0, entry)
+		entry.path = "mods/${modFileName}"
+		entry.sha1 = sha1
+		entry.size = targetJar.length()
+
+		manifestFile.asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), "UTF-8")
+
+		def deployedMods = deployedClientRoot.dir("mods").asFile
+		deployedMods.mkdirs()
+		deployedMods.listFiles()?.findAll {
+			it.name.startsWith("eclipse-client-") && it.name != modFileName
+		}?.each { it.delete() }
+		deployedClientRoot.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+		deployedClientRoot.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
+
+		def fabricConfigMods = fabricConfigClientRoot.dir("mods").asFile
+		fabricConfigMods.mkdirs()
+		fabricConfigMods.listFiles()?.findAll {
+			it.name.startsWith("eclipse-client-") && it.name != modFileName
+		}?.each { it.delete() }
+		fabricConfigClientRoot.file("mods/${modFileName}").asFile.bytes = targetJar.bytes
+		fabricConfigClientRoot.file("mods.json").asFile.setText(manifestFile.asFile.getText("UTF-8"), "UTF-8")
+		println "Synced ${modFileName} to ${targetJar} (${sha1}, ${targetJar.length()} bytes)"
+	}
+}
+
+tasks.named("build") {
+	finalizedBy tasks.named("syncClientDistribution")
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

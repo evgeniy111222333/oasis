@@ -1,0 +1,52 @@
+2026-07-08T19:20:43.100337800Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=start_search_quick world=world xyz=-8,97,12 detail="durationMs=3000"
+2026-07-08T19:20:46.593498700Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=search_quick world=world xyz=-8,97,12 detail="items=0"
+2026-07-08T19:20:46.594515700Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=complete_search_quick world=world xyz=-8,97,12
+2026-07-08T19:21:00.360747600Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_search_cloak world=world xyz=-8,97,11 detail="durationMs=6500"
+2026-07-08T19:21:07.084286200Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=search_cloak world=world xyz=-8,97,11 detail="items=0"
+2026-07-08T19:21:07.085304100Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_search_cloak world=world xyz=-8,97,11
+2026-07-08T19:21:43.745758900Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=start_search_thorough world=world xyz=-8,97,12 detail="durationMs=12000"
+2026-07-08T19:21:56.092058200Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=search_thorough world=world xyz=-8,97,12 detail="items=36"
+2026-07-08T19:21:56.093078200Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=complete_search_thorough world=world xyz=-8,97,12
+2026-07-08T19:21:59.486608400Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=take_search_item world=world xyz=-8,97,12 detail="правая рука:oak planks"
+2026-07-08T19:22:00.233469900Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=take_search_item world=world xyz=-8,97,12 detail="пояс #1:oak planks"
+2026-07-08T19:22:00.533356600Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=take_search_item world=world xyz=-8,97,12 detail="пояс #3:oak planks"
+2026-07-08T19:22:00.677155800Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=take_search_item world=world xyz=-8,97,12 detail="пояс #4:oak planks"
+2026-07-08T19:22:00.819664500Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=take_search_item world=world xyz=-8,97,12 detail="пояс #5:oak planks"
+2026-07-08T19:22:13.344945400Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=start_inspect world=world xyz=-8,97,12 detail="durationMs=3500"
+2026-07-08T19:22:17.094748400Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=inspect_wounds world=world xyz=-8,97,12 detail="trained=true"
+2026-07-08T19:22:17.095770300Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=complete_inspect world=world xyz=-8,97,12
+2026-07-08T19:22:43.810063700Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_disarm world=world xyz=-8,97,11 detail="durationMs=3500"
+2026-07-08T19:22:47.583458600Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_disarm world=world xyz=-8,97,11
+2026-07-08T19:23:09.361042400Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_carry world=world xyz=-8,97,11 detail="durationMs=3500"
+2026-07-08T19:23:13.091967500Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=carry world=world xyz=-8,97,11
+2026-07-08T19:23:13.091967500Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_carry world=world xyz=-8,97,11
+2026-07-08T19:23:36.206122700Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_kneel world=world xyz=-9,97,12 detail="durationMs=2500"
+2026-07-08T19:23:38.094126100Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=cancel_kneel world=world xyz=-8,97,11 detail="исполнитель сдвинулся с места"
+2026-07-08T19:25:11.385126900Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_bind world=world xyz=-14,96,14 detail="durationMs=6000"
+2026-07-08T19:25:17.584133700Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=bind world=world xyz=-15,96,13 detail="material=поводок"
+2026-07-08T19:25:17.584651600Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_bind world=world xyz=-15,96,13
+2026-07-09T15:43:42.867988300Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=unbind world=world xyz=-23,72,8
+2026-07-09T15:43:57.961069800Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_kneel world=world xyz=-23,72,8 detail="durationMs=2500"
+2026-07-09T15:44:00.913889200Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=kneel world=world xyz=-23,72,8
+2026-07-09T15:44:00.914916700Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_kneel world=world xyz=-23,72,8
+2026-07-10T15:33:25.483547Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=start_kneel world=world xyz=-6,91,5 detail="durationMs=2500"
+2026-07-10T15:33:28.250930200Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=kneel world=world xyz=-6,91,5
+2026-07-10T15:33:28.251450700Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=complete_kneel world=world xyz=-6,91,5
+2026-07-10T16:06:02.641956900Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_search_quick world=world xyz=-5,91,5 detail="durationMs=3000,forced=false"
+2026-07-10T16:06:05.650346300Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=search_quick world=world xyz=-5,91,5 detail="items=0"
+2026-07-10T16:06:05.650853400Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_search_quick world=world xyz=-5,91,5
+2026-07-10T16:06:41.921886400Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=release world=world xyz=-7,91,7
+2026-07-10T16:06:53.558320200Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=release world=world xyz=-6,91,6
+2026-07-10T16:08:35.236925Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_bind world=world xyz=-21,107,21 detail="durationMs=6000,forced=false"
+2026-07-10T16:08:41.647895800Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=bind world=world xyz=-21,107,21 detail="material=поводок"
+2026-07-10T16:08:41.648914300Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_bind world=world xyz=-21,107,21
+2026-07-10T16:09:04.203149800Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_carry world=world xyz=-22,107,19 detail="durationMs=3500,forced=false"
+2026-07-10T16:09:08.147356500Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=carry world=world xyz=-22,107,19
+2026-07-10T16:09:08.148373600Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=complete_carry world=world xyz=-22,107,19
+2026-07-11T07:54:48.655439200Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=start_kneel world=world xyz=-4,91,6 detail="durationMs=2500,forced=false"
+2026-07-11T07:54:51.019418Z actor=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 target=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c action=cancel_kneel world=world xyz=-2,91,5 detail="исполнитель сдвинулся с места"
+2026-07-11T08:08:03.338099200Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=force_won_carry world=world xyz=-6,91,5 detail="actor=28,target=14,difficulty=3"
+2026-07-11T08:08:03.339119900Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=start_carry world=world xyz=-6,91,5 detail="durationMs=4200,forced=true"
+2026-07-11T08:08:07.623688800Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=carry world=world xyz=-6,91,5
+2026-07-11T08:08:07.624703500Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=complete_carry world=world xyz=-6,91,5
+2026-07-11T08:08:35.456992500Z actor=NeDelKA/d252dd31-70b2-3c72-9702-56cf11bc067c target=zVinka/85307a7e-3cf5-39fe-98e5-639b63a71759 action=release world=world xyz=-5,91,4

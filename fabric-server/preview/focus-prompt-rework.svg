@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <pattern id="stone" width="80" height="54" patternUnits="userSpaceOnUse" patternTransform="skewX(-14)">
+      <rect width="80" height="54" fill="#4a4c55"/><rect x="2" y="2" width="37" height="23" fill="#5a5c66"/><rect x="41" y="2" width="37" height="23" fill="#42454e"/><rect x="2" y="27" width="25" height="25" fill="#343741"/><rect x="29" y="27" width="49" height="25" fill="#5a5c64"/>
+    </pattern>
+    <filter id="shadow"><feGaussianBlur stdDeviation="4"/></filter>
+    <style>.h{font:700 26px 'Segoe UI',sans-serif;fill:#fff7e9}.s{font:18px 'Segoe UI',sans-serif;fill:#c9bda9}.u{font:600 14px monospace;fill:#fff7e9}.a{font:600 13px monospace;fill:#dec59a}</style>
+    <g id="mouse"><path d="M4 0 H8 L10 2 V12 L8 14 H4 L2 12 V2Z" fill="#16120f" stroke="#f0dfc1" stroke-width="1.2"/><path d="M6 2 H8 L9 3 V6 H6Z" fill="#d8b773"/><path d="M5 2 V7" stroke="#70583a" stroke-width="1"/><path d="M3 8 H9" stroke="#70583a" stroke-width="1"/><rect x="4.5" y="10" width="2" height="2" fill="#e7c98f"/></g>
+  </defs>
+  <rect width="1280" height="720" fill="url(#stone)"/>
+  <rect width="1280" height="720" fill="#10121a" opacity=".27"/>
+  <text x="48" y="60" class="h">НОВИЙ FOCUS-PROMPT: ЄДИНА ДІЯ, БЕЗ БАНЕРА</text>
+  <text x="48" y="92" class="s">Макет локального варіанту. Ще не опубліковано.</text>
+  <g transform="translate(474 310)">
+    <path d="M166 -42 V-64 M155 -53 H177" stroke="#eee" stroke-width="2" opacity=".8"/>
+    <rect x="-4" y="-4" width="340" height="38" rx="2" fill="#010101" opacity=".58" filter="url(#shadow)"/>
+    <rect width="332" height="30" fill="#12100e" opacity=".92"/>
+    <rect width="2" height="20" y="5" fill="#d6b77e"/>
+    <rect x="10" y="7" width="16" height="16" fill="#5b4322"/><path d="M12 9 H24 V21 H12Z" fill="#9b7942"/><path d="M12 9 L18 5 L24 9" fill="#c6a268"/>
+    <line x1="29" y1="7" x2="29" y2="22" stroke="#4c3d2b"/>
+    <text x="35" y="19" class="u">Обтёсанная дубовая древесина</text>
+    <line x1="239" y1="8" x2="239" y2="21" stroke="#4c3d2b"/>
+    <use href="#mouse" transform="translate(250 8)"/>
+    <text x="269" y="19" class="a">Взять</text>
+  </g>
+  <text x="48" y="525" class="s">Що змінилося:</text>
+  <text x="48" y="560" class="s">• 30 px заввишки замість важкої дворядкової панелі</text>
+  <text x="48" y="590" class="s">• «Взять» і піктограма — один action-group, а не кнопка праворуч</text>
+  <text x="48" y="620" class="s">• 10 px гарантованої зони між назвою і дією; довгі назви скорочуються</text>
+</svg>
