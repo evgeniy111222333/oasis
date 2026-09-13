@@ -47,8 +47,8 @@
   html, body {
     width: 100%; height: 100%;
     overflow: hidden;
-    background:
-      radial-gradient(1200px 800px at 50% 40%, #23252b 0%, #14151a 45%, #0b0c0f 100%);
+    /* transparent so the game world shows through the MCEF overlay */
+    background: transparent;
     font-family: 'Segoe UI', Arial, sans-serif;
     color: var(--paper);
     user-select: none;
@@ -58,7 +58,10 @@
   .serif { font-family: Georgia, 'Times New Roman', serif; letter-spacing: 0.02em; }
 
   /* ---------- demo backdrop (stands in for the game world) ---------- */
-  .stage { position: fixed; inset: 0; }
+  .stage {
+    position: fixed; inset: 0;
+    background: radial-gradient(1200px 800px at 50% 40%, #23252b 0%, #14151a 45%, #0b0c0f 100%);
+  }
   .vignette {
     position: absolute; inset: 0; pointer-events: none;
     background: radial-gradient(120% 90% at 50% 45%, transparent 40%, rgba(0,0,0,0.55) 100%);
@@ -385,6 +388,10 @@
   body.ingame .readout { display: none; }
   /* the palette now lives in the "Материал" sector, so the bottom strip is prototype-only */
   body.ingame .palette { display: none; }
+  /* fully transparent in-game: no demo backdrop, no vignette, no world dimming */
+  body.ingame .stage { background: transparent; }
+  body.ingame .vignette { display: none; }
+  body.ingame .radial__dim { opacity: 0 !important; }
 
   .sector__swatch {
     width: 28px; height: 28px; border-radius: 9px;

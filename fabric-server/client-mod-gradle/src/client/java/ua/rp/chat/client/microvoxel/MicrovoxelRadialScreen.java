@@ -67,7 +67,8 @@ public final class MicrovoxelRadialScreen extends Screen {
         try {
             if (!MCEF.isInitialized()) MCEF.initialize();
             File page = extractPage();
-            String url = "file:///" + page.getAbsolutePath().replace("\\", "/") + "#ingame";
+            // "#open" auto-opens the wheel the moment the overlay loads (no extra key press).
+            String url = "file:///" + page.getAbsolutePath().replace("\\", "/") + "#open&ingame";
             browser = MCEF.createBrowser(url, true);
             if (browser != null) {
                 browser.setFocus(true);
