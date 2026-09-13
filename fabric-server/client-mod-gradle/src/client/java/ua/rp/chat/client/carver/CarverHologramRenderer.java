@@ -144,7 +144,7 @@ public final class CarverHologramRenderer {
         for (RenderType type : usedTypes) context.bufferSource().endBatch(type);
     }
 
-    /** Translucent hint cube at the hovered placement cell; it is not committed geometry. */
+    /** Translucent wireframe hint at the hovered placement cell; never committed geometry. */
     private static void emitGhost(Minecraft minecraft, PoseStack.Pose pose,
                                   MultiBufferSource.BufferSource bufferSource,
                                   double baseX, double baseY, double baseZ,
@@ -153,43 +153,41 @@ public final class CarverHologramRenderer {
         int y = ua.rp.chat.carver.DraftMask.y(cell);
         int z = ua.rp.chat.carver.DraftMask.z(cell);
         float x0 = x, y0 = y, z0 = z, x1 = x + 1, y1 = y + 1, z1 = z + 1;
-        int color = 0x88F0DC9A;
-        RenderType type = RenderTypes.translucentMovingBlock();
+        int color = 0xCCF0DC9A;
+        RenderType type = RenderTypes.linesTranslucent();
         VertexConsumer consumer = bufferSource.getBuffer(type);
         usedTypes.add(type);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1, color, light, 0, 1, 0);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x0, y0, z1, x1, y0, z1, x1, y0, z0, x0, y0, z0, color, light, 0, -1, 0);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, color, light, 0, 0, -1);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x1, y0, z1, x0, y0, z1, x0, y1, z1, x1, y1, z1, color, light, 0, 0, 1);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1, color, light, -1, 0, 0);
-        ghostQuad(consumer, pose, baseX, baseY, baseZ,
-                x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, color, light, 1, 0, 0);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x1, y0, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z1, x1, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z0, x1, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z1, x1, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x0, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z0, x1, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z1, x0, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z1, x1, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x0, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z0, x1, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z0, x0, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y1, z0, x1, y1, z1, color);
     }
 
-    private static void ghostQuad(VertexConsumer consumer, PoseStack.Pose pose,
-                                  double bx, double by, double bz,
-                                  float ax, float ay, float az,
-                                  float bx2, float by2, float bz2,
-                                  float cx, float cy, float cz,
-                                  float dx, float dy, float dz,
-                                  int color, int light, float nx, float ny, float nz) {
+    private static void edge(VertexConsumer consumer, PoseStack.Pose pose,
+                             double bx, double by, double bz,
+                             float ax, float ay, float az,
+                             float dx, float dy, float dz, int color) {
+        float nx = dx - ax;
+        float ny = dy - ay;
+        float nz = dz - az;
+        float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (length > 1.0E-6f) {
+            nx /= length;
+            ny /= length;
+            nz /= length;
+        }
         consumer.addVertex(pose, (float) (bx + ax), (float) (by + ay), (float) (bz + az))
-                .setColor(color).setUv(0.0f, 0.0f).setOverlay(OverlayTexture.NO_OVERLAY)
-                .setLight(light).setNormal(pose, nx, ny, nz);
-        consumer.addVertex(pose, (float) (bx + bx2), (float) (by + by2), (float) (bz + bz2))
-                .setColor(color).setUv(1.0f, 0.0f).setOverlay(OverlayTexture.NO_OVERLAY)
-                .setLight(light).setNormal(pose, nx, ny, nz);
-        consumer.addVertex(pose, (float) (bx + cx), (float) (by + cy), (float) (bz + cz))
-                .setColor(color).setUv(1.0f, 1.0f).setOverlay(OverlayTexture.NO_OVERLAY)
-                .setLight(light).setNormal(pose, nx, ny, nz);
+                .setColor(color).setNormal(pose, nx, ny, nz);
         consumer.addVertex(pose, (float) (bx + dx), (float) (by + dy), (float) (bz + dz))
-                .setColor(color).setUv(0.0f, 1.0f).setOverlay(OverlayTexture.NO_OVERLAY)
-                .setLight(light).setNormal(pose, nx, ny, nz);
+                .setColor(color).setNormal(pose, nx, ny, nz);
     }
 
     private static void emitFaceList(Minecraft minecraft, BlockPos focus,
