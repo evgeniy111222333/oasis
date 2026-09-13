@@ -185,9 +185,9 @@ public final class CarverHologramRenderer {
             nz /= length;
         }
         consumer.addVertex(pose, (float) (bx + ax), (float) (by + ay), (float) (bz + az))
-                .setColor(color).setNormal(pose, nx, ny, nz);
+                .setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(2.0f);
         consumer.addVertex(pose, (float) (bx + dx), (float) (by + dy), (float) (bz + dz))
-                .setColor(color).setNormal(pose, nx, ny, nz);
+                .setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(2.0f);
     }
 
     private static void emitFaceList(Minecraft minecraft, BlockPos focus,
