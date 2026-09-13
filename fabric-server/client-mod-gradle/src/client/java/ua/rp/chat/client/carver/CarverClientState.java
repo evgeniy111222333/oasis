@@ -277,6 +277,9 @@ public final class CarverClientState {
         designing = true;
         working = false;
         focus = pos;
+        // Enter the drafting session with the breaking tool engaged: LMB carves voxels by default,
+        // the radial menu only switches to placing.
+        ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.engageDefaultErase();
         draft.clearAll();
         serverDraft.clearAll();
         optimisticEditTick = -1L;

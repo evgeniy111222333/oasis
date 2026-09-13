@@ -415,10 +415,19 @@ tasks.register("verifyRadialMenuWiring") {
 				"The edit hover/preview state must survive the tick (continuous edit + preview must work)"
 		assert controllerText.contains("pendingActionHit") && controllerText.contains("hoveredVolumeHit"):
 				"Radial target actions must freeze the Carver's hovered cell"
+		assert controllerText.contains("engageDefaultErase") && controllerText.contains("toolEngaged")
+				&& controllerText.contains("attackAt"):
+				"Entering a session must engage breaking and LMB must edit the cursor target"
+		assert !controllerText.contains("performErase(minecraft) : performPlace(minecraft)"):
+				"RMB must never edit voxels (it is reserved for the hologram orbit)"
 
 		def carver = carverScreen.asFile.getText("UTF-8")
 		assert carver.contains("hoveredVolumeHit") && carver.contains("mouseMoved"):
 				"The Carver screen must track the hovered volume cell for the radial"
+		assert carver.contains("toolEngaged()") && carver.contains("attackAt(minecraft, hoveredVolumeHit)"):
+				"Carver left-click must edit voxels through the active radial tool"
+		assert !carver.contains("toolButton") && !carver.contains("toolLabel"):
+				"The dead chisel/wax toggle must be removed from the Carver sidebar"
 
 		def engine = editEngine.asFile.getText("UTF-8")
 		assert engine.contains("boolean creative = player.gameMode.getGameModeForPlayer() == GameType.CREATIVE;")

@@ -110,30 +110,57 @@ public final class MicrovoxelInteractionController {
         MicrovoxelActionBatcher.flush(minecraft);
     }
 
-    /** Radial-chosen tool: LMB runs it directly, RMB runs the opposite. */
+    /** Left-click runs the active tool: place when the menu chose placing, otherwise break. */
     public static boolean handleAttack(Minecraft minecraft) {
         if (!editing) return false;
         return toolMode == TOOL_PLACE ? performPlace(minecraft) : performErase(minecraft);
     }
 
-    /** Radial-chosen tool on the secondary button runs the opposite action. */
+    /**
+     * The secondary button never edits voxels: it is reserved for the Carver hologram orbit (and
+     * vanilla use in the world). Only the left button places or breaks, per the active mode.
+     */
     public static boolean handleUse(Minecraft minecraft) {
-        if (!editing) return false;
-        return toolMode == TOOL_PLACE ? performErase(minecraft) : performPlace(minecraft);
+        return false;
     }
 
     public static void handleContinuousAttack(Minecraft minecraft) {
         handleAttack(minecraft);
     }
 
+    /** True while a radial mode is engaged inside a Carver session. */
+    public static boolean toolEngaged() {
+        return toolActive && CarverClientState.inSession();
+    }
+
+    /** Session default: enter with breaking engaged so LMB carves voxels with no menu detour. */
+    public static void engageDefaultErase() {
+        toolMode = TOOL_ERASE;
+        toolActive = true;
+    }
+
+    /**
+     * Left-click on an explicit target (the Carver free cursor): the design screen uses this so the
+     * click edits the cell under the pointer rather than a camera-raycast one. Mode and brush apply.
+     */
+    public static boolean attackAt(Minecraft minecraft, MicrovoxelRaycaster.Hit target) {
+        if (!editing || target == null) return false;
+        currentHit = target;
+        return toolMode == TOOL_PLACE ? performPlace(minecraft, target) : performErase(minecraft, target);
+    }
+
     private static boolean performErase(Minecraft minecraft) {
+        return performErase(minecraft, null);
+    }
+
+    private static boolean performErase(Minecraft minecraft, MicrovoxelRaycaster.Hit explicitHit) {
         if (!editing || minecraft.player == null) return false;
         if (lastAttackSentTick == interactionTick) return true;
         // Minecraft calls continueAttack before the END_CLIENT_TICK callback refreshes the
         // preview. Reusing currentHit therefore sent the cell removed on the previous tick and
         // produced a stream of false "target changed" rejects. Always raycast the predicted
-        // geometry at the instant the action is emitted.
-        MicrovoxelRaycaster.Hit hit = resolveHit(minecraft);
+        // geometry at the instant the action is emitted, unless the Carver supplied the target.
+        MicrovoxelRaycaster.Hit hit = explicitHit != null ? explicitHit : resolveHit(minecraft);
         if (hit == null) {
             StandardTarget standard = standardTarget(minecraft);
             if (standard != null) {
@@ -202,8 +229,13 @@ public final class MicrovoxelInteractionController {
     }
 
     private static boolean performPlace(Minecraft minecraft) {
+        return performPlace(minecraft, null);
+    }
+
+    private static boolean performPlace(Minecraft minecraft, MicrovoxelRaycaster.Hit explicitHit) {
         if (!editing || minecraft.player == null) return false;
-        MicrovoxelRaycaster.Hit hit = currentHit != null ? currentHit : resolveHit(minecraft);
+        MicrovoxelRaycaster.Hit hit = explicitHit != null ? explicitHit
+                : (currentHit != null ? currentHit : resolveHit(minecraft));
         if (hit == null) {
             if (targetsKnownVolume(minecraft)) {
                 trace("ADD_BLOCKED marker-targeted-without-cell");
@@ -609,7 +641,7 @@ public final class MicrovoxelInteractionController {
             case "gen.column" -> withEditing(minecraft, m -> generateTarget(m, 1, length, width, height));
             case "gen.roof" -> withEditing(minecraft, m -> generateTarget(m, 2, length, width, height));
             // Fragments (reclaimed voxels) place instantly; a raw block converts once (~0.6 s),
-            // then the tool stays engaged for continuous LMB/RMB building.
+            // then the tool stays engaged for continuous left-click building.
             case "place" -> {
                 selectedMaterialId = material == null ? "" : material;
                 toolMode = TOOL_PLACE;

@@ -49,7 +49,6 @@ public class CarverDesignScreen extends Screen {
     private UiButton peelButton;
     private UiButton isolateButton;
     private UiButton boxButton;
-    private UiButton toolButton;
 
     protected CarverDesignScreen() {
         super(Component.translatable("screen.eclipse.carver_design"));
@@ -76,14 +75,6 @@ public class CarverDesignScreen extends Screen {
             isolateButton.label = isolateLabel();
         };
         buttons.add(isolateButton);
-        top += ROW_H + ROW_GAP;
-        toolButton = wideButton(right, top, toolLabel(), () -> {
-        });
-        toolButton.action = () -> {
-            erasing = !erasing;
-            toolButton.label = toolLabel();
-        };
-        buttons.add(toolButton);
         top += ROW_H + ROW_GAP;
         boxButton = wideButton(right, top, boxLabel(), () -> {
         });
@@ -112,15 +103,6 @@ public class CarverDesignScreen extends Screen {
 
     private UiButton wideButton(int x, int y, Component label, Runnable action) {
         return new UiButton(x, y, PANEL_W, ROW_H, label, action);
-    }
-
-    /**
-     * Master's tools: the chisel marks voxels for removal, wax puts voxels back
-     * (lifts the mark off carved volumes). One toggle, no layer or depth dials.
-     */
-    private Component toolLabel() {
-        return Component.translatable(erasing
-                ? "screen.eclipse.carver_wax" : "screen.eclipse.carver_chisel");
     }
 
     private Component boxLabel() {
@@ -195,6 +177,13 @@ public class CarverDesignScreen extends Screen {
         }
         if (event.button() == BUTTON_LEFT) {
             CarverCursorPick.Hit hit = pickAt(event.x(), event.y());
+            if (ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.toolEngaged()) {
+                // The radial mode owns the left button: edit the cell under the free cursor
+                // (break by default, place after choosing "Поставить"). Right-drag still orbits.
+                ua.rp.chat.client.microvoxel.MicrovoxelInteractionController
+                        .attackAt(minecraft, hoveredVolumeHit);
+                return true;
+            }
             if (hit != null) {
                 painting = true;
                 CarverClientState.setViewFace(hit.face());
@@ -215,6 +204,13 @@ public class CarverDesignScreen extends Screen {
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
         if (event.button() == BUTTON_RIGHT) {
             CarverCameraRig.orbitDrag(dragX, dragY);
+            return true;
+        }
+        if (event.button() == BUTTON_LEFT
+                && ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.toolEngaged()) {
+            pickAt(event.x(), event.y());
+            ua.rp.chat.client.microvoxel.MicrovoxelInteractionController
+                    .attackAt(minecraft, hoveredVolumeHit);
             return true;
         }
         if (painting && event.button() == BUTTON_LEFT) {
