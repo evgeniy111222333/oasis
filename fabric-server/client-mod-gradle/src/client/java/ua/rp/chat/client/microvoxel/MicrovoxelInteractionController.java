@@ -118,7 +118,10 @@ public final class MicrovoxelInteractionController {
             }
             case "place" -> {
                 CarverClientState.setPlacing(true);
-                minecraft.gui.setOverlayMessage(Component.literal("Режим: поставить"), false);
+                minecraft.gui.setOverlayMessage(Component.literal(
+                        CarverClientState.placeMaterial().isEmpty()
+                                ? "Режим: поставить. Выберите «Материал»."
+                                : "Режим: поставить"), false);
             }
             case "material" -> {
                 if (material == null || material.isBlank()) {

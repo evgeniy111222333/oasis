@@ -1068,8 +1068,11 @@ public final class CarverManager {
         double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
         sendEvent(player, CarverProtocol.EVENT_ESTIMATE, pos,
                 CarverSyncPayload.estimateData(cells.size(), (float) seconds, (float) cost, ticks));
-        player.sendSystemMessage(Component.literal("Будет снято: " + cells.size() + " вокселей | Время: ~"
-                + Math.round(seconds) + " сек | Стамина: " + Math.round(cost) + "%"), true);
+        int placeCount = session.placeMask().count();
+        player.sendSystemMessage(Component.literal("Чертёж: снято " + cells.size()
+                + (placeCount > 0 ? ", добавлено " + placeCount : "")
+                + " | Время: ~" + Math.round(seconds) + " сек | Стамина: "
+                + Math.round(cost) + "%"), true);
     }
 
     private void sendEvent(ServerPlayer player, int event, BlockPos pos, byte[] data) {

@@ -222,26 +222,50 @@ public final class CarverHologramRenderer {
                 ? "m" + CarverHologram.materialKey()
                 : "v" + volume.revision();
         ua.rp.chat.carver.DraftMask draft = CarverClientState.draft();
-        long draftFp = draft.isEmpty() ? 0L
-                : ua.rp.chat.carver.CarverChalkQuads.draftFingerprint(draft);
+        ua.rp.chat.carver.DraftMask place = CarverClientState.placeDraft();
+        long fingerprint = draftFingerprint(draft, place);
         DisplayMesh current = displayCache;
         if (current != null && current.focus().equals(focus)
-                && current.sourceKey().equals(sourceKey) && current.draftFp() == draftFp) {
+                && current.sourceKey().equals(sourceKey) && current.draftFp() == fingerprint) {
             return current;
         }
-        // Solid pass: mesh the live volume with every drafted cell read as air.
-        java.util.function.IntPredicate hidden = draft.isEmpty() ? null : draft::get;
+        // Preview volume: drafted cells vanish, placed cells take their chosen material, so the
+        // hologram shows the finished sculpt (real material quads) before it is committed.
+        ua.rp.chat.microvoxel.MicrovoxelVolume preview = volume.copy();
+        for (int cell : draft.cells()) preview.remove(cell);
+        if (!place.isEmpty()) {
+            java.util.Map<Integer, String> materials = CarverClientState.placeMaterials();
+            for (int cell : place.cells()) {
+                String material = materials.get(cell);
+                if (material != null && !material.isEmpty()) preview.update(cell, material);
+            }
+        }
         List<MicrovoxelGreedyMesher.Face> visible =
                 ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(
-                        volume, volume::materialAt, hidden);
-        // The drafted cells simply vanish from the solid pass. There is deliberately no ghost /
-        // surface-wire pass any more: outlining removed faces on the copy only read as a stray
+                        preview, preview::materialAt, null);
+        // No ghost / surface-wire pass: outlining removed faces on the copy only read as a stray
         // glow around the cut, which is exactly what the artisan must not see.
         List<MicrovoxelGreedyMesher.Face> ghost = List.of();
-        DisplayMesh built = new DisplayMesh(focus.immutable(), sourceKey, draftFp,
-                visible, ghost, volume.palette());
+        DisplayMesh built = new DisplayMesh(focus.immutable(), sourceKey, fingerprint,
+                visible, ghost, preview.palette());
         displayCache = built;
         return built;
+    }
+
+    /** Cache key over both masks and the placement materials, so any edit re-meshes once. */
+    private static long draftFingerprint(ua.rp.chat.carver.DraftMask draft,
+                                         ua.rp.chat.carver.DraftMask place) {
+        long fp = draft.isEmpty() ? 0L
+                : ua.rp.chat.carver.CarverChalkQuads.draftFingerprint(draft);
+        if (!place.isEmpty()) {
+            java.util.Map<Integer, String> materials = CarverClientState.placeMaterials();
+            for (int cell : place.cells()) {
+                String material = materials.get(cell);
+                fp = fp * 31 + cell;
+                fp = fp * 31 + (material == null ? 0 : material.hashCode());
+            }
+        }
+        return fp;
     }
 
     private static ua.rp.chat.microvoxel.MicrovoxelVolume virtualFull() {

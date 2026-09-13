@@ -307,9 +307,10 @@ tasks.register("verifyMicrovoxelNativeMarker") {
                 && state.contains("currentCenter.mesh = mesh")
                 && !state.contains("oldCached == null ? null : oldCached.getShape()"):
                 "Continuous edits must coalesce shape work and publish intermediate meshes"
-        assert interaction.asFile.getText("UTF-8").contains(
-                "Always raycast the predicted"):
-                "Continuous attack must not resend the previous tick's stale target"
+        assert interaction.asFile.getText("UTF-8").contains("handleRadialSelection")
+                && interaction.asFile.getText("UTF-8").contains("setPlacing")
+                && !interaction.asFile.getText("UTF-8").contains("performErase"):
+                "The microvoxel editor must stay deleted: the radial only drives the Carver draft"
         assert gameModeMixin.asFile.getText("UTF-8").contains(
                 "MicrovoxelInteractionController.editing() && MicrovoxelClientState.get(pos) != null"):
                 "Native survival mining must remain enabled outside microvoxel edit mode"
