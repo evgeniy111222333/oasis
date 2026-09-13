@@ -17,6 +17,7 @@ public final class CarverTest {
         verifyDraftHistory();
         verifyMirror();
         verifyBlueprint();
+        verifyAdditiveDraft();
         verifyProtocol();
         verifyDominantMaterial();
         verifyStrikeAlign();
@@ -626,8 +627,73 @@ public final class CarverTest {
         bootstrapped = true;
     }
 
+    /**
+     * Additive draft (v2): placements carry their own material, the two masks are mutually
+     * exclusive, undo/redo and blueprints cover both, and the work plan spans remove + place.
+     */
+    private static void verifyAdditiveDraft() {
+        DraftSession session = new DraftSession();
+        require(session.beginDesign(0, 0, 0, "minecraft:oak_log", 200), "Design must begin");
+        DraftMask remove = new DraftMask();
+        remove.set(DraftMask.index(1, 0, 0));
+        session.markRemove(remove, 0, true);
+        require(session.mask().get(DraftMask.index(1, 0, 0)), "Remove mark must land");
+
+        DraftMask place = new DraftMask();
+        place.set(DraftMask.index(2, 0, 0));
+        session.markPlace(place, 0, "minecraft:dirt", true);
+        require(session.placeMask().get(DraftMask.index(2, 0, 0))
+                        && "minecraft:dirt".equals(session.placeMaterial(DraftMask.index(2, 0, 0))),
+                "Place mark must carry its material");
+
+        session.markPlace(remove, 0, "minecraft:dirt", true);
+        require(!session.mask().get(DraftMask.index(1, 0, 0))
+                        && session.placeMask().get(DraftMask.index(1, 0, 0)),
+                "Placing over a removal must clear the removal");
+
+        session.pushHistory();
+        DraftMask more = new DraftMask();
+        more.set(DraftMask.index(3, 0, 0));
+        session.markRemove(more, 0, true);
+        require(session.undo() && !session.mask().get(DraftMask.index(3, 0, 0)),
+                "Undo must drop the newest removal");
+        require(session.redo() && session.mask().get(DraftMask.index(3, 0, 0)),
+                "Redo must restore it");
+        require(session.hasContent(), "A session with placements must have content");
+        session.clearDraft();
+        require(!session.hasContent(), "Clear must empty both masks");
+
+        DraftMask rm = new DraftMask();
+        rm.set(DraftMask.index(4, 0, 0));
+        DraftMask pl = new DraftMask();
+        pl.set(DraftMask.index(5, 0, 0));
+        java.util.Map<Integer, String> mats = new java.util.LinkedHashMap<>();
+        mats.put(DraftMask.index(5, 0, 0), "minecraft:dirt");
+        CarverBlueprint.Decoded decoded = CarverBlueprint.decode(
+                CarverBlueprint.encode(rm, pl, mats, "minecraft:oak_log", "Master"));
+        require(decoded != null && decoded.placeMask().get(DraftMask.index(5, 0, 0))
+                        && "minecraft:dirt".equals(
+                                decoded.placeMaterials().get(DraftMask.index(5, 0, 0))),
+                "Blueprint must round-trip the additive mask + material");
+
+        WorkPlan plan = new WorkPlan(rm.cells(), "minecraft:oak_log", pl.cells(), mats);
+        require(plan.total() == 2 && plan.remaining() == 2, "Work plan must count both masks");
+        plan.setApplied(1);
+        plan.addRemoved("minecraft:oak_log", 1);
+        plan.setPlaceApplied(1);
+        plan.addPlaced("minecraft:dirt", 1);
+        require(plan.remaining() == 0 && plan.placed() == 1 && plan.removed() == 1,
+                "Work plan cursor must cover removals and placements");
+
+        System.out.println(
+                "CarverAdditiveDraftTest: masks, undo, blueprint and work plan passed");
+    }
+
     private static void verifyProtocol() {
-        require(CarverProtocol.VERSION == 1, "Protocol starts at version 1");
+        require(CarverProtocol.VERSION == 2, "Protocol version must be 2 (additive draft)");
+        require(CarverProtocol.isAction(CarverProtocol.ACTION_STROKE_PLACE)
+                        && CarverProtocol.isAction(CarverProtocol.ACTION_BOX_PLACE),
+                "Additive draft actions must be known");
         for (int action = CarverProtocol.ACTION_STROKE_ADD;
              action <= CarverProtocol.ACTION_SAVE; action++) {
             require(CarverProtocol.isAction(action), "Action " + action + " must be known");

@@ -31,6 +31,16 @@ public final class CarverClientState {
      * draft snaps back to this snapshot so the artisan's client never lies about the result.
      */
     private static final DraftMask serverDraft = new DraftMask();
+    /** Additive draft: cells the approved sculpt will fill, each with its chosen material. */
+    private static final DraftMask placeDraft = new DraftMask();
+    private static final DraftMask serverPlaceDraft = new DraftMask();
+    private static final java.util.LinkedHashMap<Integer, String> placeMaterials =
+            new java.util.LinkedHashMap<>();
+    private static final java.util.LinkedHashMap<Integer, String> serverPlaceMaterials =
+            new java.util.LinkedHashMap<>();
+    /** Active placement material (block-state string) and the LMB mode. */
+    private static String placeMaterial = "";
+    private static boolean placing;
     /** Client tick of the newest optimistic edit still awaiting a server echo; -1 when idle. */
     private static long optimisticEditTick = -1L;
     /** Reconcile window in client ticks; generous enough to ride out a slow link. */
@@ -134,6 +144,30 @@ public final class CarverClientState {
 
     public static DraftMask draft() {
         return draft;
+    }
+
+    public static DraftMask placeDraft() {
+        return placeDraft;
+    }
+
+    public static java.util.Map<Integer, String> placeMaterials() {
+        return java.util.Collections.unmodifiableMap(placeMaterials);
+    }
+
+    public static String placeMaterial() {
+        return placeMaterial;
+    }
+
+    public static void setPlaceMaterial(String material) {
+        placeMaterial = material == null ? "" : material;
+    }
+
+    public static boolean placing() {
+        return placing;
+    }
+
+    public static void setPlacing(boolean value) {
+        placing = value;
     }
 
     /**
@@ -277,11 +311,15 @@ public final class CarverClientState {
         designing = true;
         working = false;
         focus = pos;
-        // Enter the drafting session with the breaking tool engaged: LMB carves voxels by default,
-        // the radial menu only switches to placing.
-        ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.engageDefaultErase();
+        // Enter the drafting session in УБРАТЬ mode: LMB carves voxels by default, the radial
+        // menu only switches to placing with a chosen material.
+        placing = false;
         draft.clearAll();
         serverDraft.clearAll();
+        placeDraft.clearAll();
+        serverPlaceDraft.clearAll();
+        placeMaterials.clear();
+        serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
         finishTicks = -1;
         finishFocus = null;
@@ -329,20 +367,28 @@ public final class CarverClientState {
     private static void onDraft(BlockPos pos, byte[] data) {
         if (designing && pos.equals(focus)) {
             try {
-                DraftMask server = DraftMask.decode(data);
+                CarverProtocol.DraftState state = CarverProtocol.decodeDraftState(data);
                 // Authoritative echo: adopt it and drop every pending optimistic edit, so a
                 // throttled or capped stroke is reconciled the moment the server answers.
                 draft.clearAll();
-                draft.orIn(server);
+                draft.orIn(state.remove());
                 serverDraft.clearAll();
-                serverDraft.orIn(server);
+                serverDraft.orIn(state.remove());
+                placeDraft.clearAll();
+                placeDraft.orIn(state.place());
+                serverPlaceDraft.clearAll();
+                serverPlaceDraft.orIn(state.place());
+                placeMaterials.clear();
+                placeMaterials.putAll(state.materials());
+                serverPlaceMaterials.clear();
+                serverPlaceMaterials.putAll(state.materials());
                 optimisticEditTick = -1L;
             } catch (IllegalArgumentException ignored) {
             }
             return;
         }
         try {
-            putObservedDraft(pos, DraftMask.decode(data));
+            putObservedDraft(pos, CarverProtocol.decodeDraftState(data).remove());
         } catch (IllegalArgumentException ignored) {
         }
     }
@@ -452,6 +498,10 @@ public final class CarverClientState {
         focus = null;
         draft.clearAll();
         serverDraft.clearAll();
+        placeDraft.clearAll();
+        serverPlaceDraft.clearAll();
+        placeMaterials.clear();
+        serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
         finishTicks = -1;
         finishFocus = null;
@@ -485,6 +535,8 @@ public final class CarverClientState {
         if (!designing || focus == null) return;
         // Clearing is instant locally; the echo confirms it against the authoritative mask.
         draft.clearAll();
+        placeDraft.clearAll();
+        placeMaterials.clear();
         optimisticEditTick = clientTickCounter;
         send(CarverProtocol.ACTION_CLEAR_DRAFT, focus, new byte[0]);
     }
@@ -494,6 +546,24 @@ public final class CarverClientState {
         applyOptimisticDraft(add, box);
         send(add ? CarverProtocol.ACTION_BOX_ADD : CarverProtocol.ACTION_BOX_ERASE,
                 focus, box.encode());
+    }
+
+    /** Additive free-hand stroke: marks cells to be filled with the active material. */
+    public static void sendPlaceStroke(DraftMask stroke) {
+        if (!designing || focus == null || stroke.isEmpty()
+                || placeMaterial.isEmpty()) return;
+        applyOptimisticPlace(stroke);
+        send(CarverProtocol.ACTION_STROKE_PLACE, focus,
+                CarverProtocol.encodePlace(placeMaterial, stroke.encode()));
+    }
+
+    /** Additive box: marks a whole area to be filled with the active material. */
+    public static void sendPlaceBox(DraftMask box) {
+        if (!designing || focus == null || box.isEmpty()
+                || placeMaterial.isEmpty()) return;
+        applyOptimisticPlace(box);
+        send(CarverProtocol.ACTION_BOX_PLACE, focus,
+                CarverProtocol.encodePlace(placeMaterial, box.encode()));
     }
 
     /**
@@ -507,8 +577,28 @@ public final class CarverClientState {
         expandMirroredLocally(twin, mirrorAxes);
         if (add) {
             draft.orIn(twin);
+            for (int cell : twin.cells()) {
+                placeDraft.clear(cell);
+                placeMaterials.remove(cell);
+            }
         } else {
             draft.andNot(twin);
+        }
+        optimisticEditTick = clientTickCounter;
+    }
+
+    /**
+     * Optimistic additive stroke: the chosen material hides those cells from the base and
+     * marks them for placement, mirroring the server's mutual exclusion between the masks.
+     */
+    private static void applyOptimisticPlace(DraftMask cells) {
+        if (cells == null || cells.isEmpty()) return;
+        DraftMask twin = cells.copy();
+        expandMirroredLocally(twin, mirrorAxes);
+        for (int cell : twin.cells()) {
+            placeDraft.set(cell);
+            placeMaterials.put(cell, placeMaterial);
+            draft.clear(cell);
         }
         optimisticEditTick = clientTickCounter;
     }
@@ -551,6 +641,10 @@ public final class CarverClientState {
         if (clientTickCounter - optimisticEditTick <= OPTIMISTIC_RECONCILE_TICKS) return;
         draft.clearAll();
         draft.orIn(serverDraft);
+        placeDraft.clearAll();
+        placeDraft.orIn(serverPlaceDraft);
+        placeMaterials.clear();
+        placeMaterials.putAll(serverPlaceMaterials);
         optimisticEditTick = -1L;
     }
 
@@ -718,6 +812,10 @@ public final class CarverClientState {
         focus = null;
         draft.clearAll();
         serverDraft.clearAll();
+        placeDraft.clearAll();
+        serverPlaceDraft.clearAll();
+        placeMaterials.clear();
+        serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
         finishTicks = -1;
         finishFocus = null;
@@ -918,6 +1016,10 @@ public final class CarverClientState {
                 focus = null;
                 draft.clearAll();
                 serverDraft.clearAll();
+                placeDraft.clearAll();
+                serverPlaceDraft.clearAll();
+                placeMaterials.clear();
+                serverPlaceMaterials.clear();
                 optimisticEditTick = -1L;
                 CarverInspection.clear();
                 CarverCameraRig.end();

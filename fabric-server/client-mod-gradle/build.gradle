@@ -395,6 +395,11 @@ tasks.register("verifyRadialMenuWiring") {
 				"The brush must be a real panel with shape + radius"
 		assert html.contains("if (hotOuter === -1) return;"):
 				"A hub click must be a safe no-op (no SECTORS[-1] TypeError)"
+		assert html.contains("{ id: \"erase\"") && html.contains("{ id: \"place\"")
+				&& html.contains("{ id: \"material\"") && html.contains("{ id: \"history\"")
+				&& !html.contains("{ id: \"clip\"") && !html.contains("{ id: \"gen\"")
+				&& !html.contains("{ id: \"brush\"") && !html.contains("{ id: \"shape\""):
+				"The wheel is carver-only: Убрать / Поставить / Материал / История"
 
 		def screen = radialScreen.asFile.getText("UTF-8")
 		assert screen.contains("palette-ready") && screen.contains("MAX_PALETTE_ATTEMPTS")
@@ -407,27 +412,33 @@ tasks.register("verifyRadialMenuWiring") {
 				"The palette JSON must carry a per-material swatch colour"
 
 		def controllerText = controller.asFile.getText("UTF-8")
-		assert controllerText.contains("case \"brush.apply\"")
-				&& controllerText.contains("resolveActionHit")
-				&& !controllerText.contains("cycleShape"):
-				"Brush radius must be wired and the dead shape-cycle path removed"
-		assert !controllerText.contains("currentHit = null;\n        currentStandardTarget = null;"):
-				"The edit hover/preview state must survive the tick (continuous edit + preview must work)"
-		assert controllerText.contains("pendingActionHit") && controllerText.contains("hoveredVolumeHit"):
-				"Radial target actions must freeze the Carver's hovered cell"
-		assert controllerText.contains("engageDefaultErase") && controllerText.contains("toolEngaged")
-				&& controllerText.contains("attackAt"):
-				"Entering a session must engage breaking and LMB must edit the cursor target"
-		assert !controllerText.contains("performErase(minecraft) : performPlace(minecraft)"):
-				"RMB must never edit voxels (it is reserved for the hologram orbit)"
+		assert controllerText.contains("case \"erase\"") && controllerText.contains("case \"place\"")
+				&& controllerText.contains("case \"material\"")
+				&& controllerText.contains("setPlacing") && controllerText.contains("setPlaceMaterial")
+				&& controllerText.contains("history.undo"):
+				"The radial must map modes, material and history onto the Carver draft"
+		assert !controllerText.contains("attackAt") && !controllerText.contains("performErase")
+				&& !controllerText.contains("cycleShape") && !controllerText.contains("performPlace"):
+				"The microvoxel editor must be gone: no direct voxel edits, no dead paths"
 
 		def carver = carverScreen.asFile.getText("UTF-8")
-		assert carver.contains("hoveredVolumeHit") && carver.contains("mouseMoved"):
-				"The Carver screen must track the hovered volume cell for the radial"
-		assert carver.contains("toolEngaged()") && carver.contains("attackAt(minecraft, hoveredVolumeHit)"):
-				"Carver left-click must edit voxels through the active radial tool"
-		assert !carver.contains("toolButton") && !carver.contains("toolLabel"):
-				"The dead chisel/wax toggle must be removed from the Carver sidebar"
+		assert carver.contains("sendPlaceStroke") && carver.contains("sendPlaceBox")
+				&& carver.contains("boxDragging") && carver.contains("isShiftDown()"):
+				"Carver LMB must paint the draft; Shift+drag marks a box"
+		assert !carver.contains("panelLeft") && !carver.contains("toolButton"):
+				"The Carver sidebar panel must be gone (radial owns every tool)"
+
+		def protocol = layout.projectDirectory.file(
+				"../common/src/main/java/ua/rp/chat/carver/CarverProtocol.java")
+		assert protocol.asFile.getText("UTF-8").contains("ACTION_STROKE_PLACE")
+				&& protocol.asFile.getText("UTF-8").contains("encodeDraftState"):
+				"The protocol must carry the additive draft"
+
+		def sessionFile = layout.projectDirectory.file(
+				"../server/src/main/java/ua/rp/chat/carver/DraftSession.java")
+		assert sessionFile.asFile.getText("UTF-8").contains("markPlace")
+				&& sessionFile.asFile.getText("UTF-8").contains("placeMask"):
+				"The server draft must own the additive mask"
 
 		def engine = editEngine.asFile.getText("UTF-8")
 		assert engine.contains("boolean creative = player.gameMode.getGameModeForPlayer() == GameType.CREATIVE;")

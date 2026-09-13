@@ -186,6 +186,7 @@ public final class CarverManager {
         anchors.put(player.getUUID(), player.position());
         if (blueprint != null) {
             session.mask().orIn(blueprint.mask());
+            session.loadPlace(blueprint.placeMask(), blueprint.placeMaterials());
             MicrovoxelMetrics.inc("carver.blueprint.load");
         }
         sendEvent(player, CarverProtocol.EVENT_SESSION_OPEN, pos,
@@ -198,7 +199,8 @@ public final class CarverManager {
         }
         sendEstimate(player, session);
         player.sendSystemMessage(Component.literal(
-                "Режим проектирования: чертите удаление на сетке 16×16×16, Пробел — начать работу."), true);
+                "Режим проектирования: ЛКМ — метка, меню (G) — Убрать/Поставить, "
+                        + "Shift+ЛКМ — рамка, Пробел — начать работу."), true);
         level.playSound(null, pos, SoundEvents.BOOK_PAGE_TURN, SoundSource.BLOCKS, 0.7f, 1.0f);
         MicrovoxelMetrics.inc("carver.design.open");
         return true;
@@ -216,6 +218,8 @@ public final class CarverManager {
             case CarverProtocol.ACTION_STROKE_ERASE -> applyStroke(player, x, y, z, data, false);
             case CarverProtocol.ACTION_BOX_ADD -> applyBox(player, x, y, z, data, true);
             case CarverProtocol.ACTION_BOX_ERASE -> applyBox(player, x, y, z, data, false);
+            case CarverProtocol.ACTION_STROKE_PLACE -> applyPlace(player, x, y, z, data, false);
+            case CarverProtocol.ACTION_BOX_PLACE -> applyPlace(player, x, y, z, data, true);
             case CarverProtocol.ACTION_UNDO -> applyHistory(player, x, y, z, true);
             case CarverProtocol.ACTION_REDO -> applyHistory(player, x, y, z, false);
             case CarverProtocol.ACTION_MIRROR_SET -> applyMirror(player, x, y, z, data);
@@ -236,6 +240,8 @@ public final class CarverManager {
                 || action == CarverProtocol.ACTION_STROKE_ERASE
                 || action == CarverProtocol.ACTION_BOX_ADD
                 || action == CarverProtocol.ACTION_BOX_ERASE
+                || action == CarverProtocol.ACTION_STROKE_PLACE
+                || action == CarverProtocol.ACTION_BOX_PLACE
                 || action == CarverProtocol.ACTION_UNDO
                 || action == CarverProtocol.ACTION_REDO
                 || action == CarverProtocol.ACTION_MIRROR_SET
@@ -348,7 +354,8 @@ public final class CarverManager {
     private void broadcastDraft(ServerPlayer artisan, DraftSession session) {
         if (!(artisan.level() instanceof ServerLevel level)) return;
         BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
-        byte[] data = session.mask().encode();
+        byte[] data = CarverProtocol.encodeDraftState(
+                session.mask(), session.placeMask(), session.placeMaterials());
         for (ServerPlayer observer : level.players()) {
             if (observer == null || observer.getUUID().equals(artisan.getUUID())) continue;
             if (sessions.containsKey(observer.getUUID())) continue;
@@ -418,16 +425,42 @@ public final class CarverManager {
             return;
         }
         session.pushHistory();
-        if (add) {
-            session.mask().orIn(stroke);
-            DraftSession.expandMirrored(session.mask(), session.mirrorAxes());
-        } else {
-            DraftMask erase = stroke.copy();
-            DraftSession.expandMirrored(erase, session.mirrorAxes());
-            session.mask().andNot(erase);
-        }
+        session.markRemove(stroke, session.mirrorAxes(), add);
         publishDraft(player, session);
         MicrovoxelMetrics.add(add ? "carver.stroke.add" : "carver.stroke.erase", stroke.count());
+    }
+
+    /**
+     * Additive marking: the client paints cells it wants filled with the material it chose
+     * (from its inventory palette). The material is validated only at approval, where the
+     * economy already sources and charges it.
+     */
+    private void applyPlace(ServerPlayer player, int x, int y, int z, byte[] data, boolean box) {
+        DraftSession session = sessions.get(player.getUUID());
+        if (session == null || session.state() != DraftSession.State.DESIGN
+                || !session.targets(x, y, z)) {
+            MicrovoxelMetrics.inc("carver.drop.target");
+            return;
+        }
+        String material;
+        DraftMask mask;
+        try {
+            material = CarverProtocol.decodePlaceMaterial(data);
+            mask = DraftMask.decode(CarverProtocol.decodePlaceMask(data));
+        } catch (IllegalArgumentException invalid) {
+            MicrovoxelMetrics.inc("carver.drop.codec");
+            return;
+        }
+        if (material == null || material.isBlank()) return;
+        int cap = box ? tuning.maxBoxCells : tuning.maxStrokeCells;
+        if (mask.count() == 0 || mask.count() > cap) {
+            MicrovoxelMetrics.inc("carver.drop.cap");
+            return;
+        }
+        session.pushHistory();
+        session.markPlace(mask, session.mirrorAxes(), material, true);
+        publishDraft(player, session);
+        MicrovoxelMetrics.add(box ? "carver.box.place" : "carver.stroke.place", mask.count());
     }
 
     /**
@@ -454,14 +487,7 @@ public final class CarverManager {
             return;
         }
         session.pushHistory();
-        if (add) {
-            session.mask().orIn(box);
-            DraftSession.expandMirrored(session.mask(), session.mirrorAxes());
-        } else {
-            DraftMask erase = box.copy();
-            DraftSession.expandMirrored(erase, session.mirrorAxes());
-            session.mask().andNot(erase);
-        }
+        session.markRemove(box, session.mirrorAxes(), add);
         publishDraft(player, session);
         MicrovoxelMetrics.add(add ? "carver.box.add" : "carver.box.erase", box.count());
     }
@@ -470,9 +496,9 @@ public final class CarverManager {
         DraftSession session = sessions.get(player.getUUID());
         if (session == null || session.state() != DraftSession.State.DESIGN
                 || !session.targets(x, y, z)) return;
-        if (session.mask().isEmpty()) return;
+        if (!session.hasContent()) return;
         session.pushHistory();
-        session.mask().clearAll();
+        session.clearDraft();
         publishDraft(player, session);
     }
 
@@ -503,7 +529,7 @@ public final class CarverManager {
         DraftSession session = sessions.get(player.getUUID());
         if (session == null || session.state() != DraftSession.State.DESIGN
                 || !session.targets(x, y, z)) return;
-        if (session.mask().isEmpty()) {
+        if (!session.hasContent()) {
             player.sendSystemMessage(Component.literal(
                     "Пустой чертёж нечего записывать."), true);
             return;
@@ -514,10 +540,12 @@ public final class CarverManager {
                     "Держите свиток в главной руке для записи."), true);
             return;
         }
-        CarverBlueprint.writeScroll(scroll, session.mask(), session.materialId(),
+        CarverBlueprint.writeScroll(scroll, session.mask(), session.placeMask(),
+                session.placeMaterials(), session.materialId(),
                 player.getGameProfile().name());
         player.sendSystemMessage(Component.literal("Чертёж записан в свиток: "
-                + session.mask().count() + " вокселей. Передайте его другому мастеру."), true);
+                + (session.mask().count() + session.placeMask().count())
+                + " вокселей. Передайте его другому мастеру."), true);
         MicrovoxelMetrics.inc("carver.blueprint.save");
     }
 
@@ -535,8 +563,8 @@ public final class CarverManager {
         DraftSession session = sessions.get(player.getUUID());
         if (session == null || session.state() != DraftSession.State.DESIGN
                 || !session.targets(x, y, z)) return;
-        if (session.mask().isEmpty()) {
-            player.sendSystemMessage(Component.literal("Пустой чертёж: отметьте воксели на удаление."), true);
+        if (!session.hasContent()) {
+            player.sendSystemMessage(Component.literal("Пустой чертёж: отметьте воксели."), true);
             return;
         }
         if (!(player.level() instanceof ServerLevel level)) return;
@@ -579,14 +607,36 @@ public final class CarverManager {
                 return;
             }
         }
+        // Approval is all-or-nothing: every placement material must already be sourcable.
+        java.util.Map<String, Integer> placeNeeds = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<Integer, String> entry : session.placeMaterials().entrySet()) {
+            placeNeeds.merge(entry.getValue(), 1, Integer::sum);
+        }
+        for (java.util.Map.Entry<String, Integer> need : placeNeeds.entrySet()) {
+            ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.SelectedMaterial source =
+                    microvoxels.economy().findByMaterial(player, need.getKey());
+            if (source == null) {
+                player.sendSystemMessage(Component.literal(
+                        "Нет в инвентаре материала для установки: " + need.getKey() + "."), true);
+                return;
+            }
+            if (microvoxels.economy().availableMaterialUnits(player, source) < need.getValue()) {
+                player.sendSystemMessage(Component.literal(
+                        "Недостаточно материала для установки: " + need.getKey() + "."), true);
+                return;
+            }
+        }
         List<Integer> cells = session.mask().cells();
+        List<Integer> placeCells = session.placeMask().cells();
+        int workCellCount = cells.size() + placeCells.size();
+        List<Integer> metricCells = cells.isEmpty() ? placeCells : cells;
         double multiplier = session.materialMultiplier();
-        double fill = DraftEstimate.fillRatio(cells);
-        int span = DraftEstimate.depthSpan(cells);
+        double fill = DraftEstimate.fillRatio(metricCells);
+        int span = DraftEstimate.depthSpan(metricCells);
         int tool = CarverItems.chiselOf(player.getOffhandItem());
         int workTicks = Math.max(1, DraftEstimate.workTicks(
-                cells.size(), fill, span, multiplier, tool));
-        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
+                workCellCount, fill, span, multiplier, tool));
+        double cost = DraftEstimate.staminaCost(workCellCount, fill, span, multiplier, tool);
         if (stamina.escapeStamina(player) < cost) {
             player.sendSystemMessage(Component.literal("Нехватка сил: нужно "
                     + Math.round(cost) + "% стамины, отдохните."), true);
@@ -595,7 +645,8 @@ public final class CarverManager {
         }
         stamina.consumeWorkEffort(player, cost, cost * 0.3);
         anchors.put(player.getUUID(), player.position());
-        plans.put(player.getUUID(), new WorkPlan(session.mask().cells(), session.materialId()));
+        plans.put(player.getUUID(), new WorkPlan(
+                cells, session.materialId(), placeCells, session.placeMaterials()));
         kits.put(player.getUUID(), CarverSoundKit.forState(state));
         dust.put(player.getUUID(), new net.minecraft.core.particles.BlockParticleOption(
                 net.minecraft.core.particles.ParticleTypes.BLOCK, state));
@@ -612,22 +663,23 @@ public final class CarverManager {
                 CarverSyncPayload.workStartData(workTicks));
         double[] centroid = null;
         try {
-            if (cells != null && !cells.isEmpty()) {
+            if (metricCells != null && !metricCells.isEmpty()) {
                 double cx = 0.0;
                 double cy = 0.0;
                 double cz = 0.0;
-                for (int cell : cells) {
+                for (int cell : metricCells) {
                     cx += DraftMask.x(cell) + 0.5;
                     cy += DraftMask.y(cell) + 0.5;
                     cz += DraftMask.z(cell) + 0.5;
                 }
-                centroid = new double[]{cx / cells.size(), cy / cells.size(), cz / cells.size()};
+                centroid = new double[]{cx / metricCells.size(), cy / metricCells.size(),
+                        cz / metricCells.size()};
             }
         } catch (RuntimeException ignored) {
         }
         CarverStrikeAlign.StrikePlan plan = null;
         try {
-            plan = CarverStrikeAlign.solve(pos.getX(), pos.getY(), pos.getZ(), cells,
+            plan = CarverStrikeAlign.solve(pos.getX(), pos.getY(), pos.getZ(), metricCells,
                     player.getX(), player.getY(), player.getZ());
         } catch (RuntimeException ignored) {
         }
@@ -751,8 +803,8 @@ public final class CarverManager {
             closeSession(player, DraftSession.CancelReason.BLOCK_CHANGED, true);
             return;
         }
-        int target = (int) Math.floor(session.workProgress() * plan.cells().size());
-        if (target <= plan.applied()) return;
+        int targetTotal = (int) Math.floor(session.workProgress() * plan.total());
+        if (targetTotal <= plan.applied() + plan.placeApplied()) return;
         MicrovoxelVolume volume = microvoxels.microvolumes().get(key);
         if (volume == null && !plan.converted()) {
             BlockState state = level.getBlockState(pos);
@@ -775,11 +827,14 @@ public final class CarverManager {
             plan.setConverted(true);
         }
         if (volume == null) return;
-        // Published volumes are frozen: carve a copy and publish that (store.put freezes it).
+        // Published volumes are frozen: sculpt a copy and publish that (store.put freezes it).
         MicrovoxelVolume updated = volume.copy();
         int removed = 0;
+        int placed = 0;
         java.util.Map<String, Integer> sliceMaterials = new java.util.HashMap<>();
-        while (plan.applied() < target && plan.applied() < plan.cells().size()) {
+        // Removals drain first, then placements, both driven by the single work cursor.
+        while (plan.applied() < plan.cells().size()
+                && plan.applied() + plan.placeApplied() < targetTotal) {
             int cell = plan.cells().get(plan.applied());
             String material = updated.occupied(cell) ? updated.material(cell) : null;
             if (updated.remove(cell)) {
@@ -794,10 +849,23 @@ public final class CarverManager {
             }
             plan.setApplied(plan.applied() + 1);
         }
+        while (plan.placeApplied() < plan.placeCells().size()
+                && plan.applied() + plan.placeApplied() < targetTotal) {
+            int cell = plan.placeCells().get(plan.placeApplied());
+            String material = plan.placeMaterial(cell);
+            if (material != null && !material.isEmpty()) {
+                updated.update(cell, material);
+                plan.addPlaced(material, 1);
+                placed++;
+                microvoxels.syncHub().broadcastDelta(key, updated, cell, material);
+                MicrovoxelMetrics.inc("carver.work.delta");
+            }
+            plan.setPlaceApplied(plan.placeApplied() + 1);
+        }
         for (java.util.Map.Entry<String, Integer> entry : sliceMaterials.entrySet()) {
             plan.addRemoved(entry.getKey(), entry.getValue());
         }
-        if (removed == 0) return;
+        if (removed == 0 && placed == 0) return;
         microvoxels.collision().invalidate(key);
         if (updated.occupiedCount() == 0) {
             microvoxels.runtime().projection().dematerialize(key);
@@ -805,7 +873,7 @@ public final class CarverManager {
         } else {
             microvoxels.runtime().projection().materialize(key, updated);
         }
-        MicrovoxelMetrics.add("carver.work.cells", removed);
+        MicrovoxelMetrics.add("carver.work.cells", removed + placed);
     }
 
     /**
@@ -822,7 +890,8 @@ public final class CarverManager {
         MicrovoxelKey key = new MicrovoxelKey(worldId, pos.getX(), pos.getY(), pos.getZ());
         MicrovoxelVolume volume = microvoxels.microvolumes().get(key);
         int removed = plan.removed();
-        if (removed <= 0 || volume == null) {
+        int placed = plan.placed();
+        if ((removed <= 0 && placed <= 0) || volume == null) {
             if (full) closeSession(player, DraftSession.CancelReason.EMPTY_DRAFT, true);
             return;
         }
@@ -850,6 +919,20 @@ public final class CarverManager {
                         true);
             }
         }
+        // Placements were validated at approval; charge the exact units now. A player who
+        // dropped the source between approve and finish is logged, never crashed.
+        for (java.util.Map.Entry<String, Integer> entry : plan.placedByMaterial().entrySet()) {
+            try {
+                ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.SelectedMaterial source =
+                        microvoxels.economy().findByMaterial(player, entry.getKey());
+                if (source != null) {
+                    microvoxels.economy().consumeMaterialUnits(player, source,
+                            entry.getValue() * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL);
+                }
+            } catch (RuntimeException chargeFailed) {
+                MicrovoxelMetrics.inc("carver.work.charge.failed");
+            }
+        }
         ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, null, after);
         MicrovoxelMetrics.inc("carver.work.done");
         CarverSoundKit kit = kits.get(player.getUUID());
@@ -860,13 +943,13 @@ public final class CarverManager {
         broadcastObserved(level, player, CarverProtocol.EVENT_WORK_OBSERVED_END, pos,
                 CarverSyncPayload.observedEndData(player.getUUID()));
         sendEvent(player, CarverProtocol.EVENT_WORK_DONE, pos,
-                CarverSyncPayload.doneData(removed));
+                CarverSyncPayload.doneData(removed + placed));
         if (full && session.mask() != null && !session.mask().isEmpty()) {
             evaluateAndRecord(player, pos, plan, session, after);
         }
         player.sendSystemMessage(Component.literal(full
-                ? "Готово: снято " + removed + " вокселей."
-                : "Работа прервана, но снятые " + removed + " вокселей сохранены."), true);
+                ? "Готово: изменено " + (removed + placed) + " вокселей."
+                : "Работа прервана, но " + (removed + placed) + " изменённых вокселей сохранены."), true);
     }
 
     /**
@@ -968,7 +1051,9 @@ public final class CarverManager {
 
     private void sendDraft(ServerPlayer player, DraftSession session) {
         BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
-        sendEvent(player, CarverProtocol.EVENT_DRAFT_STATE, pos, session.mask().encode());
+        sendEvent(player, CarverProtocol.EVENT_DRAFT_STATE, pos,
+                CarverProtocol.encodeDraftState(
+                        session.mask(), session.placeMask(), session.placeMaterials()));
     }
 
     private void sendEstimate(ServerPlayer player, DraftSession session) {

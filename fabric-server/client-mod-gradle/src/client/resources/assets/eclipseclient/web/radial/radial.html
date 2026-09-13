@@ -586,19 +586,11 @@
 
   /* ============================ data ============================ */
   // Outer ring = перший рівень. Пункт із children відкриває внутрішнє кільце.
+  // Carver-only wheel: убрать / поставить (+ material for placing) + draft history.
   const SECTORS = [
-    { id: "place",  label: "Поставить", icon: "place" },
     { id: "erase",  label: "Убрать",    icon: "erase" },
-    { id: "shape",  label: "Форма",     icon: "shape", picker: "shape" },
+    { id: "place",  label: "Поставить", icon: "place" },
     { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
-    { id: "gen",    label: "Генератор", icon: "gen" },
-    { id: "brush",  label: "Кисть",     icon: "brush", picker: "brush" },
-    { id: "clip",   label: "Буфер",     icon: "clip", children: [
-        { id: "clip.copy",   label: "Копировать", icon: "clip" },
-        { id: "clip.paste",  label: "Вставить",   icon: "paste" },
-        { id: "clip.rotate", label: "Поворот",    icon: "rotate" },
-        { id: "clip.mirror", label: "Зеркало",    icon: "mirror" }
-    ]},
     { id: "history", label: "История",   icon: "history", children: [
         { id: "history.undo", label: "Отменить", icon: "undo" },
         { id: "history.redo", label: "Вернуть",  icon: "redo" }

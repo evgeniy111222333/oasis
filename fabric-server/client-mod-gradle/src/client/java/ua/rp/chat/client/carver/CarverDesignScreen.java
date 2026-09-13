@@ -33,8 +33,8 @@ public class CarverDesignScreen extends Screen {
     private static final int ROW_H = 18;
     private static final int ROW_GAP = 4;
 
-    private boolean erasing;
-    private boolean boxMode;
+    /** Shift+drag in progress: the pointer marks a whole box instead of a free stroke. */
+    private boolean boxDragging;
     /** Box select carves the picked surface slice only: flat areas, no depth dial. */
     private static final int BOX_DEPTH = 1;
     private final DraftMask stroke = new DraftMask();
@@ -58,66 +58,6 @@ public class CarverDesignScreen extends Screen {
     protected void init() {
         pickDiag = 0;
         buttons.clear();
-        int right = width - PANEL_W - 10;
-        int top = 20;
-        peelButton = wideButton(right, top, peelLabel(), () -> {
-        });
-        peelButton.action = () -> {
-            CarverClientState.setPeelOuterLayers(!CarverClientState.peelOuterLayers());
-            peelButton.label = peelLabel();
-        };
-        buttons.add(peelButton);
-        top += ROW_H + ROW_GAP;
-        isolateButton = wideButton(right, top, isolateLabel(), () -> {
-        });
-        isolateButton.action = () -> {
-            CarverClientState.setIsolateFace(!CarverClientState.isolateFace());
-            isolateButton.label = isolateLabel();
-        };
-        buttons.add(isolateButton);
-        top += ROW_H + ROW_GAP;
-        boxButton = wideButton(right, top, boxLabel(), () -> {
-        });
-        boxButton.action = () -> {
-            boxMode = !boxMode;
-            boxButton.label = boxLabel();
-        };
-        buttons.add(boxButton);
-        top += ROW_H + ROW_GAP;
-        buttons.add(wideButton(right, top,
-                Component.translatable("screen.eclipse.carver_undo"),
-                () -> CarverClientState.sendUndo()));
-        top += ROW_H + ROW_GAP;
-        buttons.add(wideButton(right, top,
-                Component.translatable("screen.eclipse.carver_redo"),
-                () -> CarverClientState.sendRedo()));
-        top += ROW_H + ROW_GAP * 2;
-        buttons.add(wideButton(right, top,
-                Component.translatable("screen.eclipse.carver_save"),
-                () -> CarverClientState.sendSave()));
-        top += ROW_H + ROW_GAP;
-        buttons.add(wideButton(right, top,
-                Component.translatable("screen.eclipse.carver_clear"),
-                () -> CarverClientState.sendClear()));
-    }
-
-    private UiButton wideButton(int x, int y, Component label, Runnable action) {
-        return new UiButton(x, y, PANEL_W, ROW_H, label, action);
-    }
-
-    private Component boxLabel() {
-        return Component.translatable(boxMode
-                ? "screen.eclipse.carver_box_on" : "screen.eclipse.carver_box_off");
-    }
-
-    private Component peelLabel() {
-        return Component.translatable(CarverClientState.peelOuterLayers()
-                ? "screen.eclipse.carver_peel_on" : "screen.eclipse.carver_peel_off");
-    }
-
-    private Component isolateLabel() {
-        return Component.translatable(CarverClientState.isolateFace()
-                ? "screen.eclipse.carver_isolate_on" : "screen.eclipse.carver_isolate_off");
     }
 
     /**
@@ -132,20 +72,7 @@ public class CarverDesignScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         graphics.fill(0, 0, width, height, 0x18000000);
-        int panelLeft = width - PANEL_W - 10;
-        graphics.fill(panelLeft - 6, 12, width - 4, height - 12, 0xD812100E);
-        graphics.fill(panelLeft - 6, 12, panelLeft - 4, height - 12, 0xFFE3C099);
-        for (UiButton button : buttons) {
-            boolean hovered = button.contains(mouseX, mouseY);
-            boolean toggled = button == boxButton && boxMode;
-            graphics.fill(button.x, button.y, button.x + button.w, button.y + button.h,
-                    toggled ? 0xE04A3418 : hovered ? 0xE02B2118 : 0xC016120F);
-            graphics.fill(button.x, button.y, button.x + button.w, button.y + 1,
-                    toggled ? 0xFFFFD27A : hovered ? 0xFFE3C099 : 0x66B49B78);
-            graphics.centeredText(font, fit(button.label.getString(), button.w - 8),
-                    button.x + button.w / 2, button.y + 5,
-                    hovered || toggled ? 0xFFFFF4DE : 0xFFE3C099);
-        }
+        // The radial menu (G) owns every tool now: no sidebar panel, just the world.
         // One compact hint line centred just above the hotbar: the drafting view stays clean.
         String hint = Component.translatable("screen.eclipse.carver_hint").getString();
         int hintWidth = font.width(hint);
@@ -177,21 +104,17 @@ public class CarverDesignScreen extends Screen {
         }
         if (event.button() == BUTTON_LEFT) {
             CarverCursorPick.Hit hit = pickAt(event.x(), event.y());
-            if (ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.toolEngaged()) {
-                // The radial mode owns the left button: edit the cell under the free cursor
-                // (break by default, place after choosing "Поставить"). Right-drag still orbits.
-                ua.rp.chat.client.microvoxel.MicrovoxelInteractionController
-                        .attackAt(minecraft, hoveredVolumeHit);
-                return true;
-            }
             if (hit != null) {
                 painting = true;
                 CarverClientState.setViewFace(hit.face());
-                if (boxMode) {
+                if (isShiftDown()) {
+                    // Shift+drag marks a whole area (box) in the active draft mode.
+                    boxDragging = true;
                     dragStart = new int[]{hit.cell(), hit.face().ordinal()};
                     dragNow = null;
                     updatePendingBox();
                 } else {
+                    boxDragging = false;
                     paint(hit.cell());
                 }
                 return true;
@@ -206,17 +129,10 @@ public class CarverDesignScreen extends Screen {
             CarverCameraRig.orbitDrag(dragX, dragY);
             return true;
         }
-        if (event.button() == BUTTON_LEFT
-                && ua.rp.chat.client.microvoxel.MicrovoxelInteractionController.toolEngaged()) {
-            pickAt(event.x(), event.y());
-            ua.rp.chat.client.microvoxel.MicrovoxelInteractionController
-                    .attackAt(minecraft, hoveredVolumeHit);
-            return true;
-        }
         if (painting && event.button() == BUTTON_LEFT) {
             CarverCursorPick.Hit hit = pickAt(event.x(), event.y());
             if (hit == null) return true;
-            if (boxMode) {
+            if (boxDragging) {
                 // The drag anchor stores {cell, faceOrdinal}: the face lives in
                 // slot 1, slot 0 is the volume cell and never a valid ordinal.
                 if (dragStart == null) return true;
@@ -239,13 +155,12 @@ public class CarverDesignScreen extends Screen {
     public boolean mouseReleased(MouseButtonEvent event) {
         if (painting && event.button() == BUTTON_LEFT) {
             painting = false;
-            if (boxMode) {
+            if (boxDragging) {
                 flushBoxDrag();
-            } else if (isShiftDown()) {
-                paintLatched();
             } else {
                 flushStroke();
             }
+            boxDragging = false;
             CarverClientState.clearPendingBox();
             dragStart = null;
             dragNow = null;
@@ -337,8 +252,9 @@ public class CarverDesignScreen extends Screen {
         CarverAutoWalk.abort();
         if (painting) {
             painting = false;
-            if (boxMode) flushBoxDrag();
+            if (boxDragging) flushBoxDrag();
             else flushStroke();
+            boxDragging = false;
         }
         flushLatched();
         CarverClientState.clearPendingBox();
@@ -494,21 +410,15 @@ public class CarverDesignScreen extends Screen {
         int layer = CarverClientState.layerOf(face, startCellOfDrag());
         int[] cells = CarverBoxSelect.cellsFor(face,
                 from[0], from[1], to[0], to[1], layer, BOX_DEPTH);
-        if (isShiftDown()) {
-            if (erasing) {
-                for (int cell : cells) latched.clear(cell);
-            } else {
-                for (int cell : cells) {
-                    if (CarverClientState.isPaintable(cell)) latched.set(cell);
-                }
-            }
-        } else {
-            DraftMask box = new DraftMask();
-            for (int cell : cells) {
-                if (!erasing && !CarverClientState.isPaintable(cell)) continue;
-                box.set(cell);
-            }
-            if (!box.isEmpty()) CarverClientState.sendBox(!erasing, box);
+        boolean placing = CarverClientState.placing();
+        DraftMask box = new DraftMask();
+        for (int cell : cells) {
+            if (!placing && !CarverClientState.isPaintable(cell)) continue;
+            box.set(cell);
+        }
+        if (!box.isEmpty()) {
+            if (placing) CarverClientState.sendPlaceBox(box);
+            else CarverClientState.sendBox(true, box);
         }
         dragStart = null;
         dragNow = null;
@@ -548,16 +458,19 @@ public class CarverDesignScreen extends Screen {
 
     private void flushStroke() {
         if (!stroke.isEmpty()) {
-            CarverClientState.sendStroke(!erasing, stroke);
+            if (CarverClientState.placing()) {
+                CarverClientState.sendPlaceStroke(stroke);
+            } else {
+                CarverClientState.sendStroke(true, stroke);
+            }
             stroke.clearAll();
         }
     }
 
     private void paint(int cell) {
-        // The stroke mask always collects candidate cells; the add/erase flag at
-        // flush time decides their fate. Clearing here would erase the stroke
-        // itself and the wax could never lift marks off the draft.
-        if (!erasing && !CarverClientState.isPaintable(cell)) return;
+        // The stroke mask always collects candidate cells; the active draft mode at
+        // flush time decides whether they are removed or placed.
+        if (!CarverClientState.placing() && !CarverClientState.isPaintable(cell)) return;
         stroke.set(cell);
     }
 

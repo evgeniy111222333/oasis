@@ -36,10 +36,19 @@ public final class DraftSession {
 
     private String materialId = "";
     private double materialMultiplier = 1.0;
+    /** Cells the approved draft removes. */
     private final DraftMask mask = new DraftMask();
+    /** Cells the approved draft places; each carries its own material. */
+    private final DraftMask placeMask = new DraftMask();
+    private final java.util.LinkedHashMap<Integer, String> placeMaterials = new java.util.LinkedHashMap<>();
     private int mirrorAxes;
-    private final java.util.Deque<DraftMask> undoStack = new java.util.ArrayDeque<>();
-    private final java.util.Deque<DraftMask> redoStack = new java.util.ArrayDeque<>();
+    private final java.util.Deque<Snapshot> undoStack = new java.util.ArrayDeque<>();
+    private final java.util.Deque<Snapshot> redoStack = new java.util.ArrayDeque<>();
+
+    /** Immutable draft state used by the pre-commit undo/redo stack. */
+    private record Snapshot(DraftMask remove, DraftMask place,
+                            java.util.Map<Integer, String> materials) {
+    }
     private int designTicks;
     private int designTimeoutTicks;
     private int workTotalTicks;
@@ -89,6 +98,23 @@ public final class DraftSession {
         return mask;
     }
 
+    public DraftMask placeMask() {
+        return placeMask;
+    }
+
+    public java.util.Map<Integer, String> placeMaterials() {
+        return java.util.Collections.unmodifiableMap(placeMaterials);
+    }
+
+    public String placeMaterial(int cell) {
+        return placeMaterials.get(cell);
+    }
+
+    /** True when the draft would actually change the workpiece (remove or place). */
+    public boolean hasContent() {
+        return !mask.isEmpty() || !placeMask.isEmpty();
+    }
+
     public int mirrorAxes() {
         return mirrorAxes;
     }
@@ -129,28 +155,92 @@ public final class DraftSession {
      * redo branch; the stack holds at most {@link #MAX_HISTORY} snapshots.
      */
     public void pushHistory() {
-        undoStack.push(mask.copy());
+        undoStack.push(snapshot());
         while (undoStack.size() > MAX_HISTORY) undoStack.removeLast();
         redoStack.clear();
+    }
+
+    private Snapshot snapshot() {
+        return new Snapshot(mask.copy(), placeMask.copy(),
+                new java.util.LinkedHashMap<>(placeMaterials));
+    }
+
+    private void restore(Snapshot snapshot) {
+        mask.clearAll();
+        mask.orIn(snapshot.remove());
+        placeMask.clearAll();
+        placeMask.orIn(snapshot.place());
+        placeMaterials.clear();
+        placeMaterials.putAll(snapshot.materials());
+    }
+
+    /**
+     * Draft removal marking: {@code add=true} marks cells (and clears any placement there),
+     * {@code add=false} unmarks them. Mirror expansion is applied to the affected cells.
+     */
+    public void markRemove(DraftMask cells, int mirrorAxes, boolean add) {
+        DraftMask work = cells.copy();
+        expandMirrored(work, mirrorAxes);
+        if (add) {
+            mask.orIn(work);
+            for (int cell : work.cells()) {
+                placeMask.clear(cell);
+                placeMaterials.remove(cell);
+            }
+        } else {
+            mask.andNot(work);
+        }
+    }
+
+    /**
+     * Draft placement marking: {@code add=true} marks cells to be filled with the chosen
+     * material (and clears any removal there), {@code add=false} unmarks them.
+     */
+    public void markPlace(DraftMask cells, int mirrorAxes, String material, boolean add) {
+        DraftMask work = cells.copy();
+        expandMirrored(work, mirrorAxes);
+        if (add) {
+            placeMask.orIn(work);
+            String resolved = material == null ? "" : material;
+            for (int cell : work.cells()) {
+                mask.clear(cell);
+                placeMaterials.put(cell, resolved);
+            }
+        } else {
+            placeMask.andNot(work);
+            for (int cell : work.cells()) {
+                placeMaterials.remove(cell);
+            }
+        }
+    }
+
+    public void clearDraft() {
+        mask.clearAll();
+        placeMask.clearAll();
+        placeMaterials.clear();
+    }
+
+    /** Loads a saved placement mask (blueprint) verbatim, bypassing mirror expansion. */
+    public void loadPlace(DraftMask place, java.util.Map<Integer, String> materials) {
+        placeMask.clearAll();
+        if (place != null) placeMask.orIn(place);
+        placeMaterials.clear();
+        if (materials != null) placeMaterials.putAll(materials);
     }
 
     /** Restores the previous snapshot; returns false when there is nothing to undo. */
     public boolean undo() {
         if (undoStack.isEmpty()) return false;
-        redoStack.push(mask.copy());
-        DraftMask previous = undoStack.pop();
-        mask.clearAll();
-        mask.orIn(previous);
+        redoStack.push(snapshot());
+        restore(undoStack.pop());
         return true;
     }
 
     /** Reapplies an undone snapshot; returns false when there is nothing to redo. */
     public boolean redo() {
         if (redoStack.isEmpty()) return false;
-        undoStack.push(mask.copy());
-        DraftMask next = redoStack.pop();
-        mask.clearAll();
-        mask.orIn(next);
+        undoStack.push(snapshot());
+        restore(redoStack.pop());
         return true;
     }
 
@@ -198,6 +288,8 @@ public final class DraftSession {
         materialId = material == null ? "" : material;
         materialMultiplier = 1.0;
         mask.clearAll();
+        placeMask.clearAll();
+        placeMaterials.clear();
         mirrorAxes = 0;
         undoStack.clear();
         redoStack.clear();
@@ -226,7 +318,7 @@ public final class DraftSession {
     }
 
     public boolean approve(int workTicks) {
-        if (state != State.DESIGN || mask.isEmpty() || workTicks <= 0) return false;
+        if (state != State.DESIGN || !hasContent() || workTicks <= 0) return false;
         state = State.WORK;
         workTotalTicks = workTicks;
         workDoneTicks = 0;
@@ -256,6 +348,8 @@ public final class DraftSession {
         state = State.IDLE;
         cancelReason = CancelReason.NONE;
         mask.clearAll();
+        placeMask.clearAll();
+        placeMaterials.clear();
         mirrorAxes = 0;
         undoStack.clear();
         redoStack.clear();
