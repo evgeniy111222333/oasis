@@ -509,7 +509,12 @@ public final class CarverManager {
                 || !session.targets(x, y, z)) return;
         boolean moved = undo ? session.undo() : session.redo();
         if (!moved) return;
-        publishDraft(player, session);
+        // History bypasses the stroke throttle so the artist sees the revert immediately.
+        lastDraftOpAt.put(player.getUUID(), System.currentTimeMillis());
+        draftEchoPending.remove(player.getUUID());
+        sendDraft(player, session);
+        broadcastDraft(player, session);
+        sendEstimate(player, session);
         MicrovoxelMetrics.inc(undo ? "carver.undo" : "carver.redo");
     }
 

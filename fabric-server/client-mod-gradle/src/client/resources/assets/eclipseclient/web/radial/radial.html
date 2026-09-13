@@ -108,6 +108,21 @@
   .ornament .spin-rev { transform-origin: 260px 260px; animation: spin 140s linear infinite reverse; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Performance: decorative layers are composited (transform/opacity only) while open and
+     fully paused while the wheel is closed, so the resident browser never repaints in the
+     background. Quality is unchanged — the same layers, just not re-rasterised every frame. */
+  .ornament .spin, .ornament .spin-rev, .emblem, .halo, .hub__icon, .sector__icon {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+  .radial[data-open="false"] .ornament .spin,
+  .radial[data-open="false"] .ornament .spin-rev,
+  .radial[data-open="false"] .emblem,
+  .radial[data-open="false"] .halo,
+  .radial[data-open="false"] .hub__icon {
+    animation-play-state: paused;
+  }
+
   /* sunburst emblem slowly rotating behind the hub (medieval astrolabe vibe) */
   .emblem {
     position: absolute; left: 50%; top: 50%;
@@ -1119,7 +1134,8 @@
     } catch (ignore) {
       // no bridge (plain browser preview) — ignore
     }
-    close(false);
+    // History stays in the wheel so the player can undo several steps in a row.
+    if (!(typeof id === "string" && id.startsWith("history."))) close(false);
   }
 
   function findLabel(id) {

@@ -16,6 +16,7 @@ import org.cef.CefSettings;
 import org.cef.browser.CefBrowser;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import ua.rp.chat.client.EclipseClientMod;
+import ua.rp.chat.client.McefDiagnostics;
 import ua.rp.chat.client.mcef.McefGlStateGuard;
 
 import java.io.File;
@@ -27,11 +28,14 @@ import java.io.OutputStream;
 /**
  * Fullscreen MCEF overlay for the microvoxel radial menu.
  *
- * <p>Opens the embedded {@code web/radial/radial.html} page (extracted from the mod resources,
- * exactly like the auth/body pages), injects the client-computed material palette through
- * {@code EclipseRadial.setMaterials(...)} and reads the player's choice back on the CEF console
- * channel: the page logs {@code @eclipse/radial:{"action":...,"material":...}}. The chosen action
- * is handed to {@link #listener} which drives the existing edit actions.</p>
+ * <p>Performance model: the Chromium browser is created <b>once</b> and reused across opens
+ * (cold start of CEF was the biggest stall), the page is extracted to disk only when its size
+ * changes, the material palette is serialised once per open, and the wheel pauses its CSS
+ * animations while closed. Every open/close is timed and FPS-sampled to the client log under
+ * {@code [RADIAL-PERF]} so regressions are visible.</p>
+ *
+ * <p>Reads the player's choice back on the CEF console channel: the page logs
+ * {@code @eclipse/radial:{"action":...,"material":...}}.</p>
  */
 public final class MicrovoxelRadialScreen extends Screen {
     /** Callback the opener supplies: action id, material id (nullable), fragment flag, shape id. */
@@ -43,8 +47,12 @@ public final class MicrovoxelRadialScreen extends Screen {
 
     private static final String RESOURCE = "/assets/eclipseclient/web/radial/radial.html";
     private static final String BRIDGE_PREFIX = "@eclipse/radial:";
-    /** Palette handshake: stop re-injecting once the page acknowledges (or after this many tries). */
     private static final int MAX_PALETTE_ATTEMPTS = 60;
+
+    /** One long-lived transparent browser shared by every wheel open. */
+    private static MCEFBrowser cachedBrowser;
+    private static CefDisplayHandlerAdapter cachedHandler;
+    private static boolean bridgeInstalled;
 
     private final Listener listener;
     private final Screen returnScreen;
@@ -53,7 +61,14 @@ public final class MicrovoxelRadialScreen extends Screen {
     private boolean paletteInjected;
     private volatile boolean paletteReady;
     private int paletteAttempts;
+    private String paletteJson;
     private int ticks;
+
+    private long openStartedNanos;
+    private boolean textureLogged;
+    private int fpsSamples;
+    private int fpsMin = Integer.MAX_VALUE;
+    private long fpsSum;
 
     public MicrovoxelRadialScreen(Listener listener) {
         this(listener, null);
@@ -69,12 +84,35 @@ public final class MicrovoxelRadialScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        openStartedNanos = System.nanoTime();
+        textureLogged = false;
+        fpsSamples = 0;
+        fpsMin = Integer.MAX_VALUE;
+        fpsSum = 0L;
+        paletteInjected = false;
+        paletteReady = false;
+        paletteAttempts = 0;
+        paletteJson = null;
+        ticks = 0;
         try {
             if (!MCEF.isInitialized()) MCEF.initialize();
             File page = extractPage();
             // "#open" auto-opens the wheel the moment the overlay loads (no extra key press).
             String url = "file:///" + page.getAbsolutePath().replace("\\", "/") + "#open&ingame";
-            browser = MCEF.createBrowser(url, true);
+            long started = System.nanoTime();
+            if (cachedBrowser == null) {
+                cachedBrowser = MCEF.createBrowser(url, true);
+                log("browser created in " + ms(started) + ", " + McefDiagnostics.browserState(cachedBrowser));
+            } else {
+                try {
+                    cachedBrowser.executeJavaScript(
+                            "window.EclipseRadial && window.EclipseRadial.open();", "", 0);
+                } catch (Throwable ignored) {
+                    // the page still shows; it is just already open or reloading
+                }
+                log("browser reused (cold-start avoided)");
+            }
+            browser = cachedBrowser;
             if (browser != null) {
                 McefGlStateGuard.onBrowserActive();
                 browser.setFocus(true);
@@ -82,6 +120,7 @@ public final class MicrovoxelRadialScreen extends Screen {
                 browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
             }
             installBridge();
+            log("open ready in " + ms(openStartedNanos) + " (" + width + "x" + height + ")");
         } catch (Throwable error) {
             browser = null;
             EclipseClientMod.LOGGER.warn("Microvoxel radial overlay failed to open", error);
@@ -89,20 +128,32 @@ public final class MicrovoxelRadialScreen extends Screen {
         }
     }
 
+    /**
+     * Extracts the page only when the shipped resource changed size: writing ~50 KB to disk on
+     * every open was pure waste.
+     */
     private File extractPage() throws IOException {
         File target = new File(minecraft.gameDirectory, "web/radial/radial.html");
         File parent = target.getParentFile();
         if (parent != null && !parent.exists()) parent.mkdirs();
         try (InputStream in = MicrovoxelRadialScreen.class.getResourceAsStream(RESOURCE)) {
             if (in == null) throw new IOException("Missing resource " + RESOURCE);
+            byte[] resource = in.readAllBytes();
+            if (target.isFile() && target.length() == resource.length) {
+                return target;
+            }
             try (OutputStream out = new FileOutputStream(target)) {
-                in.transferTo(out);
+                out.write(resource);
             }
         }
         return target;
     }
 
     private void installBridge() {
+        if (bridgeInstalled) {
+            displayHandler = cachedHandler;
+            return;
+        }
         MCEFClient client = MCEF.getClient();
         if (client == null) return;
         displayHandler = new CefDisplayHandlerAdapter() {
@@ -117,12 +168,15 @@ public final class MicrovoxelRadialScreen extends Screen {
             }
         };
         client.addDisplayHandler(displayHandler);
+        cachedHandler = displayHandler;
+        bridgeInstalled = true;
     }
 
     /** Routes the palette handshake separately from a real selection; both ride the same channel. */
     private void handleBridge(String json) {
         if (json.contains("\"bridge\":\"palette-ready\"")) {
             paletteReady = true;
+            log("palette ack at " + ms(openStartedNanos));
             return;
         }
         handleSelection(json);
@@ -139,10 +193,12 @@ public final class MicrovoxelRadialScreen extends Screen {
         int brushShape = jsonInt(json, "brushShape", -1);
         int brushRadius = jsonInt(json, "brushRadius", 0);
         Minecraft minecraft = this.minecraft;
+        boolean keepOpen = action != null && action.startsWith("history.");
         if (minecraft != null) minecraft.execute(() -> {
             if (listener != null) listener.onSelect(action, material, fragment, shapeId,
                     length, width, height, brushShape, brushRadius);
-            if (minecraft.screen == this) minecraft.setScreen(returnScreen);
+            // History keeps the wheel open so several undo/redo presses are one gesture.
+            if (!keepOpen && minecraft.screen == this) minecraft.setScreen(returnScreen);
         });
     }
 
@@ -178,21 +234,32 @@ public final class MicrovoxelRadialScreen extends Screen {
         super.tick();
         ticks++;
         if (browser != null && !paletteInjected && browser.isTextureReady() && ticks >= 2) {
+            if (!textureLogged) {
+                textureLogged = true;
+                log("texture ready at " + ms(openStartedNanos));
+            }
             if (paletteReady || paletteAttempts >= MAX_PALETTE_ATTEMPTS) {
                 // The page acknowledged the palette (possibly empty) — stop re-injecting.
                 paletteInjected = true;
+                log("palette " + (paletteReady ? "acked" : "gave up")
+                        + " after " + paletteAttempts + " attempts at " + ms(openStartedNanos));
             } else {
-                // Re-inject until the page is ready and acks; a CEF "texture ready" frame can
-                // arrive before the page script has defined EclipseRadial.
+                if (paletteJson == null) paletteJson = MicrovoxelMaterialPaletteClient.toJson();
                 paletteAttempts++;
                 try {
                     browser.executeJavaScript(
                             "window.EclipseRadial && window.EclipseRadial.setMaterials("
-                                    + MicrovoxelMaterialPaletteClient.toJson() + ");", "", 0);
+                                    + paletteJson + ");", "", 0);
                 } catch (Throwable ignored) {
                     // retry on the next tick; the wheel still opens
                 }
             }
+        }
+        int fps = minecraft == null ? 0 : minecraft.getFps();
+        if (fps > 0) {
+            fpsSamples++;
+            fpsSum += fps;
+            if (fps < fpsMin) fpsMin = fps;
         }
     }
 
@@ -292,33 +359,33 @@ public final class MicrovoxelRadialScreen extends Screen {
 
     @Override
     public void onClose() {
-        closeBrowser();
+        logClose("onClose");
+        // Keep the browser alive for the next open (cold-start avoidance); the page pauses its
+        // own animations while the wheel is closed.
         if (minecraft != null) minecraft.setScreen(returnScreen);
     }
 
     @Override
     public void removed() {
-        closeBrowser();
+        logClose("removed");
         super.removed();
     }
 
-    private void closeBrowser() {
-        if (displayHandler != null) {
-            MCEFClient client = MCEF.getClient();
-            if (client != null) client.removeDisplayHandler(displayHandler);
-            displayHandler = null;
-        }
-        if (browser != null) {
-            try {
-                browser.close();
-            } catch (Throwable ignored) {
-                // best effort
-            }
-            browser = null;
-            // MCEFRenderer.cleanup() deletes the browser GpuTexture; make sure the frame that
-            // reclaims the screen never inherits the browser's texture/unpack state.
-            McefGlStateGuard.restore();
-        }
+    /** Emits one perf line per close so the real open/interaction cost is visible in the log. */
+    private void logClose(String reason) {
+        int avg = fpsSamples == 0 ? 0 : (int) (fpsSum / fpsSamples);
+        int min = fpsMin == Integer.MAX_VALUE ? 0 : fpsMin;
+        log("close/" + reason + " openMs=" + ms(openStartedNanos)
+                + " fpsAvg=" + avg + " fpsMin=" + min + " samples=" + fpsSamples
+                + " paletteAttempts=" + paletteAttempts);
+    }
+
+    private long ms(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000L;
+    }
+
+    private void log(String message) {
+        EclipseClientMod.LOGGER.info("[RADIAL-PERF] " + message);
     }
 
     private int guiScale() {

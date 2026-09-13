@@ -38,6 +38,45 @@ public final class CarverClientState {
             new java.util.LinkedHashMap<>();
     private static final java.util.LinkedHashMap<Integer, String> serverPlaceMaterials =
             new java.util.LinkedHashMap<>();
+    /**
+     * Client mirror of the server's draft undo/redo so history is instant: a snapshot of both
+     * masks and the placement materials is pushed before every local mutation and restored on
+     * undo/redo while the server transaction travels in parallel.
+     */
+    private static final java.util.ArrayDeque<ClientSnapshot> clientUndo =
+            new java.util.ArrayDeque<>();
+    private static final java.util.ArrayDeque<ClientSnapshot> clientRedo =
+            new java.util.ArrayDeque<>();
+    private static final int CLIENT_HISTORY_MAX = 50;
+
+    private record ClientSnapshot(DraftMask remove, DraftMask place,
+                                  java.util.LinkedHashMap<Integer, String> materials) {
+    }
+
+    private static ClientSnapshot clientSnapshot() {
+        return new ClientSnapshot(draft.copy(), placeDraft.copy(),
+                new java.util.LinkedHashMap<>(placeMaterials));
+    }
+
+    private static void pushClientHistory() {
+        clientUndo.push(clientSnapshot());
+        while (clientUndo.size() > CLIENT_HISTORY_MAX) clientUndo.removeLast();
+        clientRedo.clear();
+    }
+
+    private static void restoreClientSnapshot(ClientSnapshot snapshot) {
+        draft.clearAll();
+        draft.orIn(snapshot.remove());
+        placeDraft.clearAll();
+        placeDraft.orIn(snapshot.place());
+        placeMaterials.clear();
+        placeMaterials.putAll(snapshot.materials());
+    }
+
+    private static void clearClientHistory() {
+        clientUndo.clear();
+        clientRedo.clear();
+    }
     /** Active placement material (block-state string) and the LMB mode. */
     private static String placeMaterial = "";
     private static boolean placing;
@@ -156,6 +195,17 @@ public final class CarverClientState {
 
     public static String placeMaterial() {
         return placeMaterial;
+    }
+
+    /** Hinted placement cell under the free cursor (place mode preview); -1 when none. */
+    private static int hoverPlaceCell = -1;
+
+    public static void setHoverPlaceCell(int cell) {
+        hoverPlaceCell = cell;
+    }
+
+    public static int hoverPlaceCell() {
+        return hoverPlaceCell;
     }
 
     public static void setPlaceMaterial(String material) {
@@ -321,6 +371,8 @@ public final class CarverClientState {
         placeMaterials.clear();
         serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
+        clearClientHistory();
+        hoverPlaceCell = -1;
         finishTicks = -1;
         finishFocus = null;
         workDoneTicks = 0;
@@ -503,6 +555,8 @@ public final class CarverClientState {
         placeMaterials.clear();
         serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
+        clearClientHistory();
+        hoverPlaceCell = -1;
         finishTicks = -1;
         finishFocus = null;
         CarverInspection.clear();
@@ -534,6 +588,7 @@ public final class CarverClientState {
     public static void sendClear() {
         if (!designing || focus == null) return;
         // Clearing is instant locally; the echo confirms it against the authoritative mask.
+        pushClientHistory();
         draft.clearAll();
         placeDraft.clearAll();
         placeMaterials.clear();
@@ -575,6 +630,7 @@ public final class CarverClientState {
         if (cells == null || cells.isEmpty()) return;
         DraftMask twin = cells.copy();
         expandMirroredLocally(twin, mirrorAxes);
+        pushClientHistory();
         if (add) {
             draft.orIn(twin);
             for (int cell : twin.cells()) {
@@ -595,6 +651,7 @@ public final class CarverClientState {
         if (cells == null || cells.isEmpty()) return;
         DraftMask twin = cells.copy();
         expandMirroredLocally(twin, mirrorAxes);
+        pushClientHistory();
         for (int cell : twin.cells()) {
             placeDraft.set(cell);
             placeMaterials.put(cell, placeMaterial);
@@ -697,11 +754,22 @@ public final class CarverClientState {
 
     public static void sendUndo() {
         if (!designing || focus == null) return;
+        // Local revert is immediate; the server applies the same snapshot in parallel.
+        if (!clientUndo.isEmpty()) {
+            clientRedo.push(clientSnapshot());
+            restoreClientSnapshot(clientUndo.pop());
+            optimisticEditTick = clientTickCounter;
+        }
         send(CarverProtocol.ACTION_UNDO, focus, new byte[0]);
     }
 
     public static void sendRedo() {
         if (!designing || focus == null) return;
+        if (!clientRedo.isEmpty()) {
+            clientUndo.push(clientSnapshot());
+            restoreClientSnapshot(clientRedo.pop());
+            optimisticEditTick = clientTickCounter;
+        }
         send(CarverProtocol.ACTION_REDO, focus, new byte[0]);
     }
 
@@ -817,6 +885,8 @@ public final class CarverClientState {
         placeMaterials.clear();
         serverPlaceMaterials.clear();
         optimisticEditTick = -1L;
+        clearClientHistory();
+        hoverPlaceCell = -1;
         finishTicks = -1;
         finishFocus = null;
         CarverInspection.clear();
@@ -1021,6 +1091,8 @@ public final class CarverClientState {
                 placeMaterials.clear();
                 serverPlaceMaterials.clear();
                 optimisticEditTick = -1L;
+                clearClientHistory();
+                hoverPlaceCell = -1;
                 CarverInspection.clear();
                 CarverCameraRig.end();
         CarverHologram.clear();

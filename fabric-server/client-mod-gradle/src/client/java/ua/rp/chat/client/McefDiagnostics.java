@@ -18,7 +18,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-final class McefDiagnostics {
+public final class McefDiagnostics {
     private static final Logger LOGGER = LoggerFactory.getLogger("McefDiagnostics");
     private static final AtomicInteger NEXT_TRACE_ID = new AtomicInteger();
 
@@ -57,7 +57,7 @@ final class McefDiagnostics {
         }
     }
 
-    static String browserState(MCEFBrowser browser) {
+    public static String browserState(MCEFBrowser browser) {
         if (browser == null) {
             return "mcefInitialized=" + MCEF.isInitialized() + ", browser=null";
         }

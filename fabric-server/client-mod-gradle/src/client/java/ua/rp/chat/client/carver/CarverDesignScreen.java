@@ -103,6 +103,13 @@ public class CarverDesignScreen extends Screen {
             }
         }
         if (event.button() == BUTTON_LEFT) {
+            if (CarverClientState.placing() && CarverClientState.placeMaterial().isEmpty()) {
+                if (minecraft != null) {
+                    minecraft.gui.setOverlayMessage(
+                            Component.literal("Сначала выберите «Материал» в меню (G)."), false);
+                }
+                return true;
+            }
             CarverCursorPick.Hit hit = pickAt(event.x(), event.y());
             if (hit != null) {
                 painting = true;
@@ -115,7 +122,7 @@ public class CarverDesignScreen extends Screen {
                     updatePendingBox();
                 } else {
                     boxDragging = false;
-                    paint(hit.cell());
+                    paint(hit);
                 }
                 return true;
             }
@@ -141,10 +148,13 @@ public class CarverDesignScreen extends Screen {
                 dragNow = new int[]{to[0], to[1]};
                 updatePendingBox();
             } else {
-                if (dragStart == null || dragStart[0] != hit.cell()) {
-                    paintLine(dragStart == null ? hit.cell() : dragStart[0], hit.cell());
+                // In place mode the stroke follows the empty neighbour of the picked face.
+                int target = CarverClientState.placing() ? placeTarget(hit) : hit.cell();
+                CarverClientState.setHoverPlaceCell(CarverClientState.placing() ? target : -1);
+                if (dragStart == null || dragStart[0] != target) {
+                    paintLine(dragStart == null ? target : dragStart[0], target);
                 }
-                dragStart = new int[]{hit.cell(), 0};
+                dragStart = new int[]{target, 0};
             }
             return true;
         }
@@ -171,9 +181,15 @@ public class CarverDesignScreen extends Screen {
 
     @Override
     public void mouseMoved(double mouseX, double mouseY) {
-        // Keep the hovered volume cell fresh so G can freeze the target the free cursor points at.
+        // Keep the hovered volume cell fresh and, in place mode, the hinted placement cell for
+        // the hologram ghost outline.
         if (minecraft != null && minecraft.screen == this) {
-            pickAt(mouseX, mouseY);
+            CarverCursorPick.Hit hit = pickAt(mouseX, mouseY);
+            if (CarverClientState.placing() && hit != null) {
+                CarverClientState.setHoverPlaceCell(placeTarget(hit));
+            } else {
+                CarverClientState.setHoverPlaceCell(-1);
+            }
         }
         super.mouseMoved(mouseX, mouseY);
     }
@@ -412,13 +428,24 @@ public class CarverDesignScreen extends Screen {
                 from[0], from[1], to[0], to[1], layer, BOX_DEPTH);
         boolean placing = CarverClientState.placing();
         DraftMask box = new DraftMask();
-        for (int cell : cells) {
-            if (!placing && !CarverClientState.isPaintable(cell)) continue;
-            box.set(cell);
-        }
-        if (!box.isEmpty()) {
-            if (placing) CarverClientState.sendPlaceBox(box);
-            else CarverClientState.sendBox(true, box);
+        if (placing) {
+            // The box builds outward: mark the vacant layer adjacent to the picked face.
+            int[] normal = faceNormal(face);
+            for (int cell : cells) {
+                int x = DraftMask.x(cell) + normal[0];
+                int y = DraftMask.y(cell) + normal[1];
+                int z = DraftMask.z(cell) + normal[2];
+                if (x < 0 || x > 15 || y < 0 || y > 15 || z < 0 || z > 15) continue;
+                int target = DraftMask.index(x, y, z);
+                if (isPlaceVacant(target)) box.set(target);
+            }
+            if (!box.isEmpty()) CarverClientState.sendPlaceBox(box);
+        } else {
+            for (int cell : cells) {
+                if (!CarverClientState.isPaintable(cell)) continue;
+                box.set(cell);
+            }
+            if (!box.isEmpty()) CarverClientState.sendBox(true, box);
         }
         dragStart = null;
         dragNow = null;
@@ -472,6 +499,48 @@ public class CarverDesignScreen extends Screen {
         // flush time decides whether they are removed or placed.
         if (!CarverClientState.placing() && !CarverClientState.isPaintable(cell)) return;
         stroke.set(cell);
+    }
+
+    private void paint(CarverCursorPick.Hit hit) {
+        paint(CarverClientState.placing() ? placeTarget(hit) : hit.cell());
+    }
+
+    /** The cell a placement would fill: the vacant neighbour of the picked face, else the cell itself. */
+    private int placeTarget(CarverCursorPick.Hit hit) {
+        int x = DraftMask.x(hit.cell());
+        int y = DraftMask.y(hit.cell());
+        int z = DraftMask.z(hit.cell());
+        int[] normal = faceNormal(hit.face());
+        int nx = x + normal[0];
+        int ny = y + normal[1];
+        int nz = z + normal[2];
+        if (nx < 0 || nx > 15 || ny < 0 || ny > 15 || nz < 0 || nz > 15) return hit.cell();
+        int target = DraftMask.index(nx, ny, nz);
+        return isPlaceVacant(target) ? target : hit.cell();
+    }
+
+    /** Vacant in the previewed sculpt: source air, or a cell already drafted for removal. */
+    private boolean isPlaceVacant(int cell) {
+        if (CarverClientState.draft().get(cell)) return true;
+        try {
+            ua.rp.chat.microvoxel.MicrovoxelVolume volume =
+                    CarverHologramRenderer.sourceVolume(CarverClientState.focus());
+            return volume == null || volume.materialAt(
+                    DraftMask.x(cell), DraftMask.y(cell), DraftMask.z(cell)) == 0;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static int[] faceNormal(CarverFaceSlicer.Face face) {
+        return switch (face) {
+            case UP -> new int[]{0, 1, 0};
+            case DOWN -> new int[]{0, -1, 0};
+            case NORTH -> new int[]{0, 0, -1};
+            case SOUTH -> new int[]{0, 0, 1};
+            case WEST -> new int[]{-1, 0, 0};
+            case EAST -> new int[]{1, 0, 0};
+        };
     }
 
     private static int faceOrdinal(CarverFaceSlicer.Face face) {
