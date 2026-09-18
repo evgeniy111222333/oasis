@@ -34,6 +34,13 @@ public final class MicrovoxelSyncHub {
     // even while the player stands still, with overlay progress for large deliveries.
     static final int SNAPSHOT_PAGE_VOLUMES = 256;
     private static final int SNAPSHOT_PAGE_INTERVAL_TICKS = 5;
+    /**
+     * Max ticks bulk backfill may be starved by live traffic before it drains anyway. Without
+     * this a player joining a busy server (fluid sync every tick) never receives their snapshot.
+     */
+    private static final int MAX_BACKFILL_STARVATION_TICKS = 60;
+    /** Cap on volumes per TRANSACTION frame so one packet stays under the 1 MiB payload limit. */
+    private static final int MAX_TRANSACTION_CHANGES_PER_PACKET = 32;
 
     private final MicrovoxelRuntime runtime;
     private final Map<UUID, PlayerSyncPosition> syncPositions = new ConcurrentHashMap<>();
@@ -46,6 +53,8 @@ public final class MicrovoxelSyncHub {
     private final Map<UUID, Integer> capabilities = new ConcurrentHashMap<>();
     private long nextSnapshotId = 1L;
     private int refreshTicks;
+    /** Last tick a backfill page was drained; drives the anti-starvation guarantee. */
+    private long lastPageDrainTick;
 
     /** Records the capability bitset a client advertised during the handshake. */
     public void setCapabilities(UUID playerId, int capabilitySet) {
@@ -178,6 +187,8 @@ public final class MicrovoxelSyncHub {
         if (reset) {
             sendPacket(player, MicrovoxelProtocol.clear());
             subscribed.clear();
+            // Drop queued pages from the previous world so we never drain/send cross-world chunks.
+            snapshotPages.remove(playerId);
         }
 
         Set<ChunkKey> desired = new HashSet<>();
@@ -188,11 +199,15 @@ public final class MicrovoxelSyncHub {
         }
 
         Iterator<ChunkKey> iterator = subscribed.iterator();
+        SnapshotPages queuedPages = snapshotPages.get(playerId);
         while (iterator.hasNext()) {
             ChunkKey chunk = iterator.next();
             if (!desired.contains(chunk)) {
                 sendPacket(player, MicrovoxelProtocol.clearChunk(chunk.x(), chunk.z()));
                 iterator.remove();
+                // Also drop it from the backfill queue, else a fast-travelling player keeps
+                // re-subscribing to chunks they already left (bandwidth/queue leak).
+                if (queuedPages != null) queuedPages.remaining.remove(chunk);
             }
         }
 
@@ -239,7 +254,11 @@ public final class MicrovoxelSyncHub {
             }
             queued.totalVolumes += sumVolumes(pending, counts);
             for (int page = 1; page < pages.size(); page++) {
-                queued.remaining.addAll(pages.get(page));
+                for (ChunkKey chunk : pages.get(page)) {
+                    // Dedupe: a periodic refresh re-queues not-yet-sent chunks, and without this
+                    // the backfill deque grows with duplicate entries for a fast-travelling player.
+                    if (!queued.remaining.contains(chunk)) queued.remaining.addLast(chunk);
+                }
             }
             queued.sentVolumes += firstPageVolumes;
             announceProgress(player, queued);
@@ -252,11 +271,17 @@ public final class MicrovoxelSyncHub {
     /** Drains one queued page per player every few ticks, then closes paged snapshots. */
     private void drainSnapshotPages() {
         if (snapshotPages.isEmpty()) return;
-        // Yield to live traffic: bulk backfill waits while real gameplay packets flow.
-        if (runtime.serverTick() - lastLiveSendTick < 2) return;
+        long now = runtime.serverTick();
+        // Yield to live traffic, but never starve bulk backfill: after a bounded window the drain
+        // proceeds regardless, so a player on a busy server still converges to their snapshot.
+        if (now - lastLiveSendTick < 2
+                && now - lastPageDrainTick < MAX_BACKFILL_STARVATION_TICKS) {
+            return;
+        }
+        lastPageDrainTick = now;
         for (Map.Entry<UUID, SnapshotPages> entry : List.copyOf(snapshotPages.entrySet())) {
             SnapshotPages pages = entry.getValue();
-            if (runtime.serverTick() - pages.lastSendTick < SNAPSHOT_PAGE_INTERVAL_TICKS) continue;
+            if (now - pages.lastSendTick < SNAPSHOT_PAGE_INTERVAL_TICKS) continue;
             ServerPlayer player = runtime.server().getPlayerList().getPlayer(entry.getKey());
             Set<ChunkKey> subscribed = playerSubscriptions.get(entry.getKey());
             if (player == null || player.connection == null || subscribed == null) {
@@ -279,7 +304,7 @@ public final class MicrovoxelSyncHub {
                 page.add(chunk);
                 volumes += count;
             }
-            pages.lastSendTick = runtime.serverTick();
+            pages.lastSendTick = now;
             if (page.isEmpty()) {
                 finishPagedSnapshot(player, entry.getKey(), pages);
                 continue;
@@ -473,8 +498,12 @@ public final class MicrovoxelSyncHub {
             for (MicrovoxelProtocol.StateChange change : changes) {
                 if (subscriptions.contains(ChunkKey.of(change.key()))) visible.add(change);
             }
-            if (!visible.isEmpty()) {
-                sendPacket(player, MicrovoxelProtocol.transaction(transactionId, visible));
+            // Split a large transaction so one frame cannot exceed the 1 MiB payload safety limit;
+            // every slice is a self-contained upsert, and the snapshot path converges late joiners.
+            for (int from = 0; from < visible.size(); from += MAX_TRANSACTION_CHANGES_PER_PACKET) {
+                List<MicrovoxelProtocol.StateChange> slice = visible.subList(
+                        from, Math.min(from + MAX_TRANSACTION_CHANGES_PER_PACKET, visible.size()));
+                sendPacket(player, MicrovoxelProtocol.transaction(transactionId, slice));
             }
         }
     }
@@ -547,10 +576,17 @@ public final class MicrovoxelSyncHub {
     }
 
     public void sendPacket(ServerPlayer player, byte[] bytes) {
-        if (player.connection != null) {
+        if (player.connection == null) return;
+        try {
             ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.packets");
             ua.rp.chat.microvoxel.MicrovoxelMetrics.add("net.bytes", bytes.length);
             ServerPlayNetworking.send(player, new MicrovoxelSyncPayload(bytes));
+        } catch (RuntimeException tooLargeOrBroken) {
+            // An oversized frame (or a disconnected player) must never throw into the tick loop;
+            // the periodic snapshot/delta paths converge the player instead.
+            ua.rp.chat.microvoxel.MicrovoxelMetrics.inc("net.packets.dropped");
+            runtime.logger().fine("[MICROVOXEL] dropped sync packet (" + bytes.length + " bytes): "
+                    + tooLargeOrBroken.getMessage());
         }
     }
 

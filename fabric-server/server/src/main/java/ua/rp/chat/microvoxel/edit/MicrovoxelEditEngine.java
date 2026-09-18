@@ -121,7 +121,8 @@ public final class MicrovoxelEditEngine {
         clipboards.remove(playerId);
     }
 
-    private static boolean isMutating(int action) {
+    /** True for the action codes that mutate a volume (and so must pass the replay shield). */
+    public static boolean isMutating(int action) {
         return action == MicrovoxelProtocol.ACTION_REMOVE
                 || action == MicrovoxelProtocol.ACTION_ADD
                 || action == MicrovoxelProtocol.ACTION_BRUSH_ADD
@@ -133,8 +134,11 @@ public final class MicrovoxelEditEngine {
                 || action == MicrovoxelProtocol.ACTION_GENERATE;
     }
 
-    /** Strictly-increasing per-player transaction ids: the anti-replay boundary. */
-    private boolean acceptTransaction(ServerPlayer player, long transactionId) {
+    /**
+     * Strictly-increasing per-player transaction ids: the anti-replay boundary. Shared with the
+     * undo/redo path so a captured history action is rejected exactly like a repeated edit.
+     */
+    public boolean acceptTransaction(ServerPlayer player, long transactionId) {
         long previous = lastEditTransactions.getOrDefault(player.getUUID(), Long.MIN_VALUE);
         if (transactionId <= previous) return false;
         lastEditTransactions.put(player.getUUID(), transactionId);

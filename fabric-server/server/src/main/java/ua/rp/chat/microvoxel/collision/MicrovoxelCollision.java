@@ -78,6 +78,9 @@ public final class MicrovoxelCollision {
         int maxY = floor(sweep.maxY) + 1;
         int minZ = floor(sweep.minZ) - 1;
         int maxZ = floor(sweep.maxZ) + 1;
+        // Most chunks hold no microvoxels at all. Reject the whole sweep with a chunk-count
+        // lookup instead of a MicrovoxelKey allocation + synchronized store.get per block axis.
+        if (!hasVolumesNear(worldId, minX, minZ, maxX, maxZ)) return movement;
         double clipped = movement;
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -107,6 +110,24 @@ public final class MicrovoxelCollision {
             }
         }
         return clipped;
+    }
+
+    /**
+     * Cheap pre-filter over the chunk occupancy index: true when any chunk overlapping the swept
+     * footprint actually holds a volume. Lets the common empty-world move skip the full block
+     * loop entirely, with no per-block key allocation or store lock.
+     */
+    private boolean hasVolumesNear(UUID worldId, int minX, int minZ, int maxX, int maxZ) {
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (runtime.store().countInChunk(worldId, chunkX, chunkZ) > 0) return true;
+            }
+        }
+        return false;
     }
 
     /** Exact narrow-phase collision for fragmented volumes. */

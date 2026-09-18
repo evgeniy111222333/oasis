@@ -50,7 +50,9 @@ public final class MicrovoxelServerCoreTest {
         verifyMicrovoxelGenerators();
         verifyPortableGeometryRoundTrip();
         verifyMaterialPalette();
+        verifySessionToken();
         verifyVolumeEconomy();
+        verifyHardeningFixes();
         verifyPublicationImmutability();
         verifyBoundedJournalSlicing();
         verifyConcurrentPersistenceSnapshotIsolation();
@@ -261,6 +263,36 @@ public final class MicrovoxelServerCoreTest {
         MicrovoxelVolume backupRestored = recovered.get(key);
         require(recovered.loadedFromBackup(), "Corrupt primary region must fall back to its last valid backup");
         require(backupRestored != null, "Backup recovery must retain every committed volume");
+
+        // Forged region length: a valid header declaring a large body must fail closed without
+        // allocating the declared size (the reader is streamed and length-bounded).
+        Path forgedBase = directory.resolve("forged-microvoxels.dat");
+        MicrovoxelStore forgedWriter = new MicrovoxelStore(forgedBase);
+        forgedWriter.put(key, MicrovoxelVolume.full("minecraft:stone"));
+        forgedWriter.save();
+        Path forgedRegion;
+        try (var forgedFiles = Files.list(
+                forgedBase.resolveSibling(forgedBase.getFileName() + ".regions-v2"))) {
+            forgedRegion = forgedFiles
+                    .filter(path -> path.getFileName().toString().endsWith(".mvr"))
+                    .findFirst().orElseThrow();
+        }
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(
+                Files.newOutputStream(forgedRegion))) {
+            out.writeInt(0x4D565232); // REGION_MAGIC
+            out.writeInt(3);          // REGION_VERSION
+            out.writeInt(100_000_000); // 100 MB declared, but the body is missing
+        }
+        MicrovoxelStore forgedReader = new MicrovoxelStore(forgedBase);
+        forgedReader.load();
+        boolean forgedFailedClosed = false;
+        try {
+            forgedReader.get(key);
+        } catch (RuntimeException expected) {
+            forgedFailedClosed = true;
+        }
+        require(forgedFailedClosed,
+                "A forged region length must fail closed instead of allocating the declared size");
 
         Path lazyBase = directory.resolve("lazy-microvoxels.dat");
         MicrovoxelStore lazyWriter = new MicrovoxelStore(lazyBase);
@@ -788,6 +820,18 @@ public final class MicrovoxelServerCoreTest {
         corrupt.load();
         require(!corrupt.isProtected(key) && corrupt.size() == 0,
                 "A corrupt flags file must fail open to unprotected, never crash startup");
+
+        // One malformed entry must be skipped without discarding the valid protections around it:
+        // fail-open is for an unreadable file, not for a single bad line.
+        String validKey = key.worldId() + "|" + key.x() + "|" + key.y() + "|" + key.z();
+        Files.writeString(temporaryDirectory.resolve("microvoxel-flags.json"),
+                "{\"" + validKey + "\":1,\"broken\":oops}");
+        ua.rp.chat.microvoxel.MicrovoxelFlags salvaged = new ua.rp.chat.microvoxel.MicrovoxelFlags(
+                temporaryDirectory.resolve("microvoxel-flags.json"),
+                java.util.logging.Logger.getLogger("MicrovoxelFlagsTest"));
+        salvaged.load();
+        require(salvaged.isProtected(key) && salvaged.size() == 1,
+                "A single malformed flags entry must not unprotect the valid entries");
 
         ua.rp.chat.microvoxel.MicrovoxelEvents.clearForTests();
         int[] delivered = {0};
@@ -1777,6 +1821,115 @@ public final class MicrovoxelServerCoreTest {
     }
 
     /**
+     * Regression cover for the hardening pass: geometry palette compaction remaps indices without
+     * corruption, a shell-only shape change invalidates neighbour meshes while an interior one does
+     * not, the collision backend keeps its invariants after the lazy-mask rework, and reading empty
+     * regions never registers index metadata (the store meta leak).
+     */
+    private static void verifyHardeningFixes() throws Exception {
+        verifyGeometryPaletteCompaction();
+        verifyBoundaryGeometryDiff();
+        verifyLazyCollisionPlanInvariants();
+        verifyEmptyRegionReadsDoNotLeakIndexMetadata();
+        System.out.println("MicrovoxelHardeningTest: palette compaction, boundary geometry, collision backend and store leak guards passed");
+    }
+
+    private static void verifyGeometryPaletteCompaction() {
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        int slab = MicrovoxelShape.Type.SLAB_BOTTOM.ordinal();
+        MicrovoxelGeometry geometry = MicrovoxelGeometry.empty();
+        require(geometry.setShape(0, ramp) && geometry.setShape(1, slab),
+                "Two distinct shapes must register two shaped cells");
+        // Clearing cell 0 orphans the ramp entry; compaction must drop it AND remap cell 1's
+        // local index so it still resolves to the slab.
+        require(geometry.setShape(0, 0) && geometry.shapedCells() == 1,
+                "Clearing the prior cell must leave one shaped cell");
+        require(geometry.shapeAt(0) == 0 && geometry.shapeAt(1) == slab,
+                "Compaction must remap surviving indices, not corrupt them");
+        require(geometry.setShape(0, ramp) && geometry.shapeAt(0) == ramp && geometry.shapeAt(1) == slab,
+                "A shape can be re-added after compaction while others keep their meaning");
+        MicrovoxelGeometry decoded = MicrovoxelGeometry.decode(geometry.encode());
+        boolean exact = decoded.shapedCells() == geometry.shapedCells();
+        for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT && exact; cell++) {
+            exact = decoded.shapeAt(cell) == geometry.shapeAt(cell);
+        }
+        require(exact, "A compacted channel must round-trip exactly");
+        require(geometry.setShape(0, 0) && geometry.setShape(1, 0) && geometry.isEmpty()
+                        && geometry.encode().length == 0,
+                "Clearing every cell must return the channel to the zero-cost empty form");
+    }
+
+    private static void verifyBoundaryGeometryDiff() {
+        int slab = MicrovoxelShape.Type.SLAB_BOTTOM.ordinal();
+        MicrovoxelVolume base = MicrovoxelVolume.full("minecraft:stone");
+        MicrovoxelVolume shellShaped = base.copy();
+        shellShaped.setShape(0, slab);
+        require(base.boundaryDiffersFrom(base.copy()) == false,
+                "Two equal volumes must not report a boundary difference");
+        require(base.boundaryDiffersFrom(shellShaped),
+                "A shape change on the shell must invalidate neighbour meshes");
+
+        MicrovoxelVolume interiorShaped = base.copy();
+        interiorShaped.setShape(MicrovoxelVolume.index(8, 8, 8), slab);
+        require(!base.boundaryDiffersFrom(interiorShaped),
+                "An interior shape change is invisible to neighbours and must not rebuild them");
+
+        MicrovoxelVolume interiorMaterial = base.copy();
+        interiorMaterial.remove(MicrovoxelVolume.index(8, 8, 8));
+        require(!base.boundaryDiffersFrom(interiorMaterial),
+                "An interior material change must not report a boundary difference");
+        MicrovoxelVolume shellMaterial = base.copy();
+        shellMaterial.remove(0);
+        require(base.boundaryDiffersFrom(shellMaterial),
+                "A shell material change must report a boundary difference");
+    }
+
+    private static void verifyLazyCollisionPlanInvariants() {
+        MicrovoxelVolume full = MicrovoxelVolume.full("minecraft:stone");
+        MicrovoxelVolume.CollisionPlan plan = full.collisionPlan();
+        require(plan.backend() == MicrovoxelVolume.CollisionBackend.CUBOIDS
+                        && !full.collisionCuboids().isEmpty(),
+                "A solid volume must stay on the cuboids backend with merged colliders");
+        require(!full.shapeBoxes().iterator().hasNext(),
+                "An all-cube volume must expose no shape boxes");
+
+        byte[] checker = new byte[MicrovoxelVolume.CELL_COUNT];
+        for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+            if (((x + y + z) & 1) == 0) checker[MicrovoxelVolume.index(x, y, z)] = 1;
+        }
+        MicrovoxelVolume gridded = MicrovoxelVolume.restore(1, List.of("", "minecraft:stone"), checker);
+        require(gridded.collisionPlan().backend() == MicrovoxelVolume.CollisionBackend.GRID,
+                "A fragmented volume must fall back to the grid backend");
+        require((gridded.collisionPlan().xMask(0, 0) & 1) == 1,
+                "The grid line masks must still be built when the grid backend is chosen");
+    }
+
+    private static void verifyEmptyRegionReadsDoNotLeakIndexMetadata() throws Exception {
+        Path directory = Files.createTempDirectory("microvoxel-store-leak");
+        MicrovoxelStore store = new MicrovoxelStore(directory.resolve("microvoxels-v1.dat"));
+        require(store.indexedRegionCount() == 0, "A fresh store must have no indexed regions");
+        UUID world = UUID.randomUUID();
+        for (int index = 0; index < 300; index++) {
+            store.get(new MicrovoxelKey(world, index * 512, 64, 0));
+        }
+        require(store.indexedRegionCount() == 0,
+                "Reading empty regions must not register index metadata (unbounded leak)");
+        MicrovoxelKey occupied = new MicrovoxelKey(world, 10, 64, 10);
+        store.put(occupied, MicrovoxelVolume.full("minecraft:stone"));
+        require(store.indexedRegionCount() == 1,
+                "A real write must register exactly its own region");
+        require(store.get(occupied) != null, "A written volume must be readable");
+        // The collision pre-filter trusts this index to skip empty chunks, so it must track
+        // writes and removals exactly.
+        require(store.countInChunk(world, 0, 0) == 1,
+                "A written volume must register in its chunk index");
+        store.remove(occupied);
+        require(store.countInChunk(world, 0, 0) == 0,
+                "Removing a volume must clear its chunk index entry");
+        System.out.println("MicrovoxelStoreLeakTest: empty reads stay metadata-free, writes register");
+    }
+
+    /**
      * The geometry layer must actually drive collision and targeting: a shaped cell is excluded from
      * the merged full-cube colliders, exposes 1/256-block sub-cell boxes, contributes those to the
      * native VoxelShape, and the DDA ray stops on the partial surface instead of the whole cell.
@@ -1944,6 +2097,47 @@ public final class MicrovoxelServerCoreTest {
      * Geometry channel: an empty channel costs zero bytes; shaped cells survive an encode/decode
      * round-trip exactly; clearing returns to the zero-cost full-cube state.
      */
+    /**
+     * Per-login anti-replay token: the accept rule must take the live or the previous token, and
+     * never the NONE sentinel, so a captured action cannot be replayed across a session boundary.
+     */
+    private static void verifySessionToken() {
+        long current = MicrovoxelSessionToken.fresh();
+        long previous = MicrovoxelSessionToken.fresh();
+        require(current != MicrovoxelSessionToken.NONE && previous != MicrovoxelSessionToken.NONE
+                        && current != previous,
+                "Fresh session tokens must be non-zero and distinct");
+        require(MicrovoxelSessionToken.matches(current, previous, current),
+                "The live session token must be accepted");
+        require(MicrovoxelSessionToken.matches(current, previous, previous),
+                "The previous session token must stay valid for the re-handshake window");
+        require(!MicrovoxelSessionToken.matches(current, previous, MicrovoxelSessionToken.NONE),
+                "The NONE sentinel must never be accepted");
+        require(!MicrovoxelSessionToken.matches(current, previous, current ^ 0x9E3779B97F4A7C15L),
+                "An unrelated token must be rejected");
+        require(!MicrovoxelSessionToken.matches(current, MicrovoxelSessionToken.NONE, previous),
+                "With no previous token only the live one is valid");
+
+        // HELLO_ACK carries the token after major/minor/capabilities.
+        byte[] ack = MicrovoxelProtocol.helloAck(9, 0, MicrovoxelWire.CAP_ALL, current);
+        try {
+            MicrovoxelWire.Frame frame = MicrovoxelWire.readFrame(ack);
+            require(frame.type() == MicrovoxelProtocol.HELLO_ACK,
+                    "The handshake reply must be a HELLO_ACK frame");
+            try (java.io.DataInputStream input =
+                         new java.io.DataInputStream(new java.io.ByteArrayInputStream(frame.payload()))) {
+                require(MicrovoxelWire.readVarInt(input) == 9
+                                && MicrovoxelWire.readVarInt(input) == 0
+                                && MicrovoxelWire.readVarInt(input) == MicrovoxelWire.CAP_ALL
+                                && input.readLong() == current && input.available() == 0,
+                        "HELLO_ACK must round-trip the session token as its trailing field");
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("HELLO_ACK decode failed", error);
+        }
+        System.out.println("MicrovoxelSessionTokenTest: live/previous accept and NONE rejection passed");
+    }
+
     private static void verifyMicrovoxelGeometryChannel() {
         MicrovoxelGeometry empty = MicrovoxelGeometry.empty();
         require(empty.isEmpty() && empty.encode().length == 0,
@@ -1985,7 +2179,50 @@ public final class MicrovoxelServerCoreTest {
             rejected = true;
         }
         require(rejected, "An unknown shape id must fail closed");
-        System.out.println("MicrovoxelGeometryChannelTest: zero-cost empty, round-trip and clear passed");
+
+        // Hardening regression: malformed geometry must fail closed with IllegalArgumentException,
+        // never an unchecked AIOOBE or an int-overflow bypass, so a corrupt region cannot crash
+        // the server through the decode path.
+        java.io.ByteArrayOutputStream raw = new java.io.ByteArrayOutputStream();
+        raw.write('M');
+        raw.write('V');
+        raw.write('G');
+        raw.write('1');
+        raw.write(1);
+        writeVarint(raw, 1);
+        writeVarint(raw, ramp + 1);
+        writeVarint(raw, MicrovoxelVolume.CELL_COUNT);
+        raw.write(1); // RLE encoding
+        writeVarint(raw, 1); // one run
+        writeVarint(raw, Integer.MAX_VALUE); // huge run
+        raw.write(1); // value byte (then truncated below)
+        byte[] malformed = raw.toByteArray();
+        boolean hugeRunRejected = false;
+        try {
+            MicrovoxelGeometry.decode(malformed);
+        } catch (IllegalArgumentException expected) {
+            hugeRunRejected = true;
+        }
+        require(hugeRunRejected, "A huge RLE run length must be rejected as malformed geometry");
+
+        boolean truncatedRejected = false;
+        try {
+            MicrovoxelGeometry.decode(java.util.Arrays.copyOf(malformed, malformed.length - 1));
+        } catch (IllegalArgumentException expected) {
+            truncatedRejected = true;
+        }
+        require(truncatedRejected, "A truncated geometry payload must be rejected, not crash");
+
+        System.out.println("MicrovoxelGeometryChannelTest: zero-cost empty, round-trip, clear and malformed-input rejection passed");
+    }
+
+    /** Minimal checked-exception-free VarInt writer for crafting malformed payloads in tests. */
+    private static void writeVarint(java.io.ByteArrayOutputStream out, int value) {
+        while ((value & ~0x7F) != 0) {
+            out.write((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        out.write(value);
     }
 
     /**

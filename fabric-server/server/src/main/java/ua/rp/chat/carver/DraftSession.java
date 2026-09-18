@@ -201,7 +201,8 @@ public final class DraftSession {
         expandMirrored(work, mirrorAxes);
         if (add) {
             placeMask.orIn(work);
-            String resolved = material == null ? "" : material;
+            String resolved = ua.rp.chat.microvoxel.MicrovoxelMaterialPalette
+                    .canonicalMaterial(material);
             for (int cell : work.cells()) {
                 mask.clear(cell);
                 placeMaterials.put(cell, resolved);
@@ -225,7 +226,13 @@ public final class DraftSession {
         placeMask.clearAll();
         if (place != null) placeMask.orIn(place);
         placeMaterials.clear();
-        if (materials != null) placeMaterials.putAll(materials);
+        if (materials != null) {
+            for (java.util.Map.Entry<Integer, String> entry : materials.entrySet()) {
+                placeMaterials.put(entry.getKey(),
+                        ua.rp.chat.microvoxel.MicrovoxelMaterialPalette
+                                .canonicalMaterial(entry.getValue()));
+            }
+        }
     }
 
     /** Restores the previous snapshot; returns false when there is nothing to undo. */

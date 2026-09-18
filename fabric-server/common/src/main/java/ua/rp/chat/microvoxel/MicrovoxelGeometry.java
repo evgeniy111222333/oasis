@@ -134,6 +134,30 @@ public final class MicrovoxelGeometry {
             palette = new int[]{0};
             return;
         }
+        // A clear can orphan every reference to a shape. Without remapping, repeated
+        // shape/clear cycles in different cells leave dead palette entries that bloat every
+        // encode of the channel. Rebuild the palette from referenced indices and remap cells.
+        boolean[] referenced = new boolean[palette.length];
+        referenced[0] = true;
+        for (byte value : cells) {
+            int index = value & 0xFF;
+            if (index < referenced.length) referenced[index] = true;
+        }
+        int retained = 0;
+        for (boolean present : referenced) if (present) retained++;
+        if (retained == palette.length) return;
+        int[] remap = new int[palette.length];
+        int[] compacted = new int[retained];
+        int cursor = 0;
+        for (int index = 0; index < palette.length; index++) {
+            if (!referenced[index]) continue;
+            remap[index] = cursor;
+            compacted[cursor++] = palette[index];
+        }
+        for (int cell = 0; cell < cells.length; cell++) {
+            cells[cell] = (byte) remap[cells[cell] & 0xFF];
+        }
+        palette = compacted;
     }
 
     public MicrovoxelGeometry copy() {
@@ -223,6 +247,7 @@ public final class MicrovoxelGeometry {
         int length = readVarInt(data, cursor);
         if (length != CELL_COUNT) throw new IllegalArgumentException("Invalid microvoxel geometry cell count");
         byte[] encoded = new byte[CELL_COUNT];
+        if (cursor[0] >= data.length) throw new IllegalArgumentException("Truncated geometry cells");
         int encoding = data[cursor[0]++] & 0xFF;
         if (encoding == 0) {
             if (cursor[0] + CELL_COUNT > data.length) throw new IllegalArgumentException("Truncated geometry cells");
@@ -233,8 +258,10 @@ public final class MicrovoxelGeometry {
             int position = 0;
             for (int run = 0; run < runs; run++) {
                 int runLength = readVarInt(data, cursor);
+                if (cursor[0] >= data.length) throw new IllegalArgumentException("Truncated geometry RLE run");
                 int value = data[cursor[0]++] & 0xFF;
-                if (runLength < 1 || position + runLength > CELL_COUNT) {
+                // Overflow-safe bounds: a huge VarInt run length must not wrap past CELL_COUNT.
+                if (runLength < 1 || runLength > CELL_COUNT - position) {
                     throw new IllegalArgumentException("Invalid geometry RLE run");
                 }
                 Arrays.fill(encoded, position, position + runLength, (byte) value);
@@ -308,7 +335,7 @@ public final class MicrovoxelGeometry {
         int value = 0;
         int shift = 0;
         while (true) {
-            if (cursor[0] >= data.length || shift > 35) {
+            if (cursor[0] >= data.length || shift > 28) {
                 throw new IllegalArgumentException("Truncated geometry varint");
             }
             int current = data[cursor[0]++] & 0xFF;
@@ -320,5 +347,18 @@ public final class MicrovoxelGeometry {
 
     private static void requireCell(int cell) {
         if (cell < 0 || cell >= CELL_COUNT) throw new IndexOutOfBoundsException("Invalid microvoxel cell");
+    }
+
+    /** Value equality over the local palette and cell indices (shaped count is derived). */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof MicrovoxelGeometry geometry)) return false;
+        return Arrays.equals(palette, geometry.palette) && Arrays.equals(cells, geometry.cells);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Arrays.hashCode(palette) + Arrays.hashCode(cells);
     }
 }

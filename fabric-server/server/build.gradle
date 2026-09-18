@@ -495,11 +495,16 @@ tasks.register("verifyMicrovoxelProtocolParity") {
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
     def batchPayload = rootProject.layout.projectDirectory.file(
             "common/src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
+    def actionPayload = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelActionPayload.java")
+    def sessionToken = rootProject.layout.projectDirectory.file(
+            "common/src/main/java/ua/rp/chat/microvoxel/MicrovoxelSessionToken.java")
     def bootstrapSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/RPChat.java")
     def clientBootstrap = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/EclipseClientMod.java")
-    inputs.files(wireSource, protocolSource, clientState, batchPayload, bootstrapSource, clientBootstrap)
+    inputs.files(wireSource, protocolSource, clientState, batchPayload, actionPayload,
+            sessionToken, bootstrapSource, clientBootstrap)
     doLast {
         def wire = wireSource.asFile.getText("UTF-8")
         def protocol = protocolSource.asFile.getText("UTF-8")
@@ -529,6 +534,18 @@ tasks.register("verifyMicrovoxelProtocolParity") {
         assert clientInit.contains("MicrovoxelBatchPayload.TYPE")
                 && clientInit.contains("MicrovoxelBatchPayload.CODEC"):
                 "Batch payload must be registered on the client"
+        // Session token: the payloads carry it and the client stores it from HELLO_ACK.
+        def token = sessionToken.asFile.getText("UTF-8")
+        assert token.contains("public static long fresh(")
+                && token.contains("public static boolean matches(")
+                && token.contains("public static final long NONE"):
+                "The shared session-token accept rule must exist in common/"
+        assert actionPayload.asFile.getText("UTF-8").contains("long sessionNonce")
+                && batchPayload.asFile.getText("UTF-8").contains("long sessionNonce"):
+                "Both action payloads must carry the per-login session token"
+        assert state.contains("sessionNonce = input.readLong()")
+                && protocol.contains("helloAck(int major, int minor, int capabilities, long sessionNonce)"):
+                "Client must store the token and the server must issue it in HELLO_ACK"
     }
 }
 
@@ -639,6 +656,10 @@ tasks.register("verifyMicrovoxelAuthority") {
                 && managerText.contains("allowSyncAction(")
                 && managerText.contains("syncRates.reset("):
                 "MicrovoxelManager must gate edits and RESYNC floods through shared limiters"
+        assert managerText.contains("isReplaySensitive(")
+                && managerText.contains("acceptSessionNonce(")
+                && managerText.contains("edits.rejected.session"):
+                "MicrovoxelManager must bind replay-sensitive actions to the per-login session token"
         def engineText = engine.asFile.getText("UTF-8")
         assert engineText.contains("isMutating(") && engineText.contains("acceptTransaction(")
                 && engineText.contains("edits.rejected.replay")
@@ -795,6 +816,15 @@ tasks.register("verifyCarverParity") {
             assert rootProject.layout.projectDirectory.file(path).asFile.isFile():
                     "Missing shared Carver source: ${path}"
         }
+        assert rootProject.layout.projectDirectory.file(
+                "common/src/main/java/ua/rp/chat/client/carver/CarverActionPayload.java")
+                .asFile.getText("UTF-8").contains("long sessionNonce"):
+                "Carver action payload must carry the per-login session token"
+        def carverManagerText = layout.projectDirectory.file(
+                "src/main/java/ua/rp/chat/carver/CarverManager.java").asFile.getText("UTF-8")
+        assert carverManagerText.contains("acceptSessionNonce(")
+                && carverManagerText.contains("carver.drop.session"):
+                "CarverManager must bind drafting actions to the per-login session token"
     }
 }
 

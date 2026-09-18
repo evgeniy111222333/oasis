@@ -378,6 +378,20 @@ public final class CarverAutoWalk {
 
     /** START-tick steering: runs before vanilla polls movement keys. */
     public static void tickStart(Minecraft minecraft) {
+        try {
+            tickStartInternal(minecraft);
+        } catch (RuntimeException failure) {
+            // A failure mid-walk must never strand the player with movement keys latched down.
+            try {
+                abort();
+            } catch (RuntimeException ignored) {
+            }
+            ua.rp.chat.client.EclipseClientMod.LOGGER.warn(
+                    "Carver autowalk tick failed; walk aborted: " + failure);
+        }
+    }
+
+    private static void tickStartInternal(Minecraft minecraft) {
         if (minecraft != null && minecraft.player != null
                 && !active && CarverClientState.working()) {
             // Hands on the workpiece: locomotion keys stay down while the
@@ -587,7 +601,11 @@ public final class CarverAutoWalk {
                 < SETTLE_LEASH_SAFE * SETTLE_LEASH_SAFE;
     }
 
+    /** Walk traces are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
+
     private static void trace(String message) {
+        if (!DEBUG) return;
         try {
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-WALK] " + message);
         } catch (RuntimeException ignored) {

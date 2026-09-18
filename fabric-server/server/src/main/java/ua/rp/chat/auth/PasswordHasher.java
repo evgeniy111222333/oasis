@@ -8,7 +8,12 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
 public class PasswordHasher {
-    private static final int ITERATIONS = 12000;
+    /**
+     * PBKDF2 iteration count. 600k is the current OWASP recommendation for PBKDF2-HMAC-SHA256.
+     * The count is stored in the hash string ("iterations:salt:hash"), so raising it only affects
+     * new hashes — existing passwords keep verifying with their original count.
+     */
+    private static final int ITERATIONS = 600_000;
     private static final int KEY_LENGTH = 256;
     private static final int SALT_LENGTH = 16;
     private static final SecureRandom RANDOM = new SecureRandom();

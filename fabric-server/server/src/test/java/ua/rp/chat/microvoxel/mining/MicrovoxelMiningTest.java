@@ -3,8 +3,10 @@ package ua.rp.chat.microvoxel.mining;
 import ua.rp.chat.microvoxel.MicrovoxelKey;
 import ua.rp.chat.microvoxel.MicrovoxelProtocol;
 import ua.rp.chat.microvoxel.MicrovoxelRevision;
+import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import ua.rp.chat.microvoxel.ServerMicrovoxelRaycaster;
+import ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -28,6 +30,7 @@ public final class MicrovoxelMiningTest {
         testSessionImmutability();
         testRaycasterTargeting();
         testProtocolMineStage();
+        testRefundSymmetry();
         System.out.println("MicrovoxelMiningTest: all assertions passed.");
     }
 
@@ -114,6 +117,37 @@ public final class MicrovoxelMiningTest {
                 session(7.5f, 6.0f, 100L, 8), 104L);
         require(done.breakNow() && done.session().lastStage() == 9,
                 "Crossing the budget must report completion at crack stage 9");
+    }
+
+    /**
+     * Shape-aware mining refund: a mined cell must return exactly what the matching placement
+     * charged, otherwise placing a slab/ramp and mining it mints material.
+     */
+    private static void testRefundSymmetry() {
+        MicrovoxelVolume volume = MicrovoxelVolume.empty();
+        int cell = MicrovoxelVolume.index(0, 0, 0);
+        volume.put(cell, "minecraft:stone");
+        require(MicrovoxelMiningEngine.refundUnitsFor(volume, cell)
+                        == MicrovoxelMaterialEconomy.UNITS_PER_CELL,
+                "A full-cube cell must refund exactly one cell");
+
+        int slab = MicrovoxelShape.Type.SLAB_BOTTOM.ordinal();
+        volume.setShape(cell, slab);
+        require(MicrovoxelMiningEngine.refundUnitsFor(volume, cell)
+                        == MicrovoxelMaterialEconomy.cellCost(slab),
+                "A shaped cell must refund exactly its placement cost");
+        require(MicrovoxelMiningEngine.refundUnitsFor(volume, cell)
+                        < MicrovoxelMaterialEconomy.UNITS_PER_CELL,
+                "A slab must not refund a full cell (the duplication exploit)");
+
+        MicrovoxelVolume rampVolume = MicrovoxelVolume.empty();
+        rampVolume.put(cell, "minecraft:stone");
+        int ramp = MicrovoxelShape.Type.RAMP_S.ordinal();
+        rampVolume.setShape(cell, ramp);
+        require(MicrovoxelMiningEngine.refundUnitsFor(rampVolume, cell)
+                        == MicrovoxelMaterialEconomy.cellCost(ramp)
+                        && MicrovoxelMiningEngine.refundUnitsFor(rampVolume, cell) > 0,
+                "A ramp must refund its occupancy, matching its cost");
     }
 
     private static void testSessionImmutability() {

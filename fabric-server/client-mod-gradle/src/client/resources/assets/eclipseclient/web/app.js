@@ -65,9 +65,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function fetchStatus() {
     try {
-        const endpoint = `${apiUrl}/api/status?token=${encodeURIComponent(authToken)}`;
+        const endpoint = `${apiUrl}/api/status`;
         authDiagnostic("status-request", `url=${safeApiEndpoint("/api/status")}`);
-        const response = await fetch(endpoint);
+        const response = await fetch(endpoint, { headers: { "X-Eclipse-Token": authToken } });
         authDiagnostic("status-response", `http=${response.status}`);
         const data = await response.json();
 
@@ -126,17 +126,9 @@ async function recoverAuthSession(message) {
                 authDiagnostic("recovery-response", `attempt=${attempt + 1} http=${response.status}`);
                 if (response.status === 200) {
                     const data = await response.json();
-                    if (data.success && data.authUrl) {
-                        const newUrl = new URL(data.authUrl);
-                        const newToken = newUrl.searchParams.get("token") || "";
-                        const newUsername = newUrl.searchParams.get("username") || "";
-                        const currentUrl = new URL(window.location.href);
-                        currentUrl.searchParams.set("token", newToken);
-                        currentUrl.searchParams.set("username", newUsername);
-                        currentUrl.searchParams.set("recover", Date.now().toString());
-                        window.location.replace(currentUrl.toString());
-                        return true;
-                    }
+                    // Pending session detected, but its token is delivered only to the game client;
+                    // this page cannot recover it. Let the caller prompt a rejoin.
+                    return false;
                 }
             } catch (error) {
                 authDiagnostic("recovery-error", `attempt=${attempt + 1} ${error?.name || "Error"}: ${error?.message || String(error)}`);
@@ -448,7 +440,7 @@ async function submitAuth(buttonId, url, payload, errorBox, onSuccess) {
         authDiagnostic("submit-request", `operation=${url} api=${safeApiEndpoint(url)}`);
         const response = await fetch(`${apiUrl}${url}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Eclipse-Token": authToken },
             body: JSON.stringify(payload)
         });
         authDiagnostic("submit-response", `operation=${url} http=${response.status}`);

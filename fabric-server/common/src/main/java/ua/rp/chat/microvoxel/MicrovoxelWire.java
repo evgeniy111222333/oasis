@@ -22,15 +22,19 @@ import java.util.Arrays;
  * </pre>
  *
  * <p>{@code frameLen} counts the bytes of {@code type + payload}.</p>
+ *
+ * <p>Major 9 binds every client action to a per-login {@link MicrovoxelSessionToken}: the server
+ * issues a random token in {@code HELLO_ACK} and the client echoes it in each action payload, so a
+ * captured packet cannot be replayed across a relog or a server restart.</p>
  */
 public final class MicrovoxelWire {
     public static final int MAGIC = 0x4D;
     /** Breaking frame/encoding revisions. Bumped when the layout above changes. */
-    public static final int MAJOR = 8;
+    public static final int MAJOR = 9;
     /** Additive revisions: new message types/capabilities, no layout change. */
     public static final int MINOR = 0;
-    /** Oldest major this build can still read (length-prefixed frames are major 7+). */
-    public static final int MIN_SUPPORTED_MAJOR = 8;
+    /** Oldest major this build can still read. Major 9 added the per-login session token. */
+    public static final int MIN_SUPPORTED_MAJOR = 9;
 
     // Server -> client message types.
     public static final int CLEAR = 1;
@@ -276,7 +280,7 @@ public final class MicrovoxelWire {
                 for (int run = 0; run < runs; run++) {
                     int length = readVarInt(input);
                     byte material = input.readByte();
-                    if (length < 1 || cursor + length > target.length) {
+                    if (length < 1 || length > target.length - cursor) {
                         throw new IOException("Invalid cell RLE run");
                     }
                     Arrays.fill(target, cursor, cursor + length, material);
@@ -336,7 +340,7 @@ public final class MicrovoxelWire {
             while (cursor < total) {
                 int run = readVarInt(input);
                 int level = input.readUnsignedByte();
-                if (run < 1 || cursor + run > total || level > 16) {
+                if (run < 1 || run > total - cursor || level > 16) {
                     throw new IOException("Invalid fluid level run");
                 }
                 Arrays.fill(levels, cursor, cursor + run, (byte) level);

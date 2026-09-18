@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import ua.rp.chat.RPChat;
 import ua.rp.chat.antiabuse.ActionRateLimiter;
+import ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload;
 import ua.rp.chat.microvoxel.collision.MicrovoxelCollision;
 import ua.rp.chat.microvoxel.fluid.FluidSim;
 import ua.rp.chat.microvoxel.fluid.FluidStore;
@@ -95,6 +96,12 @@ public final class MicrovoxelManager {
             new ActionRateLimiter(ACTION_RATE_PER_SECOND, ACTION_BURST);
     private final ActionRateLimiter syncRates =
             new ActionRateLimiter(SYNC_RATE_PER_SECOND, SYNC_BURST);
+    /**
+     * Per-login anti-replay tokens, {@code [current, previous]}. Every replay-sensitive action must
+     * present one of them (see {@link MicrovoxelSessionToken}); the previous one covers the window
+     * of a mid-session re-handshake. Cleared on quit.
+     */
+    private final Map<UUID, long[]> sessionNonces = new ConcurrentHashMap<>();
     private Path storagePath;
     private Path fluidFile;
 
@@ -334,25 +341,31 @@ public final class MicrovoxelManager {
     public void tick() {
         long tick = runtime.advanceTick();
         if (!runtime.storageReady()) return;
-        if (runtime.projection() != null) runtime.projection().tick();
-        environment.tick();
-        sync.tick();
-        sync.retryUnacknowledgedSnapshots();
-        mining.tick();
-        fluidSim.tick();
+        // Each subsystem runs inside its own guard: a corrupt region or unexpected runtime error
+        // in one must never abort the rest of the tick or escape into the server tick loop.
+        if (runtime.projection() != null) guarded("projection", () -> runtime.projection().tick());
+        guarded("environment", environment::tick);
+        guarded("sync", sync::tick);
+        guarded("sync.retry", sync::retryUnacknowledgedSnapshots);
+        guarded("mining", mining::tick);
+        guarded("fluid", fluidSim::tick);
         // Throttled fluid persistence: fluid data is small, so a periodic atomic rewrite
-        // beats journaling. Shutdown always saves regardless of the throttle.
+        // beats journaling. The snapshot is captured here but serialized/fsynced on the save
+        // worker, so a large fluid rewrite never stalls the tick. Shutdown saves synchronously.
         if (tick % 6000 == 0 && fluidStore.isDirty()) {
-            saveFluids("periodic");
+            guarded("fluid.save", persistence::scheduleOverflowSave);
         }
-        runtime.store().trimCache();
-        collision.trimCache();
-        collision.drainLightChecks();
+        // Re-arm persistence after a dead-lettered failure burst so transient disk errors do not
+        // strand dirty volumes until the next edit. Throttled internally; no-op when clean.
+        guarded("persistence.retry", persistence::retryIfNeeded);
+        guarded("store.trim", () -> runtime.store().trimCache());
+        guarded("collision.trim", collision::trimCache);
+        guarded("collision.light", collision::drainLightChecks);
         // One metrics line per minute at 20 TPS: cheap, greppable, and the only history we
         // keep for edits/rejects/sync/persistence without a metrics backend. Fluid tuning
         // reloads on the same cadence, so /rpreload retunes a running server.
         if (tick % 1200 == 0) {
-            fluidTuning.reload(plugin.getConfig());
+            guarded("tuning.reload", () -> fluidTuning.reload(plugin.getConfig()));
             // Persistence backlog is the backpressure signal: dirty volumes awaiting the worker,
             // dirty regions awaiting compaction, and the journal size that drives compaction.
             plugin.getLogger().info(MicrovoxelMetrics.summarize()
@@ -360,7 +373,20 @@ public final class MicrovoxelManager {
                     + " store.dirtyRegions=" + runtime.store().dirtyRegionCount()
                     + " store.journalBytes=" + runtime.store().journalSizeBytes());
         }
-        if (tick % 20 == 0) refreshEncumbrance();
+        if (tick % 20 == 0) guarded("encumbrance", this::refreshEncumbrance);
+    }
+
+    /** Runs one tick subsystem, isolating a failure to a metric + warning instead of the tick. */
+    private void guarded(String label, Runnable task) {
+        try {
+            task.run();
+        } catch (RuntimeException failure) {
+            MicrovoxelMetrics.inc("tick.failed." + label);
+            // Keep the throwable so the log carries the stack, not just the message: field
+            // diagnosis of a subsystem fault is impossible without the failing frame.
+            plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Microvoxel " + label + " tick failed", failure);
+        }
     }
 
     /** Loose microvoxel matter is heavy: a hidden Slowness refresh once per second. */
@@ -378,7 +404,8 @@ public final class MicrovoxelManager {
     }
 
     public void handleAction(ServerPlayer player, int protocolVersion, long transactionId,
-                             int action, int x, int y, int z, int cell, int expectedRevision,
+                             long sessionNonce, int action, int x, int y, int z, int cell,
+                             int expectedRevision,
                              Vec3 clientLook, Vec3 clientEye, String material) {
         if (player == null || !runtime.storageReady()) {
             return;
@@ -391,11 +418,16 @@ public final class MicrovoxelManager {
             return;
         }
         if (action == MicrovoxelProtocol.ACTION_SNAPSHOT_ACK) {
+            // ACK is an unsolicited sync action too: an abusive client could otherwise flood
+            // snapshot acknowledgements without ever spending an action or sync token.
+            if (!allowSyncAction(player)) return;
             plugin.getServer().execute(() -> sync.acknowledgeSnapshot(player, transactionId));
             return;
         }
         if (action == MicrovoxelProtocol.ACTION_HELLO) {
             // Capability handshake. x = major, y = minor, z = capability bitset.
+            // Gate the handshake as well, so re-handshakes cannot churn tokens/capabilities.
+            if (!allowSyncAction(player)) return;
             if (!MicrovoxelWire.compatibleMajor(x)) {
                 player.sendSystemMessage(Component.literal(
                         "Клиент микровокселей несовместим с сервером (protocol "
@@ -404,9 +436,15 @@ public final class MicrovoxelManager {
             }
             int negotiated = z & MicrovoxelWire.CAP_ALL;
             plugin.getServer().execute(() -> {
+                // Issue a fresh per-login anti-replay token; the previous one stays valid for a
+                // re-handshake window so in-flight actions are not rejected during a resync.
+                long token = MicrovoxelSessionToken.fresh();
+                long[] prior = sessionNonces.get(player.getUUID());
+                long previousToken = prior == null ? MicrovoxelSessionToken.NONE : prior[0];
+                sessionNonces.put(player.getUUID(), new long[]{token, previousToken});
                 sync.setCapabilities(player.getUUID(), negotiated);
                 sync.sendPacket(player, MicrovoxelProtocol.helloAck(
-                        MicrovoxelWire.MAJOR, MicrovoxelWire.MINOR, negotiated));
+                        MicrovoxelWire.MAJOR, MicrovoxelWire.MINOR, negotiated, token));
             });
             return;
         }
@@ -428,7 +466,28 @@ public final class MicrovoxelManager {
         if (!RPChat.hasPermission(player, "rpchat.microvoxels.edit", 2) || !allowAction(player)) {
             return;
         }
+        // Session binding: a mutation or an undo/redo must present the token issued for THIS login.
+        // The monotonic transaction id (checked in the edit engine) only orders actions within a
+        // session; the token is what rejects a replay from an earlier session or before a restart.
+        if (isReplaySensitive(action) && !acceptSessionNonce(player, sessionNonce)) {
+            MicrovoxelMetrics.inc("edits.rejected.session");
+            sync.trace(player, "ACTION_REJECT stale-session action=" + action);
+            if (action != MicrovoxelProtocol.ACTION_UNDO && action != MicrovoxelProtocol.ACTION_REDO) {
+                UUID worldId = runtime.worldId(player.level());
+                MicrovoxelKey rejected = new MicrovoxelKey(worldId, x, y, z);
+                plugin.getServer().execute(() -> sync.sendEditResult(player, transactionId, false,
+                        rejected, runtime.store().get(rejected)));
+            }
+            return;
+        }
         if (action == MicrovoxelProtocol.ACTION_UNDO || action == MicrovoxelProtocol.ACTION_REDO) {
+            // Undo/redo mutate the world too: without the monotonic shield a captured history
+            // packet could be replayed to pop successive entries (and move material) again.
+            if (!engine.acceptTransaction(player, transactionId)) {
+                MicrovoxelMetrics.inc("edits.rejected.replay");
+                sync.trace(player, "ACTION_REJECT replayed-history id=" + transactionId);
+                return;
+            }
             plugin.getServer().execute(() -> history.applyHistory(player,
                     action == MicrovoxelProtocol.ACTION_UNDO));
             return;
@@ -447,9 +506,14 @@ public final class MicrovoxelManager {
         if (isProtected(key)) {
             MicrovoxelMetrics.inc("edits.rejected.protected");
             sync.feedback(player, "Цей мікровоксельний об'єм захищено від змін.");
-            MicrovoxelVolume current = runtime.store().get(key);
-            if (current == null) sync.sendRemove(player, key);
-            else sync.sendUpsert(player, key, current);
+            // handleAction runs off the server thread, so the store read (which can hit disk on a
+            // region load) and the replies are marshalled to the main thread instead of blocking
+            // the network pipeline.
+            plugin.getServer().execute(() -> {
+                MicrovoxelVolume current = runtime.store().get(key);
+                if (current == null) sync.sendRemove(player, key);
+                else sync.sendUpsert(player, key, current);
+            });
             return;
         }
         sync.trace(player, "ACTION_RX action=" + action + " pos=" + x + "," + y + "," + z
@@ -490,9 +554,16 @@ public final class MicrovoxelManager {
         if (!withinReachOfSubscribedArea(player, chunkX, chunkZ)) return;
         UUID worldId = runtime.worldId(player.level());
         sync.sendPacket(player, MicrovoxelProtocol.clearChunk(chunkX, chunkZ));
-        for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry
-                : runtime.store().inChunk(worldId, chunkX, chunkZ)) {
-            sync.sendPacket(player, MicrovoxelProtocol.upsert(entry.getKey(), entry.getValue()));
+        // Batch the volumes instead of one UPSERT per volume: a full chunk (up to 512 volumes)
+        // used to cost 512 separate framings. Send in MAX_ENTRIES-sized batches so the client's
+        // bounded batch codec still accepts each frame.
+        List<Map.Entry<MicrovoxelKey, MicrovoxelVolume>> volumes =
+                runtime.store().inChunk(worldId, chunkX, chunkZ);
+        int batchSize = MicrovoxelBatchPayload.MAX_ENTRIES;
+        for (int start = 0; start < volumes.size(); start += batchSize) {
+            int end = Math.min(volumes.size(), start + batchSize);
+            sync.sendPacket(player,
+                    MicrovoxelProtocol.batchUpsert(chunkX, chunkZ, volumes.subList(start, end)));
         }
         sync.subscribe(player.getUUID(), new ChunkKey(worldId, chunkX, chunkZ));
     }
@@ -530,6 +601,24 @@ public final class MicrovoxelManager {
         history.onQuit(uuid);
         actionRates.reset(uuid);
         syncRates.reset(uuid);
+        sessionNonces.remove(uuid);
+    }
+
+    /** A mutation or undo/redo: the actions whose replay could duplicate state or refunds. */
+    private static boolean isReplaySensitive(int action) {
+        return action == MicrovoxelProtocol.ACTION_UNDO
+                || action == MicrovoxelProtocol.ACTION_REDO
+                || MicrovoxelEditEngine.isMutating(action);
+    }
+
+    /**
+     * True when the action presented the live (or immediately previous) per-login token. Shared
+     * with the carver channel so both action surfaces bind to the same login session.
+     */
+    public boolean acceptSessionNonce(ServerPlayer player, long presented) {
+        long[] tokens = sessionNonces.get(player.getUUID());
+        if (tokens == null) return false;
+        return MicrovoxelSessionToken.matches(tokens[0], tokens[1], presented);
     }
 
     public boolean protectsMarker(ServerLevel level, BlockPos pos) {

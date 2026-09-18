@@ -6,7 +6,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
-    outDir: path.resolve(__dirname, '../client-mod-gradle/src/client/resources/assets/eclipseclient/web/appearance'),
+    outDir: path.resolve(__dirname, '../fabric-server/client-mod-gradle/src/client/resources/assets/eclipseclient/web/appearance'),
     emptyOutDir: true,
     rollupOptions: {
       input: path.resolve(__dirname, 'appearance.html'),

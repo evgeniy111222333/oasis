@@ -105,7 +105,11 @@ public final class CarverSasDiag {
         };
     }
 
+    /** Diagnostic traces are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
+
     private static void log(String message) {
+        if (!DEBUG) return;
         try {
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-DIAG] " + message);
         } catch (RuntimeException ignored) {

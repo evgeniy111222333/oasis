@@ -38,6 +38,11 @@ public final class MicrovoxelEnvironmentSim {
     private int environmentTicks;
     private int environmentCursor;
     private List<MicrovoxelKey> environmentKeys = List.of();
+    /**
+     * Explosion evaluations already spent this tick. Budgeted globally (not per explosion) so a
+     * burst of simultaneous explosions cannot each claim the full per-tick allowance.
+     */
+    private int explosionEvaluationsThisTick;
 
     public MicrovoxelEnvironmentSim(MicrovoxelContext context) {
         this.context = context;
@@ -45,6 +50,7 @@ public final class MicrovoxelEnvironmentSim {
 
     /** One-second cadence for fire policy passes. */
     public void tick() {
+        explosionEvaluationsThisTick = 0;
         if (++environmentTicks >= 20) {
             environmentTicks = 0;
             tickEnvironmentPolicies();
@@ -75,8 +81,11 @@ public final class MicrovoxelEnvironmentSim {
 
         int evaluated = 0;
         int removedTotal = 0;
+        // Per-tick global explosion budget, shared with every other explosion this tick.
+        int budget = MAX_EXPLOSION_CELL_EVALUATIONS - explosionEvaluationsThisTick;
+        Map<String, Double> resistanceByMaterial = new HashMap<>();
         for (Map.Entry<MicrovoxelKey, MicrovoxelVolume> entry : candidates) {
-            if (evaluated >= MAX_EXPLOSION_CELL_EVALUATIONS) break;
+            if (evaluated >= budget) break;
             MicrovoxelKey key = entry.getKey();
             if (isProtected(key)) continue;
             MicrovoxelVolume volume = context.runtime().store().get(key);
@@ -84,8 +93,7 @@ public final class MicrovoxelEnvironmentSim {
             // Published volumes are frozen: mutate a copy and publish it once at the end.
             MicrovoxelVolume updated = volume.copy();
             int removed = 0;
-            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT
-                    && evaluated < MAX_EXPLOSION_CELL_EVALUATIONS; cell++) {
+            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT && evaluated < budget; cell++) {
                 if (!updated.occupied(cell)) continue;
                 evaluated++;
                 int localX = MicrovoxelVolume.x(cell);
@@ -102,8 +110,16 @@ public final class MicrovoxelEnvironmentSim {
 
                 boolean exposed = isExposedMicrocell(occupancySnapshot, worldId,
                         key.x() * 16 + localX, key.y() * 16 + localY, key.z() * 16 + localZ);
-                BlockState material = MicrovoxelBlockStates.parseBlockState(updated.material(cell));
-                double resistance = Math.max(0.1, material.getBlock().getExplosionResistance());
+                String materialId = updated.material(cell);
+                // Cache the registry parse + resistance per material: a blast touches thousands of
+                // cells of a handful of materials, so parsing once per material is a large saving.
+                Double cachedResistance = resistanceByMaterial.get(materialId);
+                if (cachedResistance == null) {
+                    BlockState material = MicrovoxelBlockStates.parseBlockState(materialId);
+                    cachedResistance = Math.max(0.1, material.getBlock().getExplosionResistance());
+                    resistanceByMaterial.put(materialId, cachedResistance);
+                }
+                double resistance = cachedResistance;
                 if (MicrovoxelExplosionRules.shouldBreak(
                         explosion.radius(), distance, resistance, exposed,
                         MicrovoxelExplosionRules.variance(key, cell))
@@ -136,10 +152,14 @@ public final class MicrovoxelEnvironmentSim {
                     }
                 }
             } else {
+                // A partial explosion still changes the shape, so the collision cache (and its
+                // light seal) must be invalidated here too; only the fully-wiped branch used to.
+                context.collision().invalidate(key);
                 context.runtime().projection().materialize(key, updated);
                 context.sync().broadcastUpsert(key, updated);
             }
         }
+        explosionEvaluationsThisTick += evaluated;
         if (removedTotal > 0) {
             context.runtime().logger().fine("[MICROVOXEL] explosion removed " + removedTotal
                     + " cells after evaluating " + evaluated);

@@ -186,7 +186,11 @@ public final class CarverPerfLog {
         sasMissTotalCm = 0.0;
     }
 
+    /** Perf traces are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
+
     private static void log(String message) {
+        if (!DEBUG) return;
         try {
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-PERF] " + message);
         } catch (RuntimeException ignored) {

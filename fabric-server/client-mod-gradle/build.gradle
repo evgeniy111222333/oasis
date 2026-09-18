@@ -400,11 +400,22 @@ tasks.register("verifyRadialMenuWiring") {
 				&& !html.contains("{ id: \"clip\"") && !html.contains("{ id: \"gen\"")
 				&& !html.contains("{ id: \"brush\"") && !html.contains("{ id: \"shape\""):
 				"The wheel is carver-only: Убрать / Поставить / Материал / История"
+		assert html.contains("dynamic: \"materials\", action: \"place\""):
+				"«Поставить» must fan out the palette and emit action \"place\", not dead-end"
+		assert html.contains("parent.action || \"material\""):
+				"A material folder must re-label its pick (place vs material)"
+		assert html.contains("const inGame = hashTokens.includes(\"ingame\")")
+				&& html.contains("if (!inGame)"):
+				"Prototype entry points (Tab shortcut, dev button) must be disabled in the embedded overlay"
 
 		def screen = radialScreen.asFile.getText("UTF-8")
 		assert screen.contains("palette-ready") && screen.contains("MAX_PALETTE_ATTEMPTS")
 				&& screen.contains("paletteReady"):
 				"The overlay must retry setMaterials until the page acks"
+		assert screen.contains("volatile MicrovoxelRadialScreen current")
+				&& screen.contains("MicrovoxelRadialScreen active = current")
+				&& screen.contains("if (current == this) current = null"):
+				"The reused browser must dispatch console events to the live wheel instance, otherwise a pick never closes the overlay (stale-handler regression)"
 
 		def palette = paletteClient.asFile.getText("UTF-8")
 		assert palette.contains("colorHex") && palette.contains("getMapColor")
@@ -417,6 +428,8 @@ tasks.register("verifyRadialMenuWiring") {
 				&& controllerText.contains("setPlacing") && controllerText.contains("setPlaceMaterial")
 				&& controllerText.contains("history.undo"):
 				"The radial must map modes, material and history onto the Carver draft"
+		assert controllerText.contains("setPlaceMaterial(material)"):
+				"«Поставить» must apply the material picked in its sub-ring"
 		assert !controllerText.contains("attackAt") && !controllerText.contains("performErase")
 				&& !controllerText.contains("cycleShape") && !controllerText.contains("performPlace"):
 				"The microvoxel editor must be gone: no direct voxel edits, no dead paths"

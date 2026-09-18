@@ -56,6 +56,8 @@ public final class CarverHologramRenderer {
     private static long framesLogged;
     private static long facesLogged;
     private static long filteredLogged;
+    /** Hologram diagnostics are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
 
     /** Resets the one-shot render diagnostics for the next session. */
     static void resetDiag() {
@@ -73,7 +75,7 @@ public final class CarverHologramRenderer {
         BlockPos focus = CarverHologram.focus();
         BlockState state = CarverHologram.displayState();
         if (focus == null || state == null) return;
-        if (framesLogged < 3L) {
+        if (DEBUG && framesLogged < 3L) {
             framesLogged++;
             try {
                 var pose = context.poseStack().last().pose();
@@ -91,7 +93,7 @@ public final class CarverHologramRenderer {
         try {
             display = displayMesh(focus, state);
         } catch (RuntimeException unreadable) {
-            if (facesLogged < 1L) {
+            if (DEBUG && facesLogged < 1L) {
                 facesLogged++;
                 ua.rp.chat.client.EclipseClientMod.LOGGER.info(
                         "[CARVER-HOLO] displayMesh threw " + unreadable);
@@ -99,14 +101,14 @@ public final class CarverHologramRenderer {
             return;
         }
         if (display.faces().isEmpty() && display.ghost().isEmpty()) {
-            if (facesLogged < 3L) {
+            if (DEBUG && facesLogged < 3L) {
                 facesLogged++;
                 ua.rp.chat.client.EclipseClientMod.LOGGER.info(
                         "[CARVER-HOLO] empty faces for " + focus.toShortString());
             }
             return;
         }
-        if (facesLogged < 1L) {
+        if (DEBUG && facesLogged < 1L) {
             facesLogged++;
             var first = display.faces().isEmpty() ? display.ghost().get(0) : display.faces().get(0);
             ua.rp.chat.client.EclipseClientMod.LOGGER.info(
@@ -116,7 +118,7 @@ public final class CarverHologramRenderer {
                             + " box=" + first.minX() + "," + first.minY() + "," + first.minZ()
                             + "-" + first.maxX() + "," + first.maxY() + "," + first.maxZ());
         }
-        if (!display.ghost().isEmpty() && filteredLogged < 1L) {
+        if (DEBUG && !display.ghost().isEmpty() && filteredLogged < 1L) {
             filteredLogged++;
             ua.rp.chat.client.EclipseClientMod.LOGGER.info(
                     "[CARVER-HOLO] draft hides " + display.ghost().size()
@@ -219,13 +221,17 @@ public final class CarverHologramRenderer {
                 int color = tinted(minecraft, materialState, quad, focus);
                 color = shade(color, direction);
                 int faceLight = light;
-                float[][] corners = faceCorners(face);
-                for (float[] corner : corners) {
-                    var sample = patch.sample(face.direction(), corner[0], corner[1], corner[2]);
+                float[] corners = CORNER_SCRATCH;
+                faceCornersInto(face, corners);
+                for (int cornerIndex = 0; cornerIndex < 4; cornerIndex++) {
+                    float cornerX = corners[cornerIndex * 3];
+                    float cornerY = corners[cornerIndex * 3 + 1];
+                    float cornerZ = corners[cornerIndex * 3 + 2];
+                    var sample = patch.sample(face.direction(), cornerX, cornerY, cornerZ);
                     consumer.addVertex(pose,
-                                    (float) (baseX + corner[0]),
-                                    (float) (baseY + corner[1]),
-                                    (float) (baseZ + corner[2]))
+                                    (float) (baseX + cornerX),
+                                    (float) (baseY + cornerY),
+                                    (float) (baseZ + cornerZ))
                             .setColor(color)
                             .setUv(sample.u(), sample.v())
                             .setOverlay(OverlayTexture.NO_OVERLAY)
@@ -350,6 +356,39 @@ public final class CarverHologramRenderer {
             case UP -> new float[][]{{x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}};
             case DOWN -> new float[][]{{x0, y0, z0}, {x1, y0, z0}, {x1, y0, z1}, {x0, y0, z1}};
         };
+    }
+
+    /** Render-thread scratch for {@link #faceCornersInto}: avoids a float[4][3] per quad. */
+    private static final float[] CORNER_SCRATCH = new float[12];
+
+    /**
+     * Allocation-free variant of {@link #faceCorners}: writes the four corners as 12 floats
+     * ({@code x,y,z} per corner, same winding). Used in the per-frame hologram loop so a dense
+     * mesh does not churn the GC.
+     */
+    public static void faceCornersInto(MicrovoxelGreedyMesher.Face face, float[] out) {
+        float x0 = face.minX() / 16.0f;
+        float y0 = face.minY() / 16.0f;
+        float z0 = face.minZ() / 16.0f;
+        float x1 = face.maxX() / 16.0f;
+        float y1 = face.maxY() / 16.0f;
+        float z1 = face.maxZ() / 16.0f;
+        switch (face.direction()) {
+            case NORTH -> corners(out, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
+            case SOUTH -> corners(out, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+            case WEST -> corners(out, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+            case EAST -> corners(out, x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1);
+            case UP -> corners(out, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);
+            case DOWN -> corners(out, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+        }
+    }
+
+    private static void corners(float[] out, float a, float b, float c, float d, float e, float f,
+                                float g, float h, float i, float j, float k, float l) {
+        out[0] = a; out[1] = b; out[2] = c;
+        out[3] = d; out[4] = e; out[5] = f;
+        out[6] = g; out[7] = h; out[8] = i;
+        out[9] = j; out[10] = k; out[11] = l;
     }
 
     private static ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.MaterialFaces materialFaces(

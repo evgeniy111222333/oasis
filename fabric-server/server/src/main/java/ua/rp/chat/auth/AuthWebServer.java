@@ -36,6 +36,101 @@ public class AuthWebServer {
     private HttpServer server;
     private ExecutorService webExecutor;
     private final Gson gson = new Gson();
+    /** Hard cap on any request body; the appearance payload is the largest legitimate one. */
+    private static final int MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
+    /** Origins allowed to read the API cross-origin; empty means same-origin only. */
+    private final java.util.Set<String> allowedOrigins = new java.util.HashSet<>();
+    /** Credential-attempt budgets: per remote IP and per account, to stop online brute force. */
+    private final ua.rp.chat.antiabuse.ActionRateLimiter ipAttempts =
+            new ua.rp.chat.antiabuse.ActionRateLimiter(0.1, 10.0);
+    private final ua.rp.chat.antiabuse.ActionRateLimiter accountAttempts =
+            new ua.rp.chat.antiabuse.ActionRateLimiter(0.02, 5.0);
+    /** Validates a per-login token against a target player (wired to the microvoxel session). */
+    private java.util.function.BiPredicate<ServerPlayer, Long> apiTokenAuthorizer;
+    /** Short-lived vitals cookies: opaque id -> (uuid, expiry), set when the body page loads. */
+    private final Map<String, VitalsGrant> vitalsGrants = new java.util.concurrent.ConcurrentHashMap<>();
+    /** One-time body-page bootstrap codes (code -> uuid), so no bearer token ever rides a URL. */
+    private final Map<String, VitalsGrant> bodyCodes = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long VITALS_GRANT_TTL_MILLIS = 10 * 60 * 1000L;
+    private static final long BODY_CODE_TTL_MILLIS = 60 * 1000L;
+
+    private record VitalsGrant(UUID uuid, long expiresAt) {
+    }
+
+    public void setApiTokenAuthorizer(java.util.function.BiPredicate<ServerPlayer, Long> authorizer) {
+        this.apiTokenAuthorizer = authorizer;
+    }
+
+    /** True when {@code token} is the valid per-login token for {@code player} (fail-closed). */
+    private boolean authorizeApiToken(ServerPlayer player, String token) {
+        if (player == null || token == null || token.isBlank() || apiTokenAuthorizer == null) {
+            return false;
+        }
+        try {
+            return apiTokenAuthorizer.test(player, Long.parseLong(token.trim()));
+        } catch (NumberFormatException malformed) {
+            return false;
+        }
+    }
+
+    private String readCookie(HttpExchange exchange, String name) {
+        String header = exchange.getRequestHeaders().getFirst("Cookie");
+        if (header == null || header.isBlank()) return null;
+        for (String part : header.split(";")) {
+            int eq = part.indexOf('=');
+            if (eq > 0 && part.substring(0, eq).trim().equals(name)) {
+                return part.substring(eq + 1).trim();
+            }
+        }
+        return null;
+    }
+
+    /** The uuid authorized for a vitals request: a token query param OR a valid vitals cookie. */
+    private UUID authorizedVitalsUuid(ServerPlayer target, String token, String cookie) {
+        if (target == null) return null;
+        if (authorizeApiToken(target, token)) return target.getUUID();
+        if (cookie == null) return null;
+        VitalsGrant grant = vitalsGrants.get(cookie);
+        if (grant == null) return null;
+        if (grant.expiresAt() < System.currentTimeMillis()) {
+            vitalsGrants.remove(cookie);
+            return null;
+        }
+        return grant.uuid().equals(target.getUUID()) ? grant.uuid() : null;
+    }
+
+    /** The client IP, trusting X-Forwarded-For only when the request came from the proxy. */
+    private String clientIp(HttpExchange exchange) {
+        String remote = exchange.getRemoteAddress() == null ? null
+                : exchange.getRemoteAddress().getAddress().getHostAddress();
+        boolean loopback = remote != null
+                && (remote.equals("127.0.0.1") || remote.equals("::1") || remote.equals("0:0:0:0:0:0:0:1"));
+        if (loopback) {
+            String forwarded = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                return forwarded.split(",", 2)[0].trim();
+            }
+        }
+        return remote == null ? "unknown" : remote;
+    }
+
+    /** True when the caller exceeded the per-IP credential budget. */
+    private boolean blockedByIp(HttpExchange exchange) {
+        return !ipAttempts.tryAcquire("ip:" + clientIp(exchange));
+    }
+
+    /** True when the caller exceeded the per-account credential budget. */
+    private boolean blockedByAccount(String account) {
+        return account != null && !account.isBlank()
+                && !accountAttempts.tryAcquire("acct:" + account.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** Clears an account's failure budget after a fully successful authentication. */
+    private void resetAccountBudget(String account) {
+        if (account != null && !account.isBlank()) {
+            accountAttempts.reset("acct:" + account.toLowerCase(java.util.Locale.ROOT));
+        }
+    }
 
     /**
      * Authentication diagnostics intentionally omit passwords, full tokens,
@@ -76,6 +171,18 @@ public class AuthWebServer {
 
     public void start(int port) {
         try {
+            // Cross-origin readers must be explicitly allow-listed; the default is same-origin
+            // only, which is all the CEF auth/body pages need (they call the API same-origin).
+            allowedOrigins.clear();
+            String configuredOrigins = plugin.getConfig().getString("web.cors-origins", "");
+            if (configuredOrigins != null) {
+                for (String origin : configuredOrigins.split(",")) {
+                    String trimmed = origin.trim();
+                    if (!trimmed.isEmpty()) {
+                        allowedOrigins.add(trimmed.toLowerCase(java.util.Locale.ROOT));
+                    }
+                }
+            }
             server = HttpServer.create(new InetSocketAddress(port), 0);
             
             // Route web UI page
@@ -87,7 +194,7 @@ public class AuthWebServer {
             server.createContext("/app.js", new StaticFileHandler("app.js", "application/javascript; charset=utf-8"));
             server.createContext("/appearance.css", new StaticFileHandler("appearance.css", "text/css; charset=utf-8"));
             server.createContext("/appearance.js", new StaticFileHandler("appearance.js", "application/javascript; charset=utf-8"));
-            server.createContext("/body", new StaticFileHandler("body.html", "text/html; charset=utf-8"));
+            server.createContext("/body", new BodyPageHandler());
             server.createContext("/body.css", new StaticFileHandler("body.css", "text/css; charset=utf-8"));
             server.createContext("/body.js", new StaticFileHandler("body.js", "application/javascript; charset=utf-8"));
             server.createContext("/assets", new WebAssetHandler());
@@ -106,6 +213,7 @@ public class AuthWebServer {
             server.createContext("/api/server-status", new ApiServerStatusHandler());
             server.createContext("/api/vitals", new ApiVitalsHandler());
             server.createContext("/api/vitals/treat", new ApiVitalsTreatHandler());
+            server.createContext("/api/body-session", new ApiBodySessionHandler());
             server.createContext("/api/required-mods", new ApiRequiredModsHandler());
             server.createContext("/client", new ClientDownloadHandler());
 
@@ -176,6 +284,58 @@ public class AuthWebServer {
         }
     }
 
+    /**
+     * GET /body?username=...&token=... — the game client opens the vitals page with its per-login
+     * token. On a valid token we grant a short-lived, HttpOnly cookie scoped to the vitals API so
+     * the page's same-origin fetches are authorized without exposing the token to page scripts.
+     */
+    private class BodyPageHandler implements HttpHandler {
+        private final StaticFileHandler delegate =
+                new StaticFileHandler("body.html", "text/html; charset=utf-8");
+
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                sendResponse(exchange, 405, "text/plain", "Method Not Allowed");
+                return;
+            }
+            Map<String, String> query = parseQueryParams(exchange.getRequestURI().getQuery());
+            String username = query.get("username");
+            String token = query.get("token");
+            String code = query.get("code");
+            ServerPlayer player = username == null ? null
+                    : plugin.getServer().getPlayerList().getPlayerByName(username);
+
+            // Preferred path: a one-time code, so the session token never appears in a URL/log.
+            if (code != null && !code.isBlank()) {
+                VitalsGrant grant = bodyCodes.remove(code);
+                if (grant != null && grant.expiresAt() >= System.currentTimeMillis()) {
+                    String id = UUID.randomUUID().toString().replace("-", "");
+                    vitalsGrants.put(id, grant);
+                    exchange.getResponseHeaders().add("Set-Cookie",
+                            "eclipse_vitals=" + id + "; Path=/api/vitals; HttpOnly; SameSite=Strict; Max-Age=600");
+                }
+                String location = "/body";
+                if (username != null && !username.isBlank()) {
+                    location += "?username=" + java.net.URLEncoder.encode(username, StandardCharsets.UTF_8.name());
+                }
+                exchange.getResponseHeaders().set("Location", location);
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+                return;
+            }
+
+            if (player != null && authorizeApiToken(player, token)) {
+                String id = UUID.randomUUID().toString().replace("-", "");
+                vitalsGrants.put(id, new VitalsGrant(player.getUUID(),
+                        System.currentTimeMillis() + VITALS_GRANT_TTL_MILLIS));
+                exchange.getResponseHeaders().add("Set-Cookie",
+                        "eclipse_vitals=" + id + "; Path=/api/vitals; HttpOnly; SameSite=Strict; Max-Age=600");
+            }
+            delegate.handle(exchange);
+        }
+    }
+
     private class WebAssetHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -215,13 +375,13 @@ public class AuthWebServer {
     private class ApiStatusHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
             }
 
-            Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getQuery());
-            String token = queryParams.get("token");
+            String token = requestToken(exchange);
 
             if (token == null || token.isEmpty()) {
                 auditAuth(exchange, "status", null, null, "missing_token");
@@ -288,8 +448,10 @@ public class AuthWebServer {
             }
 
             ServerPlayer player = plugin.getServer().getPlayerList().getPlayerByName(username);
-            String authUrl = authManager.getActiveAuthUrl(player);
-            if (authUrl == null) {
+            // SECURITY: never return the session URL (it embeds the bearer token) to an
+            // unauthenticated caller. The token is delivered to the player's own game client over
+            // the game connection; here we only report whether a login session is pending.
+            if (player == null || authManager.getActiveAuthUrl(player) == null) {
                 exchange.sendResponseHeaders(204, -1);
                 exchange.close();
                 return;
@@ -297,7 +459,7 @@ public class AuthWebServer {
 
             JsonObject responseJson = new JsonObject();
             responseJson.addProperty("success", true);
-            responseJson.addProperty("authUrl", authUrl);
+            responseJson.addProperty("pending", true);
             sendJsonResponse(exchange, 200, responseJson);
         }
     }
@@ -314,16 +476,39 @@ public class AuthWebServer {
                 return;
             }
 
+            if (blockedByIp(exchange)) {
+                auditAuth(exchange, "login", null, null, "rate_limited");
+                sendJsonResponse(exchange, 429, createErrorJson("\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a. \u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435 \u043d\u0435\u043c\u043d\u043e\u0433\u043e."));
+                return;
+            }
             try {
                 String body = readRequestBody(exchange);
                 JsonObject json = JsonParser.parseString(body).getAsJsonObject();
 
-                String token = json.get("token").getAsString();
+                String token = requestToken(exchange);
+                if (token == null || token.isBlank()) {
+                    token = json.has("token") && !json.get("token").isJsonNull()
+                            ? json.get("token").getAsString() : "";
+                }
                 String loginName = json.get("loginName").getAsString().trim();
                 String password = json.get("password").getAsString();
                 boolean rememberDevice = json.has("rememberMe")
                         && !json.get("rememberMe").isJsonNull()
                         && json.get("rememberMe").getAsBoolean();
+
+                // Bound the inputs before any PBKDF2 work: a huge password is a CPU DoS and an
+                // absurd login is a log/DB abuse vector.
+                if (loginName.isEmpty() || loginName.length() > 32
+                        || password.isEmpty() || password.length() > 256) {
+                    auditAuth(exchange, "login", loginName, null, "malformed_input");
+                    sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435 \u0432\u0445\u043e\u0434\u0430."));
+                    return;
+                }
+                if (blockedByAccount(loginName)) {
+                    auditAuth(exchange, "login", loginName, null, "rate_limited_account");
+                    sendJsonResponse(exchange, 429, createErrorJson("\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430. \u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435."));
+                    return;
+                }
 
                 UUID uuid = authManager.getTokenToUuid().get(token);
                 if (uuid == null) {
@@ -333,6 +518,7 @@ public class AuthWebServer {
                 }
 
                 if (authManager.webLogin(uuid, loginName, password, rememberDevice)) {
+                    resetAccountBudget(loginName);
                     auditAuth(exchange, "login", loginName, uuid, "success");
                     String rpName = authManager.getRpName(uuid);
                     JsonObject responseJson = new JsonObject();
@@ -345,7 +531,7 @@ public class AuthWebServer {
                 }
             } catch (Exception e) {
                 auditAuth(exchange, "login", null, null, "malformed_" + e.getClass().getSimpleName());
-                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438 \u0437\u0430\u043f\u0440\u043e\u0441\u0430: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 \u0437\u0430\u043f\u0440\u043e\u0441."));
             }
         }
     }
@@ -362,11 +548,20 @@ public class AuthWebServer {
                 return;
             }
 
+            if (blockedByIp(exchange)) {
+                auditAuth(exchange, "register", null, null, "rate_limited");
+                sendJsonResponse(exchange, 429, createErrorJson("\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a. \u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435 \u043d\u0435\u043c\u043d\u043e\u0433\u043e."));
+                return;
+            }
             try {
                 String body = readRequestBody(exchange);
                 JsonObject json = JsonParser.parseString(body).getAsJsonObject();
 
-                String token = json.get("token").getAsString();
+                String token = requestToken(exchange);
+                if (token == null || token.isBlank()) {
+                    token = json.has("token") && !json.get("token").isJsonNull()
+                            ? json.get("token").getAsString() : "";
+                }
                 String loginName = json.get("loginName").getAsString().trim();
                 String rpName = json.get("rpName").getAsString().trim().replaceAll("\\s+", " ");
                 String email = json.get("email").getAsString().trim();
@@ -387,6 +582,12 @@ public class AuthWebServer {
                 // Check patterns on backend as well for security
                 if (!loginName.matches("^[a-zA-Z0-9_]{4,16}$")) {
                     sendJsonResponse(exchange, 400, createErrorJson("\u041b\u043e\u0433\u0438\u043d \u0434\u043e\u043b\u0436\u0435\u043d \u0441\u043e\u0434\u0435\u0440\u0436\u0430\u0442\u044c 4-16 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432: \u043b\u0430\u0442\u0438\u043d\u0438\u0446\u0430, \u0446\u0438\u0444\u0440\u044b \u0438\u043b\u0438 \u043f\u043e\u0434\u0447\u0435\u0440\u043a\u0438\u0432\u0430\u043d\u0438\u0435."));
+                    return;
+                }
+
+                // Server-side password policy: the browser rule is not a security boundary.
+                if (password.length() < 8 || password.length() > 128) {
+                    sendJsonResponse(exchange, 400, createErrorJson("\u041f\u0430\u0440\u043e\u043b\u044c \u0434\u043e\u043b\u0436\u0435\u043d \u0431\u044b\u0442\u044c \u043e\u0442 8 \u0434\u043e 128 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432."));
                     return;
                 }
 
@@ -419,7 +620,7 @@ public class AuthWebServer {
                     sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0432\u0432\u0435\u0434\u0435\u043d\u043d\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435."));
                 }
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 \u0437\u0430\u043f\u0440\u043e\u0441."));
             }
         }
     }
@@ -436,18 +637,23 @@ public class AuthWebServer {
                 return;
             }
 
+            if (blockedByIp(exchange)) {
+                sendJsonResponse(exchange, 429, createErrorJson("\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a. \u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435 \u043d\u0435\u043c\u043d\u043e\u0433\u043e."));
+                return;
+            }
             try {
                 String body = readRequestBody(exchange);
                 JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-                String email = json.get("email").getAsString().trim();
+                json.get("email").getAsString().trim(); // validate presence only
 
-                // Mock recovery logic
+                // Generic response: never confirm whether an address is registered, never echo it
+                // back (avoids account enumeration and reflective content).
                 JsonObject responseJson = new JsonObject();
                 responseJson.addProperty("success", true);
-                responseJson.addProperty("message", "\u041a\u043e\u0434 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043d\u0430 \u043f\u043e\u0447\u0442\u0443 " + email + "!");
+                responseJson.addProperty("message", "\u0415\u0441\u043b\u0438 \u0430\u043a\u043a\u0430\u0443\u043d\u0442 \u0441 \u0442\u0430\u043a\u043e\u0439 \u043f\u043e\u0447\u0442\u043e\u0439 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442, \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0430.");
                 sendJsonResponse(exchange, 200, responseJson);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("\u041e\u0448\u0438\u0431\u043a\u0430: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 \u0437\u0430\u043f\u0440\u043e\u0441."));
             }
         }
     }
@@ -497,11 +703,12 @@ public class AuthWebServer {
     private class ApiAppearanceEditSessionHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
             }
-            String token = parseQueryParams(exchange.getRequestURI().getQuery()).get("token");
+            String token = requestToken(exchange);
             UUID uuid = authManager.getAppearanceEditOwner(token);
             if (uuid == null) {
                 sendJsonResponse(exchange, 410, createErrorJson("Сеанс изменения внешности истёк. Выполните /skin ещё раз."));
@@ -531,7 +738,11 @@ public class AuthWebServer {
             }
             try {
                 JsonObject json = JsonParser.parseString(readRequestBody(exchange)).getAsJsonObject();
-                String token = json.has("token") ? json.get("token").getAsString() : "";
+                String token = requestToken(exchange);
+                if (token == null || token.isBlank()) {
+                    token = json.has("token") && !json.get("token").isJsonNull()
+                            ? json.get("token").getAsString() : "";
+                }
                 String model = json.has("appearanceModel") && !json.get("appearanceModel").isJsonNull()
                         ? json.get("appearanceModel").getAsString() : "classic";
                 String data = json.has("appearanceData") && !json.get("appearanceData").isJsonNull()
@@ -547,7 +758,7 @@ public class AuthWebServer {
                 response.addProperty("model", result.model());
                 sendJsonResponse(exchange, 200, response);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Не удалось сохранить внешний вид: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("Не удалось сохранить внешний вид."));
             }
         }
     }
@@ -592,11 +803,19 @@ public class AuthWebServer {
     private boolean handleOptions(HttpExchange exchange) throws IOException {
         if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
             exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-            exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Headers",
+                    "Content-Type, Authorization, X-Eclipse-Token");
             sendResponse(exchange, 204, "text/plain", "");
             return true;
         }
         return false;
+    }
+
+    /** The session token for this request: the header first, then a same-origin query fallback. */
+    private String requestToken(HttpExchange exchange) {
+        String header = exchange.getRequestHeaders().getFirst("X-Eclipse-Token");
+        if (header != null && !header.isBlank()) return header.trim();
+        return parseQueryParams(exchange.getRequestURI().getQuery()).get("token");
     }
 
     private ApiJsonResult callOnMainThread(Callable<ApiJsonResult> task) throws Exception {
@@ -622,8 +841,16 @@ public class AuthWebServer {
 
     private void sendResponse(HttpExchange exchange, int statusCode, String contentType, byte[] content) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", contentType);
-        // Enable CORS in development if needed
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        // Same-origin pages need no CORS. Allow an explicitly allow-listed Origin, plus "null" —
+        // the game client loads its CEF pages from file:// and calls the API cross-origin. Secrets
+        // travel in the X-Eclipse-Token header, never the URL, so a cross-origin reader gains
+        // nothing without a token.
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        if (origin != null && (origin.equals("null")
+                || allowedOrigins.contains(origin.toLowerCase(java.util.Locale.ROOT)))) {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
+            exchange.getResponseHeaders().add("Vary", "Origin");
+        }
         if (exchange.getRequestMethod().equalsIgnoreCase("HEAD")) {
             exchange.getResponseHeaders().set("Content-Length", Integer.toString(content.length));
             exchange.sendResponseHeaders(statusCode, -1);
@@ -671,13 +898,29 @@ public class AuthWebServer {
     }
 
     private String readRequestBody(HttpExchange exchange) throws IOException {
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line);
+        String declared = exchange.getRequestHeaders().getFirst("Content-Length");
+        if (declared != null) {
+            try {
+                if (Long.parseLong(declared.trim()) > MAX_REQUEST_BODY_BYTES) {
+                    throw new IOException("Request body too large");
+                }
+            } catch (NumberFormatException ignored) {
+                // Fall through to the streaming cap below.
             }
-            return sb.toString();
+        }
+        try (InputStream in = exchange.getRequestBody();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_REQUEST_BODY_BYTES) {
+                    throw new IOException("Request body too large");
+                }
+                out.write(buffer, 0, read);
+            }
+            return out.toString(StandardCharsets.UTF_8.name());
         }
     }
 
@@ -728,12 +971,41 @@ public class AuthWebServer {
         }
     }
 
+    /** POST /api/body-session?username=... — issues a one-time body-page bootstrap code. */
+    private class ApiBodySessionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
+                sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
+                return;
+            }
+            Map<String, String> query = parseQueryParams(exchange.getRequestURI().getQuery());
+            String username = query.get("username");
+            String token = requestToken(exchange);
+            ServerPlayer player = username == null ? null
+                    : plugin.getServer().getPlayerList().getPlayerByName(username);
+            if (player == null || !authorizeApiToken(player, token)) {
+                sendJsonResponse(exchange, 403, createErrorJson("\u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043f\u0440\u0435\u0449\u0451\u043d."));
+                return;
+            }
+            String code = UUID.randomUUID().toString().replace("-", "");
+            bodyCodes.put(code, new VitalsGrant(player.getUUID(),
+                    System.currentTimeMillis() + BODY_CODE_TTL_MILLIS));
+            JsonObject json = new JsonObject();
+            json.addProperty("success", true);
+            json.addProperty("code", code);
+            sendJsonResponse(exchange, 200, json);
+        }
+    }
+
     /**
      * GET /api/vitals?username=...
      */
     private class ApiVitalsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
             if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
                 sendJsonResponse(exchange, 405, createErrorJson("Method Not Allowed"));
                 return;
@@ -745,12 +1017,17 @@ public class AuthWebServer {
                 sendJsonResponse(exchange, 400, createErrorJson("Missing username"));
                 return;
             }
+            String token = requestToken(exchange);
+            String cookie = readCookie(exchange, "eclipse_vitals");
 
             try {
                 ApiJsonResult result = callOnMainThread(() -> {
                     ServerPlayer player = plugin.getServer().getPlayerList().getPlayerByName(username);
                     if (player == null) {
                         return new ApiJsonResult(404, createErrorJson("ServerPlayer is offline"));
+                    }
+                    if (authorizedVitalsUuid(player, token, cookie) == null) {
+                        return new ApiJsonResult(403, createErrorJson("\u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043f\u0440\u0435\u0449\u0451\u043d."));
                     }
 
                     JsonObject responseJson = staminaManager.toJson(player);
@@ -760,7 +1037,7 @@ public class AuthWebServer {
                 });
                 sendJsonResponse(exchange, result.statusCode, result.json);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 500, createErrorJson("Vitals request failed: " + e.getMessage()));
+                sendJsonResponse(exchange, 500, createErrorJson("Vitals request failed"));
             }
         }
     }
@@ -789,6 +1066,10 @@ public class AuthWebServer {
                 String action = json.has("action") && !json.get("action").isJsonNull()
                         ? json.get("action").getAsString()
                         : "";
+                String token = json.has("token") && !json.get("token").isJsonNull()
+                        ? json.get("token").getAsString()
+                        : null;
+                String cookie = readCookie(exchange, "eclipse_vitals");
 
                 if (username.isBlank() || partId.isBlank() || action.isBlank()) {
                     sendJsonResponse(exchange, 400, createErrorJson("Missing treatment parameters."));
@@ -800,6 +1081,9 @@ public class AuthWebServer {
                     if (player == null) {
                         return new ApiJsonResult(404, createErrorJson("ServerPlayer is offline"));
                     }
+                    if (authorizedVitalsUuid(player, token, cookie) == null) {
+                        return new ApiJsonResult(403, createErrorJson("\u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043f\u0440\u0435\u0449\u0451\u043d."));
+                    }
 
                     JsonObject responseJson = staminaManager.startTreatment(player, partId, action);
                     int status = responseJson.has("success") && responseJson.get("success").getAsBoolean() ? 200 : 400;
@@ -807,7 +1091,7 @@ public class AuthWebServer {
                 });
                 sendJsonResponse(exchange, result.statusCode, result.json);
             } catch (Exception e) {
-                sendJsonResponse(exchange, 400, createErrorJson("Treatment failed: " + e.getMessage()));
+                sendJsonResponse(exchange, 400, createErrorJson("Treatment failed"));
             }
         }
     }
@@ -824,26 +1108,28 @@ public class AuthWebServer {
             }
 
             String path = exchange.getRequestURI().getPath(); // /client/mods/eclipseclient.jar
-            // Safe substring to extract the relative path
+            // Safe substring to extract the relative path, then normalise the optional leading '/'.
             String relPath = path.startsWith("/client") ? path.substring("/client".length()) : path;
-            
+            if (relPath.startsWith("/")) relPath = relPath.substring(1);
+
             // Map to plugins/RPChat/client/ directory
             File clientDir = new File(plugin.getDataFolder(), "client");
             File file = new File(clientDir, relPath);
 
-            if (!file.exists() || file.isDirectory()) {
+            // SECURITY: reject traversal ("../", "%2e%2e", backslashes) before touching the file
+            // system, then verify the resolved path is really inside the client directory.
+            if (relPath.isBlank() || relPath.contains("..") || relPath.contains("\\")) {
+                sendResponse(exchange, 404, "text/plain", "404 Not Found");
+                return;
+            }
+            String rootPath = clientDir.getCanonicalPath() + File.separator;
+            String filePath = file.getCanonicalPath();
+            if (!filePath.startsWith(rootPath) || !file.isFile()) {
                 sendResponse(exchange, 404, "text/plain", "404 Not Found");
                 return;
             }
 
-            byte[] bytes = new byte[(int) file.length()];
-            try (FileInputStream fis = new FileInputStream(file)) {
-                int readBytes = fis.read(bytes);
-                if (readBytes < bytes.length) {
-                    plugin.getLogger().warning("Could not read entire file: " + file.getName());
-                }
-            }
-
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
             sendResponse(exchange, 200, "application/octet-stream", bytes);
         }
     }

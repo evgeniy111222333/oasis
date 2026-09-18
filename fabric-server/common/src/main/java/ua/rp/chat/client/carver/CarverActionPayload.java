@@ -6,10 +6,14 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
 /**
- * Client-to-server drafting input. Server mirror: this file is duplicated verbatim in
- * the client module; the channel id and field order must stay identical on both sides.
+ * Client-to-server drafting input. Lives in the shared {@code common/} source set, so the channel
+ * id and field order are compiled into both sides at once.
+ *
+ * <p>{@code sessionNonce} is the per-login token issued in the microvoxel {@code HELLO_ACK}; the
+ * server rejects a replay-sensitive drafting action whose token is not current, so a captured
+ * packet cannot be replayed across a relog or a server restart.</p>
  */
-public record CarverActionPayload(int protocolVersion, int action,
+public record CarverActionPayload(int protocolVersion, long sessionNonce, int action,
                                       int x, int y, int z, byte[] data)
         implements CustomPacketPayload {
     public static final Type<CarverActionPayload> TYPE = new Type<>(
@@ -19,6 +23,7 @@ public record CarverActionPayload(int protocolVersion, int action,
 
     private void write(RegistryFriendlyByteBuf buffer) {
         buffer.writeVarInt(protocolVersion);
+        buffer.writeLong(sessionNonce);
         buffer.writeByte(action);
         buffer.writeInt(x);
         buffer.writeInt(y);
@@ -28,7 +33,7 @@ public record CarverActionPayload(int protocolVersion, int action,
 
     private static CarverActionPayload read(RegistryFriendlyByteBuf buffer) {
         return new CarverActionPayload(
-                buffer.readVarInt(), buffer.readUnsignedByte(),
+                buffer.readVarInt(), buffer.readLong(), buffer.readUnsignedByte(),
                 buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readByteArray());
     }

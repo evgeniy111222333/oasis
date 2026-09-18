@@ -117,6 +117,11 @@ public final class MicrovoxelInteractionController {
                 minecraft.gui.setOverlayMessage(Component.literal("Режим: убрать"), false);
             }
             case "place" -> {
+                // The wheel fans the palette out under «Поставить», so the pick carries the
+                // material. Keep the last chosen one as a fallback when none is supplied.
+                if (material != null && !material.isBlank()) {
+                    CarverClientState.setPlaceMaterial(material);
+                }
                 CarverClientState.setPlacing(true);
                 minecraft.gui.setOverlayMessage(Component.literal(
                         CarverClientState.placeMaterial().isEmpty()

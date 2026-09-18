@@ -13,6 +13,12 @@ public final class FluidTuning {
     public int maxVolumesPerTick = 24;
     /** Vanilla water placements per tick (drains/spills). Default 8. */
     public int maxOutflowPlacements = 8;
+    /**
+     * Minimum ticks between bottom-outflow placements of one volume. Without a per-volume
+     * cooldown a bottom hole places a vanilla fluid block every tick and the resulting source
+     * can feed the volume back, making a self-sustaining (waterfall) generator. Default 20.
+     */
+    public int outflowCooldownTicks = 20;
     /** Drip particles per tick. Default 8. */
     public int maxParticles = 8;
     /** Units moved per face-pair equalization. Default 512. */
@@ -32,6 +38,7 @@ public final class FluidTuning {
     public void reload(SimpleConfig config) {
         maxVolumesPerTick = clamp(config.getInt("microvoxels.fluid.max-volumes-per-tick", 24), 1, 256);
         maxOutflowPlacements = clamp(config.getInt("microvoxels.fluid.max-outflow-placements", 8), 0, 64);
+        outflowCooldownTicks = clamp(config.getInt("microvoxels.fluid.outflow-cooldown-ticks", 20), 1, 1200);
         maxParticles = clamp(config.getInt("microvoxels.fluid.max-particles", 8), 0, 64);
         equalizeBudget = clamp(config.getInt("microvoxels.fluid.equalize-budget", 512), 64, 65536);
         inflowTopup = clamp(config.getInt("microvoxels.fluid.inflow-topup", 64), 0, 1024);

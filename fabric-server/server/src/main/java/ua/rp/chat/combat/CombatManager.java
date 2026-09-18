@@ -42,7 +42,12 @@ public class CombatManager {
     }
 
     public void handleIntent(ServerPlayer player, long attackId, UUID targetId, int zoneOrdinal, double hitRatio, double lateral, double distance) {
-        if (player == null) {
+        if (player == null || targetId == null) {
+            return;
+        }
+        // Reject non-finite geometry: NaN compares false everywhere and would slip the reach/hit
+        // checks in consumeValidIntent, letting a crafted client forge an in-range hit.
+        if (!Double.isFinite(hitRatio) || !Double.isFinite(lateral) || !Double.isFinite(distance)) {
             return;
         }
         CombatBodyZone zone = zoneByOrdinal(zoneOrdinal);
@@ -264,7 +269,7 @@ public class CombatManager {
             return null;
         }
         double allowed = Math.max(weapon.range() + 0.85, 3.35);
-        if (intent.distance() > allowed) {
+        if (!Double.isFinite(intent.distance()) || intent.distance() > allowed) {
             return null;
         }
         if (!attacker.hasLineOfSight(victim)) {

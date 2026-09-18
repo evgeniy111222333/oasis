@@ -59,11 +59,14 @@ public final class MicrovoxelProtocol {
         });
     }
 
-    public static byte[] helloAck(int major, int minor, int capabilities) {
+    public static byte[] helloAck(int major, int minor, int capabilities, long sessionNonce) {
         return message(HELLO_ACK, output -> {
             MicrovoxelWire.writeVarInt(output, major);
             MicrovoxelWire.writeVarInt(output, minor);
             MicrovoxelWire.writeVarInt(output, capabilities);
+            // Per-login anti-replay token (see MicrovoxelSessionToken). Additive after the
+            // handshake fields, so older clients that ignore trailing bytes keep working.
+            output.writeLong(sessionNonce);
         });
     }
 

@@ -14,11 +14,10 @@ import java.util.List;
  * id, so authoritative edit results still match 1:1 and per-edit validation (reach, revision,
  * raycast, economy) is unchanged.
  *
- * <p>Mirror contract: this file is duplicated verbatim in the server module. The wire layout
- * mirrors {@link MicrovoxelActionPayload} field for field; any change must be applied to both
- * copies at once.</p>
+ * <p>The wire layout mirrors {@link MicrovoxelActionPayload} field for field; both live in the
+ * shared {@code common/} source set, so a change is compiled into client and server at once.</p>
  */
-public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Entry> entries,
+public record MicrovoxelBatchPayload(int protocolVersion, long sessionNonce, long batchId, List<Entry> entries,
                                      float lookX, float lookY, float lookZ,
                                      float eyeX, float eyeY, float eyeZ)
         implements CustomPacketPayload {
@@ -54,6 +53,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
 
     private void write(RegistryFriendlyByteBuf buffer) {
         buffer.writeVarInt(protocolVersion);
+        buffer.writeLong(sessionNonce);
         buffer.writeVarLong(batchId);
         buffer.writeVarInt(entries.size());
         for (Entry entry : entries) {
@@ -76,6 +76,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
 
     private static MicrovoxelBatchPayload read(RegistryFriendlyByteBuf buffer) {
         int version = buffer.readVarInt();
+        long nonce = buffer.readLong();
         long batch = buffer.readVarLong();
         int count = buffer.readVarInt();
         if (count < 1 || count > MAX_ENTRIES) {
@@ -87,7 +88,7 @@ public record MicrovoxelBatchPayload(int protocolVersion, long batchId, List<Ent
                     buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
                     buffer.readVarInt(), buffer.readUtf(), buffer.readInt(), buffer.readVarLong()));
         }
-        return new MicrovoxelBatchPayload(version, batch,
+        return new MicrovoxelBatchPayload(version, nonce, batch,
                 List.copyOf(entries),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat());

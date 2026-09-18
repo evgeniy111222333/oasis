@@ -35,6 +35,12 @@ public record CombatIntentPayload(
 
     private static CombatIntentPayload read(RegistryFriendlyByteBuf buf) {
         int version = buf.readInt();
+        if (version != PROTOCOL_VERSION) {
+            // Enforce the version instead of silently discarding it: a mismatched client must be
+            // rejected, not have its fields interpreted with the wrong layout.
+            throw new io.netty.handler.codec.DecoderException(
+                    "Unsupported combat intent protocol version " + version);
+        }
         long attackId = buf.readLong();
         UUID targetId = new UUID(buf.readLong(), buf.readLong());
         int zoneOrdinal = buf.readInt();

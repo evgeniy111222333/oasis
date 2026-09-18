@@ -50,11 +50,15 @@ public final class CarverManager {
     private final StaminaManager stamina;
     private final CarverTuning tuning = new CarverTuning();
     private final Map<UUID, DraftSession> sessions = new ConcurrentHashMap<>();
+    /** World each session was opened in: block coordinates are meaningless across dimensions. */
+    private final Map<UUID, UUID> sessionWorlds = new ConcurrentHashMap<>();
     private final Map<UUID, Vec3> anchors = new ConcurrentHashMap<>();
     private final Map<UUID, WorkPlan> plans = new ConcurrentHashMap<>();
     private final Map<UUID, CarverSoundKit> kits = new ConcurrentHashMap<>();
     private final Map<UUID, net.minecraft.core.particles.ParticleOptions> dust = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastDraftOpAt = new ConcurrentHashMap<>();
+    /** Last time a "bag missing" warning was sent, so the notice is throttled per player. */
+    private final Map<UUID, Long> noBagNoticeAt = new ConcurrentHashMap<>();
     /** Players with an applied-but-not-yet-echoed draft change (burst coalescing). */
     private final Set<UUID> draftEchoPending = ConcurrentHashMap.newKeySet();
     private final AtomicLong transactions = new AtomicLong(1L);
@@ -183,10 +187,21 @@ public final class CarverManager {
         CarverBlueprint.Decoded blueprint =
                 held != null && held.is(CarverItems.SCROLL) ? CarverBlueprint.readScroll(held) : null;
         sessions.put(player.getUUID(), session);
+        sessionWorlds.put(player.getUUID(), microvoxels.runtimeWorldId(level));
         anchors.put(player.getUUID(), player.position());
         if (blueprint != null) {
             session.mask().orIn(blueprint.mask());
-            session.loadPlace(blueprint.placeMask(), blueprint.placeMaterials());
+            // A crafted/edited scroll must not smuggle placements into already-occupied cells:
+            // run the loaded placement mask through the same vacancy gate a live placement uses,
+            // so a blueprint can never overwrite a voxel without removing it (and paying) first.
+            DraftMask vacant = vacantPlaceCells(player, session,
+                    pos.getX(), pos.getY(), pos.getZ(), blueprint.placeMask());
+            java.util.Map<Integer, String> materials = new java.util.HashMap<>();
+            for (int cell : vacant.cells()) {
+                String material = blueprint.placeMaterials().get(cell);
+                if (material != null) materials.put(cell, material);
+            }
+            session.loadPlace(vacant, materials);
             MicrovoxelMetrics.inc("carver.blueprint.load");
         }
         sendEvent(player, CarverProtocol.EVENT_SESSION_OPEN, pos,
@@ -206,11 +221,25 @@ public final class CarverManager {
         return true;
     }
 
-    public void handleAction(ServerPlayer player, int action, int x, int y, int z, byte[] data) {
+    public void handleAction(ServerPlayer player, int action, int x, int y, int z,
+                             long sessionNonce, byte[] data) {
         if (player == null || !CarverProtocol.isAction(action)) return;
         if (!RPChat.hasPermission(player, "rpchat.carver", 0)) return;
+        // Session binding: a drafting action (everything but CANCEL) must present the per-login
+        // token issued in the microvoxel HELLO_ACK, so a captured packet cannot be replayed after
+        // a relog or a restart. CANCEL stays ungated so the player can always back out.
+        if (isDesignAction(action) && !microvoxels.acceptSessionNonce(player, sessionNonce)) {
+            MicrovoxelMetrics.inc("carver.drop.session");
+            return;
+        }
         if (isDesignAction(action)
                 && !designActionAllowed(player, sessions.get(player.getUUID()))) {
+            return;
+        }
+        DraftSession active = sessions.get(player.getUUID());
+        if (active != null && isDesignAction(action) && !worldMatches(player, active)) {
+            MicrovoxelMetrics.inc("carver.drop.dimension");
+            closeSession(player, DraftSession.CancelReason.MOVED, true);
             return;
         }
         switch (action) {
@@ -232,6 +261,14 @@ public final class CarverManager {
             default -> {
             }
         }
+    }
+
+    /** True when the session's anchored world still matches the player's current world. */
+    private boolean worldMatches(ServerPlayer player, DraftSession session) {
+        UUID anchored = sessionWorlds.get(player.getUUID());
+        if (anchored == null) return true;
+        return player.level() instanceof ServerLevel level
+                && anchored.equals(microvoxels.runtimeWorldId(level));
     }
 
     /** Cancel is deliberately excluded: a player must always be able to back out. */
@@ -264,9 +301,20 @@ public final class CarverManager {
         if (session == null || session.state() != DraftSession.State.DESIGN) return false;
         if (!CarverItems.hasBag(player)) {
             MicrovoxelMetrics.inc("carver.drop.no-bag");
+            noticeMissingBag(player);
             return false;
         }
         return true;
+    }
+
+    /** Throttled warning so a missing bag is visible instead of silently voiding every stroke. */
+    private void noticeMissingBag(ServerPlayer player) {
+        long now = System.currentTimeMillis();
+        Long previous = noBagNoticeAt.get(player.getUUID());
+        if (previous != null && now - previous < 3000L) return;
+        noBagNoticeAt.put(player.getUUID(), now);
+        player.sendSystemMessage(Component.literal(
+                "Сумка каменщика не надета: правки чертежа недоступны."), true);
     }
 
     public void tick() {
@@ -279,6 +327,13 @@ public final class CarverManager {
                 continue;
             }
             if (!(player.level() instanceof ServerLevel level)) continue;
+            if (!worldMatches(player, session)) {
+                // A dimension change must end the session: the same block coordinates would
+                // otherwise resolve against a different world.
+                MicrovoxelMetrics.inc("carver.drop.dimension");
+                closeSession(player, DraftSession.CancelReason.MOVED, true);
+                continue;
+            }
             BlockPos focus = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
             if (session.state() == DraftSession.State.DESIGN) {
                 if (!session.autowalk() && leashedOut(player, tuning.designLeashBlocks)) {
@@ -298,6 +353,7 @@ public final class CarverManager {
                 tickWork(player, level, focus, session);
             } else {
                 sessions.remove(playerId);
+                sessionWorlds.remove(playerId);
                 anchors.remove(playerId);
             }
         }
@@ -323,6 +379,7 @@ public final class CarverManager {
         if (player == null) return;
         dropSession(player.getUUID());
         incomingLimiter.reset(player.getUUID());
+        noBagNoticeAt.remove(player.getUUID());
     }
 
     /**
@@ -333,6 +390,7 @@ public final class CarverManager {
     private void dropSession(UUID playerId) {
         DraftSession session = sessions.get(playerId);
         sessions.remove(playerId);
+        sessionWorlds.remove(playerId);
         anchors.remove(playerId);
         plans.remove(playerId);
         kits.remove(playerId);
@@ -457,10 +515,43 @@ public final class CarverManager {
             MicrovoxelMetrics.inc("carver.drop.cap");
             return;
         }
+        // Placement never overwrites: a voxel can only be added where the socket is empty,
+        // or where the same draft already marked a removal that will vacate the cell first.
+        DraftMask vacant = vacantPlaceCells(player, session, x, y, z, mask);
+        if (vacant.isEmpty()) {
+            MicrovoxelMetrics.inc("carver.drop.occupied");
+            return;
+        }
         session.pushHistory();
-        session.markPlace(mask, session.mirrorAxes(), material, true);
+        session.markPlace(vacant, session.mirrorAxes(), material, true);
         publishDraft(player, session);
-        MicrovoxelMetrics.add(box ? "carver.box.place" : "carver.stroke.place", mask.count());
+        MicrovoxelMetrics.add(box ? "carver.box.place" : "carver.stroke.place", vacant.count());
+    }
+
+    /** Restricts a placement payload to cells that are genuinely empty in the authoritative socket. */
+    private DraftMask vacantPlaceCells(ServerPlayer player, DraftSession session,
+                                       int x, int y, int z, DraftMask requested) {
+        MicrovoxelVolume volume = null;
+        try {
+            if (player.level() instanceof ServerLevel level) {
+                volume = microvoxels.microvolumes().get(keyFor(level, new BlockPos(x, y, z)));
+            }
+        } catch (RuntimeException unreadable) {
+            volume = null;
+        }
+        DraftMask vacant = new DraftMask();
+        for (int cell : requested.cells()) {
+            // A cell already drafted for removal is becoming empty in this same draft.
+            if (session.mask().get(cell)) {
+                vacant.set(cell);
+                continue;
+            }
+            // A fresh socket has no volume yet and is a full solid cube: only removals free cells.
+            if (volume != null && !volume.occupied(cell)) {
+                vacant.set(cell);
+            }
+        }
+        return vacant;
     }
 
     /**
@@ -625,7 +716,11 @@ public final class CarverManager {
                         "Нет в инвентаре материала для установки: " + need.getKey() + "."), true);
                 return;
             }
-            if (microvoxels.economy().availableMaterialUnits(player, source) < need.getValue()) {
+            // need.getValue() is a cell count; the matching charge is cells * UNITS_PER_CELL,
+            // so the precheck must price in the same unit or it approves work it cannot pay for.
+            long required = (long) need.getValue()
+                    * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL;
+            if (microvoxels.economy().availableMaterialUnits(player, source) < required) {
                 player.sendSystemMessage(Component.literal(
                         "Недостаточно материала для установки: " + need.getKey() + "."), true);
                 return;
@@ -787,6 +882,29 @@ public final class CarverManager {
     }
 
     /**
+     * Charges {@code cells} of {@code material} at this instant. Returns false (and the caller
+     * places nothing) when the player no longer has a source or enough units — so a placement is
+     * never created without being paid for. Creative is exempt, matching the ledger rules.
+     */
+    private boolean chargePlacement(ServerPlayer player, String material, int cells) {
+        if (cells <= 0) return true;
+        if (player.gameMode.getGameModeForPlayer() == net.minecraft.world.level.GameType.CREATIVE) {
+            return true;
+        }
+        ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.SelectedMaterial source =
+                microvoxels.economy().findByMaterial(player, material);
+        if (source == null) return false;
+        try {
+            microvoxels.economy().consumeMaterialUnits(player, source,
+                    cells * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL);
+            MicrovoxelMetrics.inc("carver.work.charged");
+            return true;
+        } catch (RuntimeException insufficient) {
+            return false;
+        }
+    }
+
+    /**
      * Progressive carving: the cached plan sheds cells in exact plan order as the work
      * clock advances, so the block visibly disappears in real time instead of popping
      * at the end. Every slice converges projection, collision and broadcast like any
@@ -859,11 +977,17 @@ public final class CarverManager {
             int cell = plan.placeCells().get(plan.placeApplied());
             String material = plan.placeMaterial(cell);
             if (material != null && !material.isEmpty()) {
-                updated.update(cell, material);
-                plan.addPlaced(material, 1);
-                placed++;
-                microvoxels.syncHub().broadcastDelta(key, updated, cell, material);
-                MicrovoxelMetrics.inc("carver.work.delta");
+                // Charge the material at the instant the voxel is created, so a source stack
+                // dropped/consumed between apply and finalize can never yield a free placement.
+                if (chargePlacement(player, material, 1)) {
+                    updated.update(cell, material);
+                    plan.addPlaced(material, 1);
+                    placed++;
+                    microvoxels.syncHub().broadcastDelta(key, updated, cell, material);
+                    MicrovoxelMetrics.inc("carver.work.delta");
+                } else {
+                    MicrovoxelMetrics.inc("carver.work.place.denied");
+                }
             }
             plan.setPlaceApplied(plan.placeApplied() + 1);
         }
@@ -889,6 +1013,9 @@ public final class CarverManager {
     private void finalizeWork(ServerPlayer player, ServerLevel level,
                               BlockPos pos, DraftSession session, boolean full) {
         WorkPlan plan = plans.get(player.getUUID());
+        // Capture the sound kit before dropSession() removes it: otherwise the finish sound
+        // lookup below is always null and the work ends silently.
+        CarverSoundKit kit = kits.get(player.getUUID());
         dropSession(player.getUUID());
         if (plan == null) return;
         UUID worldId = microvoxels.runtimeWorldId(level);
@@ -924,23 +1051,11 @@ public final class CarverManager {
                         true);
             }
         }
-        // Placements were validated at approval; charge the exact units now. A player who
-        // dropped the source between approve and finish is logged, never crashed.
-        for (java.util.Map.Entry<String, Integer> entry : plan.placedByMaterial().entrySet()) {
-            try {
-                ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.SelectedMaterial source =
-                        microvoxels.economy().findByMaterial(player, entry.getKey());
-                if (source != null) {
-                    microvoxels.economy().consumeMaterialUnits(player, source,
-                            entry.getValue() * ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL);
-                }
-            } catch (RuntimeException chargeFailed) {
-                MicrovoxelMetrics.inc("carver.work.charge.failed");
-            }
-        }
+        // Placements are charged cell-by-cell in applyProgressSlice, at the moment each voxel is
+        // created, so nothing is left to settle here (a source that vanished mid-work simply
+        // denied those placements instead of creating them for free).
         ua.rp.chat.microvoxel.MicrovoxelEvents.fireEdit(player, key, null, after);
         MicrovoxelMetrics.inc("carver.work.done");
-        CarverSoundKit kit = kits.get(player.getUUID());
         if (full && kit != null) {
             level.playSound(null, pos, kit.finish(), SoundSource.BLOCKS,
                     (float) tuning.workSoundVolume, 1.1f);
@@ -964,7 +1079,10 @@ public final class CarverManager {
     private void evaluateAndRecord(ServerPlayer player, BlockPos pos, WorkPlan plan,
                                    DraftSession session, MicrovoxelVolume after) {
         try {
-            CarverEvaluation.Result verdict = CarverEvaluation.evaluate(session.mask(), after);
+            // Score on the cells the work plan actually removed, not the raw draft count: a draft
+            // can mark already-empty cells, which would otherwise farm mastery for free.
+            CarverEvaluation.Result verdict =
+                    CarverEvaluation.evaluate(session.mask(), after, null, plan.removed());
             artisans.record(player.getUUID(), verdict);
             CarverArtisanStore.Profile profile = artisans.profile(player.getUUID());
             player.sendSystemMessage(Component.literal(
@@ -1064,16 +1182,22 @@ public final class CarverManager {
     private void sendEstimate(ServerPlayer player, DraftSession session) {
         BlockPos pos = new BlockPos(session.blockX(), session.blockY(), session.blockZ());
         List<Integer> cells = session.mask().cells();
+        List<Integer> placeCells = session.placeMask().cells();
+        // Mirror approval's metric exactly, or the preview understates time/stamina and the
+        // progress target mismatches the client: total work is removals + placements, while
+        // fill and depth span are measured on the denser of the two masks.
+        int workCellCount = cells.size() + placeCells.size();
+        List<Integer> metricCells = cells.isEmpty() ? placeCells : cells;
         double multiplier = session.materialMultiplier();
-        double fill = DraftEstimate.fillRatio(cells);
-        int span = DraftEstimate.depthSpan(cells);
+        double fill = DraftEstimate.fillRatio(metricCells);
+        int span = DraftEstimate.depthSpan(metricCells);
         int tool = CarverItems.chiselOf(player.getOffhandItem());
-        double seconds = DraftEstimate.workSeconds(cells.size(), fill, span, multiplier, tool);
+        double seconds = DraftEstimate.workSeconds(workCellCount, fill, span, multiplier, tool);
         int ticks = Math.max(1, (int) Math.round(seconds * DraftEstimate.TICKS_PER_SECOND));
-        double cost = DraftEstimate.staminaCost(cells.size(), fill, span, multiplier, tool);
+        double cost = DraftEstimate.staminaCost(workCellCount, fill, span, multiplier, tool);
         sendEvent(player, CarverProtocol.EVENT_ESTIMATE, pos,
-                CarverSyncPayload.estimateData(cells.size(), (float) seconds, (float) cost, ticks));
-        int placeCount = session.placeMask().count();
+                CarverSyncPayload.estimateData(workCellCount, (float) seconds, (float) cost, ticks));
+        int placeCount = placeCells.size();
         player.sendSystemMessage(Component.literal("Чертёж: снято " + cells.size()
                 + (placeCount > 0 ? ", добавлено " + placeCount : "")
                 + " | Время: ~" + Math.round(seconds) + " сек | Стамина: "

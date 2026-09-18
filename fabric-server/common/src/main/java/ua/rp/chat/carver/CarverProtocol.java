@@ -7,8 +7,8 @@ package ua.rp.chat.carver;
  * (server to client).
  */
 public final class CarverProtocol {
-    /** v2 adds the additive draft ("Поставить" with a chosen material). */
-    public static final int VERSION = 2;
+    /** v3 binds every drafting action to the per-login session token (anti-replay). */
+    public static final int VERSION = 3;
     public static final String SYNC_CHANNEL = "rpchat:carver";
     public static final String ACTION_CHANNEL = "rpchat:carver_action";
 

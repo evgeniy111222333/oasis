@@ -35,10 +35,22 @@ public final class MicrovoxelStore {
     private static final int JOURNAL_VERSION = 2;
     private static final int MAX_JOURNAL_BATCH_BYTES = 64 * 1024 * 1024;
     private static final long COMPACT_AFTER_BYTES = 32L * 1024L * 1024L;
+    /**
+     * Hard ceiling for the write-behind journal. Past this the worker must do a full durable
+     * flush instead of slicing, otherwise sustained regional writes can outrun compaction and the
+     * journal grows without bound. 512 MB is far above any healthy compaction window.
+     */
+    private static final long MAX_JOURNAL_BYTES = 512L * 1024L * 1024L;
     private static final int REGION_MAGIC = 0x4D565232;
     private static final int REGION_VERSION = 3;
     private static final int REGION_CHUNKS = 32;
     private static final int MAX_LOADED_REGIONS = 96;
+    /**
+     * Sanity bound on one region body. The body is now STREAMED (and CRC-checked incrementally),
+     * so a forged length can no longer force a single huge allocation; this cap only rejects an
+     * absurd size before any work is done.
+     */
+    private static final long MAX_REGION_BODY_BYTES = 1024L * 1024L * 1024L;
 
     private final Path file;
     private final Path regionDirectory;
@@ -66,7 +78,10 @@ public final class MicrovoxelStore {
 
     public synchronized void put(MicrovoxelKey key, MicrovoxelVolume volume) {
         RegionKey regionKey = RegionKey.of(key);
-        RegionData region = ensureRegionLoaded(regionKey);
+        RegionData region = ensureRegionLoadedMutable(regionKey);
+        if (!volumes.containsKey(key) && totalEntries >= MAX_ENTRIES) {
+            throw new IllegalStateException("Microvoxel store is full (" + MAX_ENTRIES + " volumes)");
+        }
         // Publish immutably (I1): after this point the volume is read by the persistence worker
         // concurrently with the server thread, so it must never be mutated again.
         volume.freeze();
@@ -83,7 +98,7 @@ public final class MicrovoxelStore {
 
     public synchronized MicrovoxelVolume remove(MicrovoxelKey key) {
         RegionKey regionKey = RegionKey.of(key);
-        RegionData region = ensureRegionLoaded(regionKey);
+        RegionData region = ensureRegionLoadedMutable(regionKey);
         MicrovoxelVolume removed = volumes.remove(key);
         if (removed != null) {
             region.keys.remove(key);
@@ -98,7 +113,7 @@ public final class MicrovoxelStore {
 
     /** Records the authoritative post-mutation state for incremental persistence. */
     public synchronized void markDirty(MicrovoxelKey key) {
-        ensureRegionLoaded(RegionKey.of(key));
+        ensureRegionLoadedMutable(RegionKey.of(key));
         dirtyRegions.add(RegionKey.of(key));
         dirty.put(key, new DirtyState(++changeSequence));
     }
@@ -341,6 +356,15 @@ public final class MicrovoxelStore {
         }
     }
 
+    /** True when the journal has crossed the hard ceiling and needs a full durable flush. */
+    public boolean journalAtHardCap() {
+        try {
+            return Files.size(journalFile()) >= MAX_JOURNAL_BYTES;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
     public synchronized void appendJournal(DirtyBatch batch) throws IOException {
         if (batch.entries().isEmpty()) return;
         Files.createDirectories(file.getParent());
@@ -380,11 +404,15 @@ public final class MicrovoxelStore {
     /** Publishes a fully-flushed store: FORMAT marker, journal drop, cache eviction. */
     private void publish() throws IOException {
         Files.createDirectories(regionDirectory);
-        Files.writeString(regionDirectory.resolve("FORMAT"),
-                "eclipse-microvoxel-regions-v2\n",
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        Path format = regionDirectory.resolve("FORMAT");
+        writeDurableFile(format, "eclipse-microvoxel-regions-v2\n"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         loadedFromBackup = false;
         Files.deleteIfExists(journalFile());
+        // Make the journal deletion durable so a crash cannot resurrect a stale tail after the
+        // regions it described were already published.
+        fsyncDirectory(regionDirectory);
+        fsyncDirectory(regionDirectory.getParent());
         evictCleanRegions();
     }
 
@@ -590,7 +618,16 @@ public final class MicrovoxelStore {
     private RegionData ensureRegionLoaded(RegionKey key) {
         RegionData loaded = loadedRegions.get(key);
         if (loaded != null) return loaded;
-        RegionMeta meta = regions.computeIfAbsent(key, ignored -> new RegionMeta(0));
+        RegionMeta meta = regions.get(key);
+        if (meta == null) {
+            // No indexed entries for this region: this is a read-only probe. Collision, light
+            // and neighbour scans query empty positions constantly, so registering a metadata
+            // entry here would grow `regions` without bound over a large world. Serve an empty
+            // view; mutation paths register the meta explicitly via ensureRegionLoadedMutable.
+            RegionData empty = new RegionData(new RegionMeta(0));
+            loadedRegions.put(key, empty);
+            return empty;
+        }
         try {
             loaded = meta.entryCount == 0 ? new RegionData(meta) : readRegionWithBackup(key);
         } catch (IOException error) {
@@ -598,6 +635,13 @@ public final class MicrovoxelStore {
         }
         loadedRegions.put(key, loaded);
         return loaded;
+    }
+
+    /** Mutation path: loads the region and guarantees its index metadata is registered. */
+    private RegionData ensureRegionLoadedMutable(RegionKey key) {
+        RegionData data = ensureRegionLoaded(key);
+        regions.putIfAbsent(key, data.meta);
+        return data;
     }
 
     private void evictCleanRegions() {
@@ -686,22 +730,15 @@ public final class MicrovoxelStore {
             }
         }
         byte[] body = bodyBytes.toByteArray();
-        CRC32 crc = new CRC32();
-        crc.update(body);
-        Path target = regionFile(key);
-        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
-        try (DataOutputStream output = new DataOutputStream(
-                new BufferedOutputStream(Files.newOutputStream(temporary)))) {
-            output.writeInt(REGION_MAGIC);
-            output.writeInt(REGION_VERSION);
-            output.writeInt(body.length);
-            output.write(body);
-            output.writeInt((int) crc.getValue());
+        if (body.length > MAX_REGION_BODY_BYTES) {
+            throw new IOException("Microvoxel region body is too large: " + body.length);
         }
+        Path target = regionFile(key);
         if (Files.isRegularFile(target)) {
             Files.copy(target, regionBackupFile(key), StandardCopyOption.REPLACE_EXISTING);
         }
-        atomicReplace(temporary, target);
+        // Durably persist the region BEFORE the journal (the only other copy) can be dropped.
+        writeDurableFile(target, crcEnvelope(body));
         writeRegionIndex(key, data.meta);
     }
 
@@ -723,8 +760,8 @@ public final class MicrovoxelStore {
     }
 
     private RegionData readRegion(Path source, RegionKey expected) throws IOException {
-        try (DataInputStream input = new DataInputStream(
-                new BufferedInputStream(Files.newInputStream(source)))) {
+        try (java.io.InputStream raw = new BufferedInputStream(Files.newInputStream(source));
+             DataInputStream input = new DataInputStream(raw)) {
             int regionMagic = input.readInt();
             int regionVersion = input.readInt();
             // v2 stores cells only; v3 appends an optional geometry section per volume.
@@ -733,46 +770,77 @@ public final class MicrovoxelStore {
             }
             boolean geometryFormat = regionVersion >= 3;
             int length = input.readInt();
-            if (length < 32 || length > MAX_JOURNAL_BATCH_BYTES * 16) {
+            if (length < 32 || length > MAX_REGION_BODY_BYTES) {
                 throw new IOException("Invalid microvoxel region length: " + length);
-            }            byte[] body = input.readNBytes(length);
-            if (body.length != length) throw new EOFException("Truncated microvoxel region");
+            }
+            // Stream the body through a bounded, CRC-updating view. The decoder never allocates a
+            // byte[length], so a forged length cannot exhaust the heap, and a body that is short or
+            // over-long fails closed instead of being silently accepted.
+            CRC32 crc = new CRC32();
+            BoundedInputStream body = new BoundedInputStream(raw, length);
+            DataInputStream data = new DataInputStream(new java.util.zip.CheckedInputStream(body, crc));
+            RegionKey actual = new RegionKey(new UUID(data.readLong(), data.readLong()),
+                    data.readInt(), data.readInt());
+            if (!actual.equals(expected)) throw new IOException("Microvoxel region identity mismatch");
+            int count = data.readInt();
+            if (count < 0 || count > MAX_ENTRIES) throw new IOException("Invalid region entry count");
+            RegionMeta meta = regions.getOrDefault(expected, new RegionMeta(0));
+            RegionData result = new RegionData(meta);
+            Map<ChunkKey, Integer> actualCounts = new HashMap<>();
+            for (int index = 0; index < count; index++) {
+                MicrovoxelKey volumeKey = new MicrovoxelKey(expected.worldId,
+                        data.readInt(), data.readInt(), data.readInt());
+                if (!RegionKey.of(volumeKey).equals(expected) || !result.keys.add(volumeKey)) {
+                    throw new IOException("Invalid or duplicate key in microvoxel region");
+                }
+                volumes.put(volumeKey, readVolume(data, geometryFormat));
+                actualCounts.merge(ChunkKey.of(volumeKey), 1, Integer::sum);
+            }
+            if (body.remaining() != 0) throw new IOException("Region body length mismatch");
             int expectedCrc = input.readInt();
             if (input.read() != -1) throw new IOException("Trailing microvoxel region bytes");
-            CRC32 crc = new CRC32();
-            crc.update(body);
             if ((int) crc.getValue() != expectedCrc) throw new IOException("Microvoxel region CRC mismatch");
-            try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(body))) {
-                RegionKey actual = new RegionKey(new UUID(data.readLong(), data.readLong()),
-                        data.readInt(), data.readInt());
-                if (!actual.equals(expected)) throw new IOException("Microvoxel region identity mismatch");
-                int count = data.readInt();
-                if (count < 0 || count > MAX_ENTRIES) throw new IOException("Invalid region entry count");
-                RegionMeta meta = regions.getOrDefault(expected, new RegionMeta(0));
-                RegionData result = new RegionData(meta);
-                Map<ChunkKey, Integer> actualCounts = new HashMap<>();
-                for (int index = 0; index < count; index++) {
-                    MicrovoxelKey volumeKey = new MicrovoxelKey(expected.worldId,
-                            data.readInt(), data.readInt(), data.readInt());
-                    if (!RegionKey.of(volumeKey).equals(expected) || !result.keys.add(volumeKey)) {
-                        throw new IOException("Invalid or duplicate key in microvoxel region");
-                    }
-                    volumes.put(volumeKey, readVolume(data, geometryFormat));
-                    actualCounts.merge(ChunkKey.of(volumeKey), 1, Integer::sum);
-                }
-                if (data.read() != -1) throw new IOException("Trailing region payload bytes");
-                meta.entryCount = count;
-                meta.chunkCounts.clear();
-                meta.chunkCounts.putAll(actualCounts);
-                regions.put(expected, meta);
-                return result;
-            }
+            meta.entryCount = count;
+            meta.chunkCounts.clear();
+            meta.chunkCounts.putAll(actualCounts);
+            regions.put(expected, meta);
+            return result;
+        }
+    }
+
+    /** Limits reads to a fixed budget so a declared body length cannot be exceeded or pre-sized. */
+    private static final class BoundedInputStream extends java.io.InputStream {
+        private final java.io.InputStream in;
+        private int remaining;
+
+        private BoundedInputStream(java.io.InputStream in, int limit) {
+            this.in = in;
+            this.remaining = limit;
+        }
+
+        private int remaining() {
+            return remaining;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (remaining <= 0) return -1;
+            int value = in.read();
+            if (value >= 0) remaining--;
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            if (remaining <= 0) return -1;
+            int read = in.read(buffer, offset, Math.min(length, remaining));
+            if (read > 0) remaining -= read;
+            return read;
         }
     }
 
     private void writeRegionIndex(RegionKey key, RegionMeta meta) throws IOException {
         Path target = regionIndexFile(key);
-        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream();
         try (DataOutputStream body = new DataOutputStream(bodyBytes)) {
             body.writeLong(key.worldId.getMostSignificantBits());
@@ -787,8 +855,7 @@ public final class MicrovoxelStore {
                 body.writeInt(entry.getValue());
             }
         }
-        writeCrcEnvelope(temporary, bodyBytes.toByteArray());
-        atomicReplace(temporary, target);
+        writeDurableFile(target, crcEnvelope(bodyBytes.toByteArray()));
     }
 
     private RegionMeta readRegionIndex(RegionKey key) throws IOException {
@@ -818,17 +885,18 @@ public final class MicrovoxelStore {
         }
     }
 
-    private static void writeCrcEnvelope(Path target, byte[] body) throws IOException {
+    private static byte[] crcEnvelope(byte[] body) throws IOException {
         CRC32 crc = new CRC32();
         crc.update(body);
-        try (DataOutputStream output = new DataOutputStream(
-                new BufferedOutputStream(Files.newOutputStream(target)))) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(body.length + 16);
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
             output.writeInt(REGION_MAGIC);
             output.writeInt(REGION_VERSION);
             output.writeInt(body.length);
             output.write(body);
             output.writeInt((int) crc.getValue());
         }
+        return bytes.toByteArray();
     }
 
     private static byte[] readCrcEnvelope(Path source) throws IOException {
@@ -885,6 +953,38 @@ public final class MicrovoxelStore {
                     StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException ignored) {
             Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /**
+     * Writes {@code bytes} to {@code target} atomically and durably: the temporary file is
+     * fsynced before the rename, and the parent directory is fsynced after, so the new file
+     * cannot be lost by a crash that happens right after the write returns. This is what makes
+     * it safe for {@link #publish()} to delete the (fsynced) journal afterwards.
+     */
+    private static void writeDurableFile(Path target, byte[] bytes) throws IOException {
+        Files.createDirectories(target.getParent());
+        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
+        try (FileChannel channel = FileChannel.open(temporary,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            channel.force(true);
+        }
+        atomicReplace(temporary, target);
+        fsyncDirectory(target.getParent());
+    }
+
+    /** Best-effort directory fsync; unsupported on some filesystems/platforms (e.g. Windows). */
+    private static void fsyncDirectory(Path directory) {
+        if (directory == null) return;
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
+        } catch (IOException | RuntimeException unsupported) {
+            // Directory fsync is not universally supported; the file itself is already forced.
         }
     }
 

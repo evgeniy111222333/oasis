@@ -15,6 +15,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import ua.rp.chat.microvoxel.MicrovoxelBlockStates;
+import ua.rp.chat.microvoxel.MicrovoxelMaterialPalette;
 import ua.rp.chat.microvoxel.MicrovoxelRuntime;
 import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
@@ -85,7 +86,8 @@ public final class MicrovoxelMaterialEconomy {
             if (!matchesMaterial(stack, material)) continue;
             CompoundTag tag = customTag(stack);
             if (tag.getIntOr(RECLAIMED_UNITS_TAG, 0) > 0
-                    && material.equals(tag.getStringOr(RECLAIMED_MATERIAL_TAG, ""))) {
+                    && MicrovoxelMaterialPalette.sameMaterial(
+                            material, tag.getStringOr(RECLAIMED_MATERIAL_TAG, ""))) {
                 return new SelectedMaterial(materialStateFromStack(stack), stack, InteractionHand.MAIN_HAND);
             }
             if (fallback == null) {
@@ -146,8 +148,20 @@ public final class MicrovoxelMaterialEconomy {
     }
 
     private boolean mergeFragments(ServerPlayer player, ItemStack stack, String material, int perItem) {
+        // Resolve the material BEFORE consuming anything: an unparsable/failed material must not
+        // leave the player with zeroed stacks (items used to vanish on the error path).
+        Item item;
+        try {
+            BlockState state = MicrovoxelBlockStates.parseBlockState(material);
+            item = state.getBlock().asItem();
+        } catch (RuntimeException unparsable) {
+            return false;
+        }
+        if (item == Items.AIR) return false;
+
         long total = (long) perItem * stack.getCount();
         var inventory = player.getInventory();
+        java.util.List<ItemStack> matched = new java.util.ArrayList<>();
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
             ItemStack other = inventory.getItem(slot);
             if (other == stack || other.isEmpty()) continue;
@@ -156,11 +170,11 @@ public final class MicrovoxelMaterialEconomy {
             int otherPer = otherTag.getIntOr(RECLAIMED_UNITS_TAG, 0);
             if (otherPer <= 0) continue;
             total += (long) otherPer * other.getCount();
-            other.setCount(0);
+            matched.add(other);
         }
+        // Everything resolved: now it is safe to consume the inputs.
+        for (ItemStack other : matched) other.setCount(0);
         stack.setCount(0);
-        Item item = MicrovoxelBlockStates.parseBlockState(material).getBlock().asItem();
-        if (item == Items.AIR) return false;
         int blocks = (int) (total / UNITS_PER_BLOCK);
         int remainder = (int) (total % UNITS_PER_BLOCK);
         for (int done = 0; done < blocks; ) {
@@ -204,11 +218,12 @@ public final class MicrovoxelMaterialEconomy {
         if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) return false;
         CompoundTag tag = customTag(stack);
         String reclaimed = tag.getStringOr(RECLAIMED_MATERIAL_TAG, "");
-        if (!reclaimed.isBlank()) return material.equals(reclaimed);
+        if (!reclaimed.isBlank()) return MicrovoxelMaterialPalette.sameMaterial(material, reclaimed);
         String consumed = tag.getStringOr(CONSUMED_MATERIAL_TAG, "");
-        if (!consumed.isBlank()) return material.equals(consumed);
+        if (!consumed.isBlank()) return MicrovoxelMaterialPalette.sameMaterial(material, consumed);
         try {
-            return material.equals(MicrovoxelBlockStates.getBlockStateString(getBlockFromItem(stack)));
+            return MicrovoxelMaterialPalette.sameMaterial(
+                    material, MicrovoxelBlockStates.getBlockStateString(getBlockFromItem(stack)));
         } catch (RuntimeException unparsable) {
             return false;
         }
@@ -227,11 +242,13 @@ public final class MicrovoxelMaterialEconomy {
         CompoundTag tag = custom == null ? new CompoundTag() : custom.copyTag();
         int reclaimed = Math.max(0, tag.getIntOr(RECLAIMED_UNITS_TAG, 0));
         if (reclaimed > 0) {
-            return Math.multiplyExact(reclaimed, stack.getCount());
+            // Long math: a forged/large tag value times a full stack overflows int.
+            return (int) Math.min(Integer.MAX_VALUE, (long) reclaimed * stack.getCount());
         }
         int used = Math.max(0, Math.min(UNITS_PER_BLOCK - 1,
                 tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0)));
-        return Math.multiplyExact(stack.getCount(), UNITS_PER_BLOCK) - used;
+        long total = (long) stack.getCount() * UNITS_PER_BLOCK - used;
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE, total));
     }
 
     public void consumeMaterialUnit(ServerPlayer player, SelectedMaterial selected) {
@@ -248,11 +265,13 @@ public final class MicrovoxelMaterialEconomy {
         if (stack.isEmpty()) throw new IllegalStateException("Selected microvoxel material disappeared");
         net.minecraft.world.item.component.CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         CompoundTag tag = custom == null ? new CompoundTag() : custom.copyTag();
-        int reclaimed = tag.getIntOr(RECLAIMED_UNITS_TAG, 0);
+        int reclaimed = Math.max(0, tag.getIntOr(RECLAIMED_UNITS_TAG, 0));
         if (reclaimed > 0) {
-            int remaining = reclaimed * stack.getCount() - units;
-            int fullFragments = remaining / reclaimed;
-            int remainder = remaining % reclaimed;
+            // Long math: int multiply overflowed and produced a negative count for the stack.
+            long remaining = (long) reclaimed * stack.getCount() - units;
+            if (remaining < 0) remaining = 0;
+            int fullFragments = (int) Math.min(stack.getCount(), remaining / reclaimed);
+            int remainder = (int) (remaining % reclaimed);
             if (remainder == 0) {
                 stack.setCount(fullFragments);
             } else {
@@ -278,7 +297,8 @@ public final class MicrovoxelMaterialEconomy {
                 tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0))) + units;
         int consumedBlocks = used / UNITS_PER_BLOCK;
         used %= UNITS_PER_BLOCK;
-        tag.putString(CONSUMED_MATERIAL_TAG, MicrovoxelBlockStates.getBlockStateString(selected.state()));
+        tag.putString(CONSUMED_MATERIAL_TAG, MicrovoxelMaterialPalette.canonicalMaterial(
+                MicrovoxelBlockStates.getBlockStateString(selected.state())));
         stack.shrink(consumedBlocks);
         if (stack.isEmpty()) {
             player.getInventory().setChanged();
@@ -312,7 +332,10 @@ public final class MicrovoxelMaterialEconomy {
                                     boolean evenCreative) {
         if (count <= 0) return;
         if (!evenCreative && player.gameMode.getGameModeForPlayer() == GameType.CREATIVE) return;
-        BlockState state = MicrovoxelBlockStates.parseBlockState(material);
+        // One ledger identity per block type: variants of the same block refund into one stack.
+        String canonical = MicrovoxelMaterialPalette.canonicalMaterial(material);
+        if (canonical.isBlank()) return;
+        BlockState state = MicrovoxelBlockStates.parseBlockState(canonical);
         Item item = state.getBlock().asItem();
         if (item == Items.AIR) return;
         var inventory = player.getInventory();
@@ -325,7 +348,8 @@ public final class MicrovoxelMaterialEconomy {
             if (custom == null) continue;
             CompoundTag tag = custom.copyTag();
             int used = tag.getIntOr(MATERIAL_UNITS_USED_TAG, 0);
-            if (used <= 0 || !material.equals(tag.getStringOr(CONSUMED_MATERIAL_TAG, ""))) continue;
+            if (used <= 0 || !MicrovoxelMaterialPalette.sameMaterial(
+                    canonical, tag.getStringOr(CONSUMED_MATERIAL_TAG, ""))) continue;
             int returned = Math.min(used, remaining);
             used -= returned;
             remaining -= returned;
@@ -345,7 +369,7 @@ public final class MicrovoxelMaterialEconomy {
             if (units < UNITS_PER_BLOCK) {
                 CompoundTag tag = new CompoundTag();
                 tag.putInt(RECLAIMED_UNITS_TAG, units);
-                tag.putString(RECLAIMED_MATERIAL_TAG, material);
+                tag.putString(RECLAIMED_MATERIAL_TAG, canonical);
                 net.minecraft.world.item.component.CustomData.set(
                         DataComponents.CUSTOM_DATA, fragment, tag);
             }

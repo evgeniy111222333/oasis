@@ -52,7 +52,9 @@ public final class MicrovoxelFlags {
     /** Sets flags for one volume (0 clears). Persists immediately; admin-rate only. */
     public synchronized void set(MicrovoxelKey key, int value) {
         if (value == 0) {
-            flags.remove(key);
+            // Remove from the ordering deque too, otherwise repeated protect/unprotect toggling
+            // grows it without bound even though the flags map stays capped.
+            if (flags.remove(key) != null) insertionOrder.remove(key);
         } else {
             if (!flags.containsKey(key)) {
                 insertionOrder.addLast(key);
@@ -74,7 +76,11 @@ public final class MicrovoxelFlags {
         }
     }
 
-    /** Loads the sidecar file; a missing or corrupt file starts empty (fail-open for flags). */
+    /**
+     * Loads the sidecar file. A single malformed entry is skipped without discarding the rest,
+     * so one bad line cannot silently unprotect every other build. Only a wholly unreadable file
+     * (missing/empty/non-JSON) starts empty, which is unavoidable at startup.
+     */
     public synchronized void load() {
         flags.clear();
         insertionOrder.clear();
@@ -84,19 +90,35 @@ public final class MicrovoxelFlags {
             if (json.isEmpty() || json.equals("{}")) return;
             // Minimal flat-object parser: {"world|x|y|z": flags, ...}. No JSON dependency.
             String body = json.substring(json.indexOf('{') + 1, json.lastIndexOf('}'));
+            int skipped = 0;
             for (String entry : body.split(",")) {
-                String[] parts = entry.split(":", 2);
-                if (parts.length != 2) continue;
-                MicrovoxelKey key = parseKey(unquote(parts[0].trim()));
-                if (key == null) continue;
-                int value = Integer.parseInt(parts[1].trim());
-                if (value != 0 && flags.size() < MAX_ENTRIES) {
-                    flags.put(key, value);
-                    insertionOrder.addLast(key);
+                try {
+                    String[] parts = entry.split(":", 2);
+                    if (parts.length != 2) {
+                        skipped++;
+                        continue;
+                    }
+                    MicrovoxelKey key = parseKey(unquote(parts[0].trim()));
+                    if (key == null) {
+                        skipped++;
+                        continue;
+                    }
+                    int value = Integer.parseInt(parts[1].trim());
+                    if (value != 0 && flags.size() < MAX_ENTRIES) {
+                        flags.put(key, value);
+                        insertionOrder.addLast(key);
+                    }
+                } catch (RuntimeException malformedEntry) {
+                    // Skip only this entry: valid protections must survive one corrupt line.
+                    skipped++;
                 }
             }
+            if (skipped > 0) {
+                logger.warning("Microvoxel flags: skipped " + skipped
+                        + " malformed entries; the remaining protections stay active.");
+            }
         } catch (RuntimeException | IOException corrupt) {
-            logger.warning("Microvoxel flags file is corrupt; starting with no protected volumes: "
+            logger.severe("Microvoxel flags file is unreadable; no protections loaded: "
                     + corrupt.getMessage());
             flags.clear();
             insertionOrder.clear();

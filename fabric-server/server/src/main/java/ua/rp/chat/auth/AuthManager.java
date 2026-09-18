@@ -39,6 +39,8 @@ public class AuthManager {
     private final Set<UUID> pendingAuth = ConcurrentHashMap.newKeySet();
     private final Map<UUID, AuthLocation> originalLocations = new ConcurrentHashMap<>();
     private final Map<String, UUID> tokenToUuid = new ConcurrentHashMap<>();
+    /** In-memory rpName cache so the vitals path never hits the DB on the main server thread. */
+    private final Map<UUID, String> rpNameCache = new ConcurrentHashMap<>();
     private final Map<String, AppearanceEditSession> appearanceEditSessions = new ConcurrentHashMap<>();
 
     private static final int AUTH_TIMEOUT_SECONDS = 120;
@@ -273,7 +275,8 @@ public class AuthManager {
     private void sendAuthPayload(ServerPlayer player, String finalLink) {
         if (player == null || player.connection == null) return;
         ServerPlayNetworking.send(player, new AuthPayload(finalLink));
-        plugin.getLogger().info("Sent Eclipse auth overlay trigger to " + player.getGameProfile().name() + ": " + finalLink);
+        // Never log the link: it embeds the bearer token. Name only.
+        plugin.getLogger().info("Sent Eclipse auth overlay trigger to " + player.getGameProfile().name());
     }
 
     public String getAuthUrl(String token) {
@@ -502,7 +505,15 @@ public class AuthManager {
     }
 
     public String getRpName(UUID uuid) {
-        return database.getRpName(uuid);
+        // Cached so the vitals path (which runs on the main server thread) never touches the DB
+        // per poll; the value is set at registration and is effectively immutable per account.
+        String cached = rpNameCache.get(uuid);
+        if (cached != null) return cached;
+        String value = database.getRpName(uuid);
+        if (value != null && !value.isBlank()) {
+            rpNameCache.put(uuid, value);
+        }
+        return value;
     }
 
     public String getLoginName(UUID uuid) {

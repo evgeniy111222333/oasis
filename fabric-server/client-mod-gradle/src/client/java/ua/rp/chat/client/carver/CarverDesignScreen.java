@@ -46,6 +46,8 @@ public class CarverDesignScreen extends Screen {
     private final List<UiButton> buttons = new ArrayList<>();
     /** One-shot pick diagnostics: logs the first few cursor resolves of each drafting session. */
     private static int pickDiag;
+    /** Pick diagnostics are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
     private UiButton peelButton;
     private UiButton isolateButton;
     private UiButton boxButton;
@@ -149,8 +151,13 @@ public class CarverDesignScreen extends Screen {
                 updatePendingBox();
             } else {
                 // In place mode the stroke follows the empty neighbour of the picked face.
-                int target = CarverClientState.placing() ? placeTarget(hit) : hit.cell();
-                CarverClientState.setHoverPlaceCell(CarverClientState.placing() ? target : -1);
+                boolean placing = CarverClientState.placing();
+                int target = placing ? placeTarget(hit) : hit.cell();
+                CarverClientState.setHoverPlaceCell(placing ? target : -1);
+                if (target < 0) {
+                    // No vacant cell under the cursor: never overwrite, just skip this sample.
+                    return true;
+                }
                 if (dragStart == null || dragStart[0] != target) {
                     paintLine(dragStart == null ? target : dragStart[0], target);
                 }
@@ -323,7 +330,7 @@ public class CarverDesignScreen extends Screen {
                     mouseX, mouseY, focus.getX(), focus.getY() + lift, focus.getZ(),
                     offX, offZ);
         }
-        if (pickDiag < 4) {
+        if (DEBUG && pickDiag < 4) {
             pickDiag++;
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-PICK] mouse=" + mouseX + "," + mouseY
                     + " fov=" + fov + " cam=" + pos
@@ -502,10 +509,15 @@ public class CarverDesignScreen extends Screen {
     }
 
     private void paint(CarverCursorPick.Hit hit) {
-        paint(CarverClientState.placing() ? placeTarget(hit) : hit.cell());
+        int target = CarverClientState.placing() ? placeTarget(hit) : hit.cell();
+        if (target >= 0) paint(target);
     }
 
-    /** The cell a placement would fill: the vacant neighbour of the picked face, else the cell itself. */
+    /**
+     * The cell a placement would fill: the vacant neighbour of the picked face. Returns -1 when
+     * that neighbour is out of the volume or already occupied — a placement must never overwrite
+     * an existing voxel, only grow into empty space (or a cell already drafted for removal).
+     */
     private int placeTarget(CarverCursorPick.Hit hit) {
         int x = DraftMask.x(hit.cell());
         int y = DraftMask.y(hit.cell());
@@ -514,9 +526,9 @@ public class CarverDesignScreen extends Screen {
         int nx = x + normal[0];
         int ny = y + normal[1];
         int nz = z + normal[2];
-        if (nx < 0 || nx > 15 || ny < 0 || ny > 15 || nz < 0 || nz > 15) return hit.cell();
+        if (nx < 0 || nx > 15 || ny < 0 || ny > 15 || nz < 0 || nz > 15) return -1;
         int target = DraftMask.index(nx, ny, nz);
-        return isPlaceVacant(target) ? target : hit.cell();
+        return isPlaceVacant(target) ? target : -1;
     }
 
     /** Vacant in the previewed sculpt: source air, or a cell already drafted for removal. */

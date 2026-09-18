@@ -76,24 +76,49 @@ public class RpChatService {
         return name;
     }
 
+    /** Strips newlines/control characters from client text before it reaches the log file. */
+    private static String logSafe(String value) {
+        if (value == null) return "";
+        StringBuilder sb = new StringBuilder(Math.min(value.length(), 256));
+        for (int i = 0; i < value.length() && sb.length() < 256; i++) {
+            char c = value.charAt(i);
+            if (c == '\n' || c == '\r' || c < 0x20 || c == 0x7F) continue;
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Central auth gate for every client-triggered roleplay broadcast. A player who is still at
+     * the auth screen (pending) must not be able to broadcast or impersonate via /me, /do, /say …
+     */
+    private boolean blocked(ServerPlayer sender) {
+        return sender == null || plugin.getAuthManager().isPendingAuth(sender.getUUID());
+    }
+
     public void sendSpeech(ServerPlayer sender, RpChatChannel channel, String message) {
+        if (blocked(sender)) return;
         deliverSpeech(sender, channel, message, true);
         showSpeechBubble(sender, channel, message);
     }
 
     public void sendAction(ServerPlayer sender, String action) {
+        if (blocked(sender)) return;
         deliver(sender, RpChatChannel.ACTION, action, formatAction(rpName(sender), action), true);
     }
 
     public void sendActionHighlighted(ServerPlayer sender, String action, String... highlightedNames) {
+        if (blocked(sender)) return;
         deliver(sender, RpChatChannel.ACTION, action, formatActionHighlighted(rpName(sender), action, highlightedNames), true);
     }
 
     public void sendDescription(ServerPlayer sender, String description) {
+        if (blocked(sender)) return;
         deliver(sender, RpChatChannel.DESCRIPTION, description, formatDescription(rpName(sender), description), true);
     }
 
     public void sendTry(ServerPlayer sender, String action, boolean success) {
+        if (blocked(sender)) return;
         Component message = Component.empty()
                 .append(Component.literal(rpName(sender)).withStyle(s -> s.withColor(NAME)))
                 .append(Component.literal(" пытается " + action + "... ").withStyle(s -> s.withColor(RpChatChannel.ACTION.messageColor())))
@@ -102,11 +127,13 @@ public class RpChatService {
     }
 
     public void sendTodo(ServerPlayer sender, String speech, String action) {
+        if (blocked(sender)) return;
         deliverTodo(sender, speech, action, true);
         showSpeechBubble(sender, RpChatChannel.SPEAK, speech);
     }
 
     public void sendOoc(ServerPlayer sender, String message) {
+        if (blocked(sender)) return;
         Component formatted = Component.empty()
                 .append(Component.literal("[OOC] ").withStyle(s -> s.withColor(RpChatChannel.OOC.accentColor())))
                 .append(Component.literal(rpName(sender)).withStyle(s -> s.withColor(MUTED)))
@@ -147,7 +174,7 @@ public class RpChatService {
             heard++;
         }
 
-        plugin.getLogger().info("[RP:" + channel.id() + "] " + sender.getName().getString() + " (" + heard + "): " + rawMessage);
+        plugin.getLogger().info("[RP:" + channel.id() + "] " + sender.getName().getString() + " (" + heard + "): " + logSafe(rawMessage));
         notifyIfAlone(sender, heard, notifyIfAlone);
     }
 
@@ -178,7 +205,7 @@ public class RpChatService {
             heard++;
         }
 
-        plugin.getLogger().info("[RP:todo] " + sender.getName().getString() + " (" + heard + "): " + raw);
+        plugin.getLogger().info("[RP:todo] " + sender.getName().getString() + " (" + heard + "): " + logSafe(raw));
         notifyIfAlone(sender, heard, notifyIfAlone);
     }
 
@@ -209,7 +236,7 @@ public class RpChatService {
             heard++;
         }
 
-        plugin.getLogger().info("[RP:" + channel.id() + "] " + sender.getName().getString() + " (" + heard + "): " + rawMessage);
+        plugin.getLogger().info("[RP:" + channel.id() + "] " + sender.getName().getString() + " (" + heard + "): " + logSafe(rawMessage));
         notifyIfAlone(sender, heard, notifyIfAlone);
     }
 

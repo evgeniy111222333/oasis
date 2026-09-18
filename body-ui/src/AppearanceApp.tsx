@@ -38,7 +38,7 @@ export default function AppearanceApp() {
         return
       }
       try {
-        const response = await fetch(`${apiUrl}/api/appearance/edit-session?token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+        const response = await fetch(`${apiUrl}/api/appearance/edit-session`, { cache: 'no-store', headers: { 'X-Eclipse-Token': token } })
         const session = await response.json() as Session
         if (!response.ok || !session.success) throw new Error(session.message || 'Сеанс недействителен.')
         if (disposed) return
@@ -104,7 +104,7 @@ export default function AppearanceApp() {
     try {
       const response = await fetch(`${apiUrl}/api/appearance/update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Eclipse-Token': token },
         body: JSON.stringify({ token, appearanceData: fileData, appearanceModel: model }),
       })
       const result = await response.json() as Session

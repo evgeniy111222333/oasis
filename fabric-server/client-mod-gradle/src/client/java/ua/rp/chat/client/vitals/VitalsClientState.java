@@ -87,10 +87,53 @@ public final class VitalsClientState {
                 });
     }
 
-    public static String bodyStatusUrl() {
+    /**
+     * Requests a one-time body-page bootstrap code (authenticated with the session token in a
+     * header) and returns the clean {@code /body} URL. The token therefore never appears in a URL.
+     */
+    public static CompletableFuture<String> bodyStatusUrlAsync() {
         Minecraft client = Minecraft.getInstance();
         String username = client != null && client.getUser() != null ? client.getUser().getName() : "";
-        return EclipseApiClient.resolve("/body?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8));
+        return CompletableFuture.supplyAsync(() -> {
+            String code = fetchBodyCode(username);
+            if (code == null || code.isBlank()) {
+                return null;
+            }
+            return EclipseApiClient.resolve("/body?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                    + "&code=" + URLEncoder.encode(code, StandardCharsets.UTF_8));
+        });
+    }
+
+    private static String fetchBodyCode(String username) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) URI.create(EclipseApiClient.resolve(
+                    "/api/body-session?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8)))
+                    .toURL().openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("X-Eclipse-Token",
+                    String.valueOf(ua.rp.chat.client.microvoxel.MicrovoxelClientState.sessionNonce()));
+            connection.setConnectTimeout(1000);
+            connection.setReadTimeout(1500);
+            connection.setDoOutput(true);
+            connection.getOutputStream().close();
+            if (connection.getResponseCode() != 200) {
+                return null;
+            }
+            String body = new String(connection.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int key = body.indexOf("\"code\"");
+            if (key < 0) return null;
+            int start = body.indexOf('"', body.indexOf(':', key)) + 1;
+            int end = body.indexOf('"', start);
+            return start > 0 && end > start ? body.substring(start, end) : null;
+        } catch (IOException e) {
+            EclipseClientMod.LOGGER.debug("Unable to request body-page code.", e);
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     public static float getStamina01() {
@@ -147,6 +190,9 @@ public final class VitalsClientState {
         try {
             connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             connection.setRequestMethod("GET");
+            // Per-login session token in a header, never the query string (proxy logs).
+            connection.setRequestProperty("X-Eclipse-Token",
+                    String.valueOf(ua.rp.chat.client.microvoxel.MicrovoxelClientState.sessionNonce()));
             connection.setConnectTimeout(450);
             connection.setReadTimeout(700);
             if (connection.getResponseCode() != 200) {

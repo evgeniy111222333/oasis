@@ -60,7 +60,13 @@ public final class CarverTest {
                         && graded.score() >= 0.0 && graded.score() <= 1.0,
                 "A finished evaluation must carry a grade, mastery and a bounded score");
 
-        System.out.println("CarverEvaluationTest: stability and IoU passed");
+        // Anti-farming: the authoritative removed count overrides the raw draft count, so a draft
+        // that marks already-empty cells cannot award mastery.
+        CarverEvaluation.Result farmed = CarverEvaluation.evaluate(slab, afterSlab, null, 0);
+        require(farmed.removedCells() == 0 && farmed.mastery() == 0,
+                "Mastery must follow actually removed cells, not the raw draft count");
+
+        System.out.println("CarverEvaluationTest: stability, IoU and anti-farm scoring passed");
     }
 
     /**
@@ -690,7 +696,7 @@ public final class CarverTest {
     }
 
     private static void verifyProtocol() {
-        require(CarverProtocol.VERSION == 2, "Protocol version must be 2 (additive draft)");
+        require(CarverProtocol.VERSION == 3, "Protocol version must be 3 (session-bound draft)");
         require(CarverProtocol.isAction(CarverProtocol.ACTION_STROKE_PLACE)
                         && CarverProtocol.isAction(CarverProtocol.ACTION_BOX_PLACE),
                 "Additive draft actions must be known");

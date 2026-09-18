@@ -44,6 +44,8 @@ public final class FluidSim {
     private final List<MicrovoxelKey> cursor = new ArrayList<>();
     /** Last broadcast (revision, tick) per volume: level syncs throttle to 20 ticks. */
     private final Map<MicrovoxelKey, long[]> fluidSync = new java.util.HashMap<>();
+    /** Last tick each volume placed an outflow block; bounds the waterfall generator rate. */
+    private final Map<MicrovoxelKey, Long> outflowThrottle = new HashMap<>();
     private int cursorIndex;
     private int outflowPlacementsThisTick;
 
@@ -79,6 +81,7 @@ public final class FluidSim {
         int minZ = (int) Math.floor(box.minZ);
         int maxZ = (int) Math.floor(box.maxZ);
         if ((maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1) > 64) return false;
+        if (!chunksLoaded(level, minX, minY, minZ, maxX, maxY, maxZ)) return false;
         boolean touchedMarkerFluid = false;
         for (int bx = minX; bx <= maxX; bx++) {
             for (int by = minY; by <= maxY; by++) {
@@ -123,6 +126,7 @@ public final class FluidSim {
         int minZ = (int) Math.floor(box.minZ);
         int maxZ = (int) Math.floor(box.maxZ);
         if ((maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1) > 64) return -1.0;
+        if (!chunksLoaded(level, minX, minY, minZ, maxX, maxY, maxZ)) return -1.0;
         double height = -1.0;
         for (int bx = minX; bx <= maxX; bx++) {
             for (int by = minY; by <= maxY; by++) {
@@ -177,6 +181,7 @@ public final class FluidSim {
         if (manager.fluidCount() == 0) return -1.0;
         if (!(entity.level() instanceof ServerLevel level)) return -1.0;
         BlockPos pos = BlockPos.containing(exact);
+        if (!chunkLoaded(level, pos.getX() >> 4, pos.getZ() >> 4)) return -1.0;
         if (!MicrovoxelBlocks.isMarker(level.getBlockState(pos))) return -1.0;
         MicrovoxelKey key;
         try {
@@ -275,6 +280,10 @@ public final class FluidSim {
             adoptOrphanWaterlogged();
             catchRain();
         }
+        // Bound the throttle map: entries older than a few minutes can never gate again.
+        if (outflowThrottle.size() > 8192) {
+            outflowThrottle.entrySet().removeIf(entry -> tick - entry.getValue() > 6000L);
+        }
     }
 
     /**
@@ -340,6 +349,26 @@ public final class FluidSim {
      */
     static boolean chunkLoaded(ServerLevel level, int chunkX, int chunkZ) {
         return level.getChunkSource().getChunkNow(chunkX, chunkZ) != null;
+    }
+
+    /**
+     * True when every block in the range sits in an already-loaded chunk. The entity refine
+     * reads run on vanilla's water/lava hot path and must never synchronously load a chunk:
+     * {@code getBlockState} would do exactly that at a chunk border, so probe first and fall
+     * back to vanilla behaviour when the neighbour is not resident.
+     */
+    private static boolean chunksLoaded(ServerLevel level, int minX, int minY, int minZ,
+                                        int maxX, int maxY, int maxZ) {
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!chunkLoaded(level, chunkX, chunkZ)) return false;
+            }
+        }
+        return true;
     }
 
     private void tickVolume(MicrovoxelKey key) {
@@ -828,6 +857,12 @@ public final class FluidSim {
         }
     }
 
+    /** A non-source flowing fluid block for the outflow placed below a volume. */
+    private static BlockState outflowState(boolean lava) {
+        return (lava ? Blocks.LAVA : Blocks.WATER).defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL, 1);
+    }
+
     /**
      * Bottom openings pour out: fluid cells on the floor layer above world air drain while
      * a real vanilla block of the same kind appears below (waterfalls and lavafalls share
@@ -839,12 +874,18 @@ public final class FluidSim {
         if (outflowPlacementsThisTick >= tuning.maxOutflowPlacements) return;
         BlockPos below = new BlockPos(key.x(), key.y() - 1, key.z());
         if (!level.getBlockState(below).isAir()) return;
+        // Per-volume cooldown: a bottom hole must not place a vanilla fluid block every tick.
+        long now = runtime.serverTick();
+        Long last = outflowThrottle.get(key);
+        if (last != null && now - last < tuning.outflowCooldownTicks) return;
         long drained = FluidVolume.drainBottomLayer(
                 fluid.levelsDirect(), solidScratch(micro), tuning.drainPerCell);
         if (drained <= 0) return;
         fluid.setRevision(fluid.revision() + 1);
-        level.setBlock(below, fluid.isLava()
-                ? Blocks.LAVA.defaultBlockState() : Blocks.WATER.defaultBlockState(), 3);
+        // Place a FLOWING block, never a full source: a placed source is scoop-able and, fed by
+        // same-kind vanilla inflow, turns a bottom hole into an infinite fluid generator.
+        level.setBlock(below, outflowState(fluid.isLava()), 3);
+        outflowThrottle.put(key, now);
         outflowPlacementsThisTick++;
         MicrovoxelMetrics.add("fluid.outflow", drained);
         // Bubbles where the stream lands: two particles per placement, inside the same

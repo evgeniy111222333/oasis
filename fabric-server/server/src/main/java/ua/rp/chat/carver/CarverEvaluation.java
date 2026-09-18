@@ -36,9 +36,19 @@ public final class CarverEvaluation {
      * and {@code blueprint} is the uploaded drawing mask or null. Pure.
      */
     public static Result evaluate(DraftMask draft, MicrovoxelVolume after, DraftMask blueprint) {
-        int removed = draft == null ? 0 : draft.count();
+        return evaluate(draft, after, blueprint, draft == null ? 0 : draft.count());
+    }
+
+    /**
+     * Evaluates a carve using the number of cells that were <b>actually</b> removed. The draft mask
+     * can mark already-empty cells, so scoring on its raw count lets a player farm mastery by
+     * "carving" empty space. {@code actualRemoved} comes from the authoritative work plan.
+     */
+    public static Result evaluate(DraftMask draft, MicrovoxelVolume after, DraftMask blueprint,
+                                  int actualRemoved) {
+        int removed = Math.max(0, actualRemoved);
         if (draft == null || after == null || removed == 0) {
-            return new Result(1.0, blueprint == null ? 0.0 : 0.0, 0.5, "груба", 0, 0);
+            return new Result(1.0, 0.0, 0.5, "груба", 0, 0);
         }
         double stability = stability(after);
         double fidelity = blueprint == null ? 0.0 : iou(draft, blueprint);

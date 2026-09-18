@@ -305,6 +305,9 @@ public final class MicrovoxelShape {
                         if ((mask[cell >>> 6] & (1L << (cell & 63))) != 0) cells[cell] = 1;
                     }
                     cached = MicrovoxelVolume.restore(1, List.of("", "minecraft:stone"), cells);
+                    // Shared process-wide: freeze it so no caller can mutate the global shape
+                    // geometry/collision/ray caches out from under every other user of this shape.
+                    cached.freeze();
                     volume = cached;
                 }
             }

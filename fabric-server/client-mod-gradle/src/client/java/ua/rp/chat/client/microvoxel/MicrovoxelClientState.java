@@ -6,11 +6,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import ua.rp.chat.client.EclipseClientMod;
-import ua.rp.chat.client.mixin.CubeVoxelShapeInvoker;
 import ua.rp.chat.microvoxel.MicrovoxelBlocks;
 import ua.rp.chat.microvoxel.MicrovoxelGeometry;
 import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
@@ -18,6 +16,7 @@ import ua.rp.chat.microvoxel.MicrovoxelMeshBackpressure;
 import ua.rp.chat.microvoxel.MicrovoxelPrediction;
 import ua.rp.chat.microvoxel.MicrovoxelRaycaster;
 import ua.rp.chat.microvoxel.MicrovoxelRevision;
+import ua.rp.chat.microvoxel.MicrovoxelSessionToken;
 import ua.rp.chat.microvoxel.MicrovoxelShape;
 import ua.rp.chat.microvoxel.MicrovoxelVolume;
 import ua.rp.chat.microvoxel.MicrovoxelWire;
@@ -68,7 +67,7 @@ public final class MicrovoxelClientState {
      * at runtime, so the server never sends MINE_STAGE frames a disabled client cannot draw.
      */
     private static int advertisedCapabilities() {
-        return CRACK_OVERLAY_ENABLED
+        return MicrovoxelClientCracks.overlayEnabled()
                 ? MicrovoxelWire.CLIENT_CAPABILITIES
                 : MicrovoxelWire.CLIENT_CAPABILITIES & ~MicrovoxelWire.CAP_MINE_STAGE;
     }
@@ -91,7 +90,7 @@ public final class MicrovoxelClientState {
     /**
      * Authoritative fluid levels per volume, mirrored from the server (never simulated
      * locally). Read by terrain compilation workers; writes stay on the client thread.
-     * A missing entry means dry — or not yet arrived, in which case vanilla water (when
+     * A missing entry means dry вЂ” or not yet arrived, in which case vanilla water (when
      * the marker is waterlogged) covers the race until the packet lands.
      */
     private static final Map<BlockPos, FluidView> CLIENT_FLUIDS =
@@ -108,24 +107,6 @@ public final class MicrovoxelClientState {
         }
     }
 
-    /**
-     * Feature kill-switch for the per-cell mining crack overlay. Default on; the launch flag
-     * {@code -Drpchat.microvoxel.crackOverlay=false} both stops advertising the capability in
-     * HELLO and disables rendering, so a broken overlay can be killed without a rebuild.
-     */
-    private static final boolean CRACK_OVERLAY_ENABLED =
-            !"false".equalsIgnoreCase(System.getProperty("rpchat.microvoxel.crackOverlay", "true"));
-    /**
-     * Active per-cell cracks: volume position -> (cell -> destroy stage). Written on the client
-     * thread from MINE_STAGE frames; read by terrain compilation workers through
-     * {@link #cracksAt(BlockPos)}. A global counter gives every change a unique revision so the
-     * section geometry key rebuilds on each stage transition.
-     */
-    private static final Map<BlockPos, Map<Integer, Integer>> CRACKS =
-            new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Map<BlockPos, Integer> CRACK_REVISIONS =
-            new java.util.concurrent.ConcurrentHashMap<>();
-    private static int crackRevisionCounter;
     private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
             java.util.concurrent.Executors.newFixedThreadPool(
                     Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)), r -> {
@@ -157,6 +138,12 @@ public final class MicrovoxelClientState {
      */
     private static final int MAX_INFLIGHT_MESH_JOBS = 16;
     /**
+     * Sanity cap on entries in one BATCH_UPSERT frame. The server batches at most a few dozen
+     * volumes, so anything larger is malformed and must be rejected before it drives a huge
+     * loop or a hostile pre-allocation.
+     */
+    private static final int MAX_BATCH_ENTRIES = 4096;
+    /**
      * One-shot runtime evidence for the microvoxel pipeline.  This is intentionally keyed by
      * volume revision: a diagnostic session stays compact while still proving which shape and
      * material were used for every edited state the player actually sees.
@@ -177,6 +164,11 @@ public final class MicrovoxelClientState {
     private static long activeSnapshotId = -1L;
     private static int lastResyncRequestTick = Integer.MIN_VALUE / 2;
     private static long nextTransactionId = 1L;
+    /**
+     * Per-login anti-replay token from the server's {@code HELLO_ACK}. Replay-sensitive actions
+     * echo it; {@code 0} means "not handshaken yet" and blocks such actions locally.
+     */
+    private static volatile long sessionNonce;
 
     private MicrovoxelClientState() {
     }
@@ -190,6 +182,7 @@ public final class MicrovoxelClientState {
             MicrovoxelClientRenderer.clearMaterialCache();
             snapshotConfirmed = false;
             activeSnapshotId = -1L;
+            sessionNonce = 0L;
             nextReadyTick = clientTick;
         }
         if (activeLevel != null && !snapshotConfirmed && clientTick >= nextReadyTick
@@ -246,7 +239,12 @@ public final class MicrovoxelClientState {
                 int serverMajor = readVarInt(input);
                 int serverMinor = readVarInt(input);
                 negotiatedCapabilities = readVarInt(input);
-                if (DEBUG) {
+                sessionNonce = input.readLong();
+                if (serverMajor != MicrovoxelWire.MAJOR) {
+                    EclipseClientMod.LOGGER.warn("[MICROVOXEL] Incompatible server protocol "
+                            + serverMajor + "." + serverMinor + " (client "
+                            + MicrovoxelWire.MAJOR + "." + MicrovoxelWire.MINOR + ")");
+                } else if (DEBUG) {
                     EclipseClientMod.LOGGER.info("[MICROVOXEL] Negotiated protocol major="
                             + serverMajor + "." + serverMinor + " caps=" + negotiatedCapabilities);
                 }
@@ -305,8 +303,12 @@ public final class MicrovoxelClientState {
             }
             if (type == MESSAGE) {
                 String message = readUtf8(input);
+                if (input.available() != 0) throw new IOException("Trailing message payload bytes");
                 Minecraft minecraft = Minecraft.getInstance();
-                minecraft.gui.setOverlayMessage(Component.literal(message), false);
+                // GUI state must be touched on the game thread; this decoder runs on the network
+                // receiver, so marshal the overlay update instead of calling in directly.
+                minecraft.execute(() ->
+                        minecraft.gui.setOverlayMessage(Component.literal(message), false));
                 return;
             }
             if (type == CLEAR_CHUNK) {
@@ -387,6 +389,9 @@ public final class MicrovoxelClientState {
                 int chunkX = input.readInt();
                 int chunkZ = input.readInt();
                 int size = readVarInt(input);
+                if (size < 0 || size > MAX_BATCH_ENTRIES) {
+                    throw new IOException("Invalid microvoxel batch size " + size);
+                }
                 for (int entryIdx = 0; entryIdx < size; entryIdx++) {
                     int posXZ = input.readUnsignedByte();
                     int posY = input.readShort();
@@ -396,6 +401,9 @@ public final class MicrovoxelClientState {
 
                     int revision = readVarInt(input);
                     int paletteSize = readVarInt(input);
+                    if (paletteSize < 1 || paletteSize > MicrovoxelVolume.MAX_PALETTE) {
+                        throw new IOException("Invalid microvoxel batch palette size " + paletteSize);
+                    }
                     List<String> palette = new ArrayList<>(paletteSize);
                     for (int index = 0; index < paletteSize; index++) palette.add(readUtf8(input));
 
@@ -522,8 +530,15 @@ public final class MicrovoxelClientState {
         if (!accepted && DEBUG) {
             EclipseClientMod.LOGGER.info("[MICROVOXEL] Rolling back rejected edit {}", transactionId);
         }
-        if (authoritative == null) AUTHORITATIVE_VOLUMES.remove(target);
-        else AUTHORITATIVE_VOLUMES.put(target, authoritative.copy());
+        if (authoritative == null) {
+            AUTHORITATIVE_VOLUMES.remove(target);
+        } else if (isFreshAuthoritative(target, authoritative.revision())) {
+            AUTHORITATIVE_VOLUMES.put(target, authoritative.copy());
+        } else {
+            // A duplicated/reordered EDIT_RESULT for an older revision must not clobber the newer
+            // state we already hold; keep the fresher stored volume and just settle the prediction.
+            MicrovoxelClientMetrics.inc("predict.stale_edit_result");
+        }
 
         settlePredicted(target);
         if (pending != null && pending.brushTargets() != null) {
@@ -760,19 +775,23 @@ public final class MicrovoxelClientState {
      * previous one synchronously, so a water preview can never leak past a lava click.
      */
     private static void abandonFluidPrediction(Minecraft minecraft) {
-        if (predictedFluidAt == null) return;
-        if (predictedFluidLava) {
-            CLIENT_FLUIDS.remove(predictedFluidAt);
-            queueChunkBatch(predictedFluidAt);
-            scheduleBoundaryRebuild(predictedFluidAt);
-        } else {
-            CachedVolume cached = VOLUMES.get(predictedFluidAt);
-            if (cached != null && minecraft.level != null) {
-                minecraft.level.setBlock(predictedFluidAt, MicrovoxelBlocks.markerState(
-                        lightLevel(cached.volume), soundProfile(cached.volume), false), 3);
+        if (predictedFluidAt != null) {
+            if (predictedFluidLava) {
+                CLIENT_FLUIDS.remove(predictedFluidAt);
+                queueChunkBatch(predictedFluidAt);
+                scheduleBoundaryRebuild(predictedFluidAt);
+            } else {
+                CachedVolume cached = VOLUMES.get(predictedFluidAt);
+                if (cached != null && minecraft.level != null) {
+                    minecraft.level.setBlock(predictedFluidAt, MicrovoxelBlocks.markerState(
+                            lightLevel(cached.volume), soundProfile(cached.volume), false), 3);
+                }
             }
+            predictedFluidAt = null;
         }
-        predictedFluidAt = null;
+        // Always reset the mode flag: otherwise a later water preview is routed into the lava
+        // reconciliation path and denied water fills are never reverted (phantom water).
+        predictedFluidLava = false;
     }
 
     private static void predictLavaFill(Minecraft minecraft, BlockPos position) {
@@ -920,7 +939,7 @@ public final class MicrovoxelClientState {
         EclipseClientMod.LOGGER.warn("[MICROVOXEL] Requesting volume resync at {}: {}",
                 position.toShortString(), reason);
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new MicrovoxelActionPayload(
-                PROTOCOL_VERSION, nextTransactionId++,
+                PROTOCOL_VERSION, MicrovoxelSessionToken.NONE, nextTransactionId++,
                 ACTION_RESYNC_VOLUME, position.getX(), position.getY(), position.getZ(),
                 0, revision, 0, 0, 0, 0, 0, 0));
     }
@@ -932,7 +951,7 @@ public final class MicrovoxelClientState {
         EclipseClientMod.LOGGER.warn("[MICROVOXEL] Requesting chunk resync {},{}: {}",
                 chunkX, chunkZ, reason);
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new MicrovoxelActionPayload(
-                PROTOCOL_VERSION, nextTransactionId++,
+                PROTOCOL_VERSION, MicrovoxelSessionToken.NONE, nextTransactionId++,
                 ACTION_RESYNC_CHUNK, chunkX, 0, chunkZ,
                 0, 0, 0, 0, 0, 0, 0, 0));
     }
@@ -950,7 +969,7 @@ public final class MicrovoxelClientState {
         }
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
                 new MicrovoxelActionPayload(
-                        PROTOCOL_VERSION, transactionId, action, x, y, z,
+                        PROTOCOL_VERSION, MicrovoxelSessionToken.NONE, transactionId, action, x, y, z,
                         0, 0, 0, 0, 0, 0, 0, 0));
     }
 
@@ -1177,71 +1196,45 @@ public final class MicrovoxelClientState {
 
     /** True when the per-cell crack overlay feature flag is on. */
     public static boolean crackOverlayEnabled() {
-        return CRACK_OVERLAY_ENABLED;
+        return MicrovoxelClientCracks.overlayEnabled();
     }
 
     /** Terrain-worker view of the active cracks on a volume, as {@code {cell, stage}} pairs. */
     public static java.util.List<int[]> cracksAt(BlockPos position) {
-        Map<Integer, Integer> cells = CRACKS.get(position);
-        if (cells == null || cells.isEmpty()) return java.util.List.of();
-        java.util.List<int[]> out = new java.util.ArrayList<>(cells.size());
-        for (Map.Entry<Integer, Integer> entry : cells.entrySet()) {
-            out.add(new int[]{entry.getKey(), entry.getValue()});
-        }
-        return out;
+        return MicrovoxelClientCracks.cellsAt(position);
     }
 
     /** True when a volume shows at least one crack (forces the translucent render pass). */
     public static boolean hasCracks(BlockPos position) {
-        return CRACKS.containsKey(position);
+        return MicrovoxelClientCracks.hasCracks(position);
     }
 
     /** Monotonic per-volume crack revision for the section geometry key (0 when none). */
     public static int crackRevisionOf(BlockPos position) {
-        Integer revision = CRACK_REVISIONS.get(position);
-        return revision == null ? 0 : revision;
+        return MicrovoxelClientCracks.revisionOf(position);
     }
 
-    /**
-     * Applies one authoritative MINE_STAGE frame. Only a real transition bumps the crack revision
-     * and queues a rebuild, so a steady stage costs nothing on the render path.
-     */
+    /** Applies one MINE_STAGE frame and queues a rebuild on a real transition. */
     private static void applyMineStage(BlockPos position, int cell, int stage) {
-        if (!CRACK_OVERLAY_ENABLED) return;
-        Map<Integer, Integer> cells = CRACKS.computeIfAbsent(
-                position, ignored -> new java.util.concurrent.ConcurrentHashMap<>());
-        boolean changed = ua.rp.chat.microvoxel.MicrovoxelCrack.apply(cells, cell, stage);
-        if (cells.isEmpty()) CRACKS.remove(position, cells);
-        if (!changed) return;
-        CRACK_REVISIONS.put(position, ++crackRevisionCounter);
-        queueRebuild(position);
-        queueChunkBatch(position);
+        if (MicrovoxelClientCracks.apply(position, cell, stage)) {
+            queueRebuild(position);
+            queueChunkBatch(position);
+        }
     }
 
     /** Drops cracks whose cells no longer exist in an authoritative volume (e.g. after a break). */
     private static void pruneCracks(BlockPos position, MicrovoxelVolume authoritative) {
-        Map<Integer, Integer> cells = CRACKS.get(position);
-        if (cells == null) return;
-        boolean changed = false;
-        for (Integer cell : java.util.List.copyOf(cells.keySet())) {
-            if (cell == null || cell < 0 || cell >= MicrovoxelVolume.CELL_COUNT
-                    || !authoritative.occupied(cell)) {
-                cells.remove(cell);
-                changed = true;
-            }
-        }
-        if (cells.isEmpty()) CRACKS.remove(position, cells);
-        if (changed) {
-            CRACK_REVISIONS.put(position, ++crackRevisionCounter);
+        if (MicrovoxelClientCracks.prune(position, authoritative)) {
             queueRebuild(position);
             queueChunkBatch(position);
         }
     }
 
     private static void clearCracks(BlockPos position) {
-        if (CRACKS.remove(position) == null && CRACK_REVISIONS.remove(position) == null) return;
-        queueRebuild(position);
-        queueChunkBatch(position);
+        if (MicrovoxelClientCracks.clear(position)) {
+            queueRebuild(position);
+            queueChunkBatch(position);
+        }
     }
 
     /**
@@ -1315,6 +1308,20 @@ public final class MicrovoxelClientState {
 
     public static long nextTransactionId() {
         return nextTransactionId++;
+    }
+
+    /**
+     * The per-login anti-replay token from {@code HELLO_ACK}, or {@link MicrovoxelSessionToken#NONE}
+     * before the handshake completes. Any replay-sensitive action (a mutation, undo or redo) must
+     * present this value; sending it without a token is refused server-side.
+     */
+    public static long sessionNonce() {
+        return sessionNonce;
+    }
+
+    /** True once a token is available, i.e. replay-sensitive actions may be sent. */
+    public static boolean hasSessionToken() {
+        return sessionNonce != MicrovoxelSessionToken.NONE;
     }
 
     /** Maximum unacknowledged predictions; older ones are rebased by authoritative state. */
@@ -2002,9 +2009,9 @@ public final class MicrovoxelClientState {
         PENDING_PLACEMENTS.clear();
         PENDING_LIGHT_CHECKS.clear();
         CLIENT_FLUIDS.clear();
-        CRACKS.clear();
-        CRACK_REVISIONS.clear();
+        MicrovoxelClientCracks.clearAll();
         predictedFluidAt = null;
+        predictedFluidLava = false;
         MESHING_JOBS.clear();
         MESH_DIRTY_DURING_BUILD.clear();
         MISSING_MARKERS.clear();
@@ -2092,108 +2099,16 @@ public final class MicrovoxelClientState {
     private record MissingMarker(int firstSeenTick, int nextAttemptTick, int attempts) {
     }
 
-    private static VoxelShape combineShapes(VoxelShape[] shapes, int start, int end) {
-        if (start >= end) return Shapes.empty();
-        if (start == end - 1) return shapes[start];
-        int mid = (start + end) / 2;
-        return Shapes.or(combineShapes(shapes, start, mid), combineShapes(shapes, mid, end));
-    }
-
-    private static VoxelShape buildShape(MicrovoxelVolume volume) {
-        MicrovoxelVolume.CollisionPlan plan = volume.collisionPlan();
-        VoxelShape base;
-        if (plan.backend() == MicrovoxelVolume.CollisionBackend.GRID) {
-            BitSetDiscreteVoxelShape discrete = new BitSetDiscreteVoxelShape(
-                    MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION, MicrovoxelVolume.RESOLUTION);
-            for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
-                // Shaped cells are collided by shapeBoxes below, never as a full 1/16 cube.
-                if (volume.occupied(cell) && volume.shapeAt(cell) == 0) {
-                    discrete.fill(MicrovoxelVolume.x(cell), MicrovoxelVolume.y(cell), MicrovoxelVolume.z(cell));
-                }
-            }
-            base = CubeVoxelShapeInvoker.eclipse$create(discrete);
-        } else {
-            List<MicrovoxelVolume.Cuboid> cuboids = plan.cuboids();
-            if (cuboids.isEmpty()) {
-                base = Shapes.empty();
-            } else {
-                VoxelShape[] parts = new VoxelShape[cuboids.size()];
-                for (int index = 0; index < cuboids.size(); index++) {
-                    MicrovoxelVolume.Cuboid cuboid = cuboids.get(index);
-                    parts[index] = Shapes.box(
-                            cuboid.minX() / 16.0, cuboid.minY() / 16.0, cuboid.minZ() / 16.0,
-                            cuboid.maxX() / 16.0, cuboid.maxY() / 16.0, cuboid.maxZ() / 16.0);
-                }
-                base = combineShapes(parts, 0, parts.length).optimize();
-            }
-        }
-
-        List<MicrovoxelVolume.SubBox> shaped = volume.shapeBoxes();
-        if (shaped.isEmpty()) return base;
-        VoxelShape[] parts = new VoxelShape[shaped.size()];
-        for (int index = 0; index < shaped.size(); index++) {
-            MicrovoxelVolume.SubBox box = shaped.get(index);
-            double scale = 1.0 / MicrovoxelVolume.SUB_BLOCK_UNITS;
-            parts[index] = Shapes.box(
-                    box.minX() * scale, box.minY() * scale, box.minZ() * scale,
-                    box.maxX() * scale, box.maxY() * scale, box.maxZ() * scale);
-        }
-        return Shapes.or(base, combineShapes(parts, 0, parts.length)).optimize();
-    }
-
     private static BlockPos readPosition(DataInputStream input) throws IOException {
-        return new BlockPos(input.readInt(), input.readInt(), input.readInt());
+        return MicrovoxelClientCodec.readPosition(input);
     }
 
     private static MicrovoxelVolume readRawVolume(DataInputStream input) throws IOException {
-        int revision = readVarInt(input);
-        int paletteSize = readVarInt(input);
-        if (paletteSize < 1 || paletteSize > MicrovoxelVolume.MAX_PALETTE) {
-            throw new IOException("Invalid palette size");
-        }
-        List<String> palette = new ArrayList<>(paletteSize);
-        for (int index = 0; index < paletteSize; index++) palette.add(readUtf8(input));
-        byte[] cells = new byte[MicrovoxelVolume.CELL_COUNT];
-        int encoding = input.readUnsignedByte();
-        if (encoding == 0) {
-            if (input.readNBytes(cells, 0, cells.length) != cells.length) {
-                throw new EOFException("Truncated cells");
-            }
-        } else if (encoding == 1) {
-            int runs = readVarInt(input);
-            int cursor = 0;
-            for (int run = 0; run < runs; run++) {
-                int length = readVarInt(input);
-                byte material = input.readByte();
-                if (length < 1 || cursor + length > cells.length) {
-                    throw new IOException("Invalid RLE run");
-                }
-                java.util.Arrays.fill(cells, cursor, cursor + length, material);
-                cursor += length;
-            }
-            if (cursor != cells.length) throw new IOException("Incomplete RLE volume");
-        } else {
-            throw new IOException("Unknown cell encoding");
-        }
-        return new MicrovoxelVolume(revision, palette, cells, readOptionalGeometry(input));
+        return MicrovoxelClientCodec.readRawVolume(input);
     }
 
-    /**
-     * Reads the optional per-volume geometry section of the wire body: a presence byte and, when
-     * present, a length-prefixed {@link MicrovoxelGeometry} block. An all-cube volume costs one
-     * false byte, so the common case is unchanged.
-     */
     private static MicrovoxelGeometry readOptionalGeometry(DataInputStream input) throws IOException {
-        if (!input.readBoolean()) return null;
-        int length = readVarInt(input);
-        if (length < 0 || length > 1_048_576) throw new IOException("Invalid geometry length");
-        byte[] encoded = input.readNBytes(length);
-        if (encoded.length != length) throw new EOFException("Truncated microvoxel geometry");
-        try {
-            return MicrovoxelGeometry.decode(encoded);
-        } catch (RuntimeException invalid) {
-            throw new IOException("Invalid microvoxel geometry", invalid);
-        }
+        return MicrovoxelClientCodec.readOptionalGeometry(input);
     }
 
     private static void applyTransactionChange(TransactionChange change) {
@@ -2381,40 +2296,17 @@ public final class MicrovoxelClientState {
                 Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16)));
     }
 
-    /**
-     * Mirror of the server RLE fluid codec. Duplicated deliberately: the two modules cannot
-     * share code, and the build fails closed if either side drifts (see protocol parity).
-     * Public for unit tests.
-     */
+    /** Mirror of the server RLE fluid codec. Public for unit tests; delegates to the codec. */
     public static byte[] decodeLevels(byte[] encoded) throws IOException {
-        try (DataInputStream wrapped = new DataInputStream(new ByteArrayInputStream(encoded))) {
-            int total = readVarInt(wrapped);
-            if (total < 0 || total > 65536) throw new IOException("Invalid fluid level count");
-            byte[] levels = new byte[total];
-            int cursor = 0;
-            while (cursor < total) {
-                int run = readVarInt(wrapped);
-                int level = wrapped.readUnsignedByte();
-                if (run < 1 || cursor + run > total || level > 16) {
-                    throw new IOException("Invalid fluid level run");
-                }
-                java.util.Arrays.fill(levels, cursor, cursor + run, (byte) level);
-                cursor += run;
-            }
-            if (wrapped.read() != -1) throw new IOException("Trailing fluid level bytes");
-            return levels;
-        }
+        return MicrovoxelClientCodec.decodeLevels(encoded);
     }
 
     private static int readVarInt(DataInputStream in) throws IOException {
-        return MicrovoxelWire.readVarInt(in);
+        return MicrovoxelClientCodec.readVarInt(in);
     }
 
     private static String readUtf8(DataInputStream input) throws IOException {
-        int length = readVarInt(input);
-        byte[] bytes = input.readNBytes(length);
-        if (bytes.length != length) throw new EOFException("Truncated UTF-8 value");
-        return new String(bytes, StandardCharsets.UTF_8);
+        return MicrovoxelClientCodec.readUtf8(input);
     }
 
     private record TransactionChange(BlockPos position, MicrovoxelVolume volume) {
@@ -2533,7 +2425,7 @@ public final class MicrovoxelClientState {
             SHAPE_EXECUTOR.submit(() -> {
                 try {
                     long start = System.nanoTime();
-                    VoxelShape newShape = buildShape(snapshot);
+                    VoxelShape newShape = MicrovoxelClientShapes.build(snapshot);
                     long durationNs = System.nanoTime() - start;
                     Minecraft.getInstance().execute(() -> {
                         if (volume.revision() == requestedRevision) {

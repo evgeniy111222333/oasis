@@ -80,8 +80,13 @@ public class EclipseClientMod implements ClientModInitializer {
         net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.END_MAIN.register(
                 context -> {
                     ua.rp.chat.client.carver.CarverHologramRenderer.render(context);
-                    ua.rp.chat.client.carver.CarverDustCore.render(context);
-                    ua.rp.chat.client.carver.CarverChalkOverlay.render();
+                    // The radial wheel floats over the centre, so the chalk cache rebuilds and
+                    // dust particles it covers are pure waste while it is open. The hologram
+                    // stays so the workpiece is still readable behind the wheel.
+                    if (!ua.rp.chat.client.microvoxel.MicrovoxelRadialScreen.isOpen()) {
+                        ua.rp.chat.client.carver.CarverDustCore.render(context);
+                        ua.rp.chat.client.carver.CarverChalkOverlay.render();
+                    }
                 });
         MicrovoxelInteractionController.register();
         ua.rp.chat.client.carver.CarverKeybinds.register();
@@ -188,11 +193,19 @@ public class EclipseClientMod implements ClientModInitializer {
                 LOGGER.info("[BODY] B request ignored due to cooldown.");
                 continue;
             }
-            String bodyUrl = VitalsClientState.bodyStatusUrl();
-            LOGGER.info("[BODY] Creating body status screen: url=" + McefDiagnostics.safeUrl(bodyUrl));
-            client.setScreen(new BodyStatusScreen(bodyUrl));
-            LOGGER.info("[BODY] setScreen returned: currentScreen="
-                    + (client.screen == null ? "none" : client.screen.getClass().getSimpleName()));
+            VitalsClientState.bodyStatusUrlAsync().thenAccept(bodyUrl -> {
+                if (bodyUrl == null) {
+                    LOGGER.warn("[BODY] Could not obtain a body-page session code.");
+                    return;
+                }
+                client.execute(() -> {
+                    if (client.player == null || client.level == null || client.screen != null) {
+                        return;
+                    }
+                    LOGGER.info("[BODY] Creating body status screen: url=" + McefDiagnostics.safeUrl(bodyUrl));
+                    client.setScreen(new BodyStatusScreen(bodyUrl));
+                });
+            });
         }
     }
 

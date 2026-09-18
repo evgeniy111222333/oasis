@@ -58,7 +58,15 @@ def authorize(config: dict) -> Credentials:
     if token_path.exists():
         credentials = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if credentials and credentials.expired and credentials.refresh_token:
-        credentials.refresh(Request())
+        try:
+            credentials.refresh(Request())
+        except Exception as refresh_error:
+            # A revoked/expired refresh token (e.g. a Testing-mode OAuth app whose 7-day
+            # refresh token lapsed) raised here and previously aborted --authorize before the
+            # browser flow could run. Fall through to a fresh interactive authorization instead.
+            print(f"Stored Google Drive token is no longer valid ({refresh_error}); "
+                  f"starting a fresh authorization.")
+            credentials = None
     if not credentials or not credentials.valid:
         flow = InstalledAppFlow.from_client_secrets_file(str(config["clientSecretPath"]), SCOPES)
         credentials = flow.run_local_server(port=0, open_browser=True)

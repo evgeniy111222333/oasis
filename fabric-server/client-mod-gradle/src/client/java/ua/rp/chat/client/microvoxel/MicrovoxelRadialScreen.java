@@ -30,12 +30,17 @@ import java.io.OutputStream;
  *
  * <p>Performance model: the Chromium browser is created <b>once</b> and reused across opens
  * (cold start of CEF was the biggest stall), the page is extracted to disk only when its size
- * changes, the material palette is serialised once per open, and the wheel pauses its CSS
- * animations while closed. Every open/close is timed and FPS-sampled to the client log under
- * {@code [RADIAL-PERF]} so regressions are visible.</p>
+ * changes, and the material palette is serialised once per open. Because the wheel is a resident
+ * transparent OSR surface, the page freezes <b>all</b> ambient animation whenever the wheel is
+ * closed or the pointer goes idle, so CEF stops handing MCEF a fresh full-screen frame to upload;
+ * blend-mode/mask and animated box-shadow effects were removed for the same reason. The carver's
+ * chalk/dust world passes are skipped while the wheel is up. Every open/close is timed and
+ * FPS/frame-time sampled to the client log under {@code [RADIAL-PERF]} (one heartbeat per second,
+ * plus page idle/perf/lifecycle events) so the real cost is visible.</p>
  *
  * <p>Reads the player's choice back on the CEF console channel: the page logs
- * {@code @eclipse/radial:{"action":...,"material":...}}.</p>
+ * {@code @eclipse/radial:{"action":...,"material":...}} and the perf governor rides the same
+ * channel with {@code {"bridge":"idle"|"perf"|"lifecycle",...}}.</p>
  */
 public final class MicrovoxelRadialScreen extends Screen {
     /** Callback the opener supplies: action id, material id (nullable), fragment flag, shape id. */
@@ -53,6 +58,13 @@ public final class MicrovoxelRadialScreen extends Screen {
     private static MCEFBrowser cachedBrowser;
     private static CefDisplayHandlerAdapter cachedHandler;
     private static boolean bridgeInstalled;
+    /**
+     * The wheel instance that currently owns the browser. The console handler is installed once
+     * and dispatches here, never to the instance that happened to install it — otherwise a reused
+     * browser would keep talking to a dead screen: the palette handshake would spin and a picked
+     * action (e.g. «Поставить») would never close the overlay and return to the game.
+     */
+    private static volatile MicrovoxelRadialScreen current;
 
     private final Listener listener;
     private final Screen returnScreen;
@@ -70,6 +82,25 @@ public final class MicrovoxelRadialScreen extends Screen {
     private int fpsMin = Integer.MAX_VALUE;
     private long fpsSum;
 
+    /** Frame-budget probe: delta between consecutive on-screen extracts while the wheel is up. */
+    private long lastExtractNanos;
+    private int frameCount;
+    private long frameNanosSum;
+    private long frameNanosMax;
+    /** Cumulative copies for the close summary (the window above resets every heartbeat). */
+    private int totalFrames;
+    private long totalFrameNanosSum;
+    private long totalFrameNanosMax;
+    private boolean firstBlitLogged;
+    /** Page-side governor state, pushed over the console bridge (idle/breath/perf). */
+    private volatile boolean pageIdle;
+    private volatile int pageFps;
+    private int idleTransitions;
+    private int lifecycleEvents;
+    /** Browser render resolution in physical pixels, for the log. */
+    private int browserPixelWidth;
+    private int browserPixelHeight;
+
     public MicrovoxelRadialScreen(Listener listener) {
         this(listener, null);
     }
@@ -84,6 +115,7 @@ public final class MicrovoxelRadialScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        current = this;
         openStartedNanos = System.nanoTime();
         textureLogged = false;
         fpsSamples = 0;
@@ -94,7 +126,25 @@ public final class MicrovoxelRadialScreen extends Screen {
         paletteAttempts = 0;
         paletteJson = null;
         ticks = 0;
+        lastExtractNanos = 0L;
+        frameCount = 0;
+        frameNanosSum = 0L;
+        frameNanosMax = 0L;
+        totalFrames = 0;
+        totalFrameNanosSum = 0L;
+        totalFrameNanosMax = 0L;
+        firstBlitLogged = false;
+        pageIdle = false;
+        pageFps = 0;
+        idleTransitions = 0;
+        lifecycleEvents = 0;
+        browserPixelWidth = 0;
+        browserPixelHeight = 0;
         try {
+            log("open start: mcefInitialized=" + MCEF.isInitialized()
+                    + " window=" + width + "x" + height + "@scale" + guiScale()
+                    + " returnScreen=" + (returnScreen == null ? "none" : returnScreen.getClass().getSimpleName())
+                    + " browserActive=" + McefGlStateGuard.restoreCount());
             if (!MCEF.isInitialized()) MCEF.initialize();
             File page = extractPage();
             // "#open" auto-opens the wheel the moment the overlay loads (no extra key press).
@@ -104,27 +154,51 @@ public final class MicrovoxelRadialScreen extends Screen {
                 cachedBrowser = MCEF.createBrowser(url, true);
                 log("browser created in " + ms(started) + ", " + McefDiagnostics.browserState(cachedBrowser));
             } else {
+                boolean alive = true;
                 try {
                     cachedBrowser.executeJavaScript(
                             "window.EclipseRadial && window.EclipseRadial.open();", "", 0);
-                } catch (Throwable ignored) {
-                    // the page still shows; it is just already open or reloading
+                } catch (Throwable reuseFailed) {
+                    // A stale handle (CEF reinit / resource reload) must not be reused forever:
+                    // drop it and fall through to a fresh browser.
+                    alive = false;
                 }
-                log("browser reused (cold-start avoided)");
+                if (alive) {
+                    log("browser reused (cold-start avoided), " + McefDiagnostics.browserState(cachedBrowser));
+                } else {
+                    try {
+                        cachedBrowser.close();
+                    } catch (Throwable ignored) {
+                        // already gone
+                    }
+                    cachedBrowser = MCEF.createBrowser(url, true);
+                    log("browser recreated after stale handle, " + McefDiagnostics.browserState(cachedBrowser));
+                }
             }
             browser = cachedBrowser;
             if (browser != null) {
                 McefGlStateGuard.onBrowserActive();
                 browser.setFocus(true);
                 int scale = guiScale();
-                browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
+                browserPixelWidth = Math.max(1, width * scale);
+                browserPixelHeight = Math.max(1, height * scale);
+                browser.resize(browserPixelWidth, browserPixelHeight);
+                log("browser resized to " + browserPixelWidth + "x" + browserPixelHeight
+                        + " transparent=" + browser.getRenderer().isTransparent());
             }
             installBridge();
             log("open ready in " + ms(openStartedNanos) + " (" + width + "x" + height + ")");
+            log("perf governor armed: ambient animation idles after 1500ms; carver world overlays"
+                    + " (chalk/dust) gated while this screen is open");
         } catch (Throwable error) {
             browser = null;
+            // Never keep a handle we failed to drive: the next open rebuilds instead of reusing
+            // a dead browser and failing again.
+            cachedBrowser = null;
             EclipseClientMod.LOGGER.warn("Microvoxel radial overlay failed to open", error);
-            if (minecraft != null) minecraft.setScreen(null);
+            // Restore the screen the wheel was opened over (e.g. the Carver UI) rather than
+            // dumping the player back into the world.
+            if (minecraft != null) minecraft.setScreen(returnScreen);
         }
     }
 
@@ -161,7 +235,9 @@ public final class MicrovoxelRadialScreen extends Screen {
             public boolean onConsoleMessage(CefBrowser source, CefSettings.LogSeverity level,
                                             String message, String scriptUrl, int line) {
                 if (message != null && message.startsWith(BRIDGE_PREFIX)) {
-                    handleBridge(message.substring(BRIDGE_PREFIX.length()));
+                    // Dispatch to the live wheel, not the instance that installed the handler.
+                    MicrovoxelRadialScreen active = current;
+                    if (active != null) active.handleBridge(message.substring(BRIDGE_PREFIX.length()));
                     return true;
                 }
                 return false;
@@ -179,7 +255,54 @@ public final class MicrovoxelRadialScreen extends Screen {
             log("palette ack at " + ms(openStartedNanos));
             return;
         }
+        // Page-side perf governor telemetry must never be mistaken for a menu selection.
+        if (json.contains("\"bridge\":\"idle\"")) {
+            handlePageIdle(json);
+            return;
+        }
+        if (json.contains("\"bridge\":\"perf\"")) {
+            handlePagePerf(json);
+            return;
+        }
+        if (json.contains("\"bridge\":\"lifecycle\"")) {
+            handlePageLifecycle(json);
+            return;
+        }
         handleSelection(json);
+    }
+
+    /**
+     * The page reports when it stopped/restarted all ambient animation. This is the exact
+     * hypothesis under test: if FPS only recovers while {@code idle=true}, the cost is CEF
+     * repainting the wheel, not the game.
+     */
+    private void handlePageIdle(String json) {
+        boolean nowIdle = !"false".equalsIgnoreCase(jsonValue(json, "idle"));
+        int frames = jsonInt(json, "pageFps", 0);
+        if (nowIdle != pageIdle) {
+            idleTransitions++;
+            pageIdle = nowIdle;
+            if (nowIdle) {
+                stopFrameProbe();
+                pageFps = 0;
+            }
+            log("page idle=" + nowIdle + " at " + ms(openStartedNanos)
+                    + " (pageFpsBeforeIdle=" + frames + ", transitions=" + idleTransitions + ")");
+        }
+    }
+
+    private void handlePagePerf(String json) {
+        pageFps = jsonInt(json, "pageFps", pageFps);
+    }
+
+    private void handlePageLifecycle(String json) {
+        lifecycleEvents++;
+        log("page lifecycle=" + String.valueOf(jsonValue(json, "event"))
+                + " at " + ms(openStartedNanos) + " events=" + lifecycleEvents);
+    }
+
+    private void stopFrameProbe() {
+        lastExtractNanos = 0L;
     }
 
     private void handleSelection(String json) {
@@ -194,6 +317,8 @@ public final class MicrovoxelRadialScreen extends Screen {
         int brushRadius = jsonInt(json, "brushRadius", 0);
         Minecraft minecraft = this.minecraft;
         boolean keepOpen = action != null && action.startsWith("history.");
+        log("selection action=" + action + " material=" + material + " fragment=" + fragment
+                + " keepOpen=" + keepOpen + " at " + ms(openStartedNanos));
         if (minecraft != null) minecraft.execute(() -> {
             if (listener != null) listener.onSelect(action, material, fragment, shapeId,
                     length, width, height, brushShape, brushRadius);
@@ -261,6 +386,36 @@ public final class MicrovoxelRadialScreen extends Screen {
             fpsSum += fps;
             if (fps < fpsMin) fpsMin = fps;
         }
+        if (ticks % 20 == 0) {
+            logHeartbeat(fps);
+        }
+    }
+
+    /**
+     * One line per second while the wheel is open: live FPS plus the CPU frame interval and the
+     * page-side governor state. Read {@code idle=true} rows against {@code idle=false} rows to see
+     * exactly how much the CEF repaint costs on the current machine.
+     */
+    private void logHeartbeat(int fps) {
+        double frameAvgMs = frameCount == 0 ? 0.0 : frameNanosSum / 1_000_000.0 / frameCount;
+        double frameMaxMs = frameNanosMax / 1_000_000.0;
+        int avgFps = fpsSamples == 0 ? 0 : (int) (fpsSum / fpsSamples);
+        log("t=" + (ticks / 20) + "s fps=" + fps + " fpsAvg=" + avgFps
+                + " fpsMin=" + (fpsMin == Integer.MAX_VALUE ? 0 : fpsMin)
+                + " frameAvgMs=" + String.format(java.util.Locale.ROOT, "%.2f", frameAvgMs)
+                + " frameMaxMs=" + String.format(java.util.Locale.ROOT, "%.2f", frameMaxMs)
+                + " framesLastSec=" + frameCount
+                + " tex=" + (browser == null || !browser.isTextureReady()
+                        ? "none" : browser.getRenderer().getTextureWidth() + "x"
+                        + browser.getRenderer().getTextureHeight())
+                + " pageIdle=" + pageIdle + " pageFps=" + pageFps
+                + " paletteInjected=" + paletteInjected + " paletteAttempts=" + paletteAttempts
+                + " glRestores=" + McefGlStateGuard.restoreCount());
+        // Window resets so each line is this second's budget, not a session average.
+        frameCount = 0;
+        frameNanosSum = 0L;
+        frameNanosMax = 0L;
+        lastExtractNanos = 0L;
     }
 
     @Override
@@ -270,10 +425,26 @@ public final class MicrovoxelRadialScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        long now = System.nanoTime();
+        if (lastExtractNanos != 0L) {
+            long deltaNanos = now - lastExtractNanos;
+            frameCount++;
+            frameNanosSum += deltaNanos;
+            if (deltaNanos > frameNanosMax) frameNanosMax = deltaNanos;
+            totalFrames++;
+            totalFrameNanosSum += deltaNanos;
+            if (deltaNanos > totalFrameNanosMax) totalFrameNanosMax = deltaNanos;
+        }
+        lastExtractNanos = now;
         McefGlStateGuard.restore();
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
+            if (!firstBlitLogged) {
+                firstBlitLogged = true;
+                log("first browser blit at " + ms(openStartedNanos)
+                        + ", " + McefDiagnostics.browserState(browser));
+            }
             graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f,
                     width, height, width, height);
         }
@@ -348,7 +519,11 @@ public final class MicrovoxelRadialScreen extends Screen {
         super.resize(width, height);
         if (browser != null) {
             int scale = guiScale();
-            browser.resize(Math.max(1, width * scale), Math.max(1, height * scale));
+            browserPixelWidth = Math.max(1, width * scale);
+            browserPixelHeight = Math.max(1, height * scale);
+            browser.resize(browserPixelWidth, browserPixelHeight);
+            log("browser resize re-issued: " + width + "x" + height + " -> "
+                    + browserPixelWidth + "x" + browserPixelHeight);
         }
     }
 
@@ -357,27 +532,59 @@ public final class MicrovoxelRadialScreen extends Screen {
         return false;
     }
 
+    /** True while a wheel instance owns the shared browser; used to gate world-space passes. */
+    public static boolean isOpen() {
+        return current != null;
+    }
+
     @Override
     public void onClose() {
         logClose("onClose");
-        // Keep the browser alive for the next open (cold-start avoidance); the page pauses its
-        // own animations while the wheel is closed.
+        // Keep the browser alive for the next open (cold-start avoidance), but explicitly tell
+        // the page to close: otherwise it would keep the wheel open-and-animating behind the
+        // restored screen, and CEF would keep repainting the whole surface every frame.
+        pausePage();
         if (minecraft != null) minecraft.setScreen(returnScreen);
     }
 
     @Override
     public void removed() {
+        pausePage();
         logClose("removed");
+        if (current == this) current = null;
         super.removed();
+    }
+
+    /** Freezes the page and drops browser focus; the wheel is invisible from now on. */
+    private void pausePage() {
+        if (browser == null) {
+            return;
+        }
+        try {
+            browser.executeJavaScript(
+                    "window.EclipseRadial && window.EclipseRadial.close();", "", 0);
+            browser.setFocus(false);
+        } catch (Throwable ignored) {
+            // a closed browser is fine; the next open re-creates it
+        }
     }
 
     /** Emits one perf line per close so the real open/interaction cost is visible in the log. */
     private void logClose(String reason) {
         int avg = fpsSamples == 0 ? 0 : (int) (fpsSum / fpsSamples);
         int min = fpsMin == Integer.MAX_VALUE ? 0 : fpsMin;
+        double frameAvgMs = totalFrames == 0 ? 0.0
+                : totalFrameNanosSum / 1_000_000.0 / totalFrames;
+        double frameMaxMs = totalFrameNanosMax / 1_000_000.0;
         log("close/" + reason + " openMs=" + ms(openStartedNanos)
                 + " fpsAvg=" + avg + " fpsMin=" + min + " samples=" + fpsSamples
-                + " paletteAttempts=" + paletteAttempts);
+                + " frameAvgMs=" + String.format(java.util.Locale.ROOT, "%.2f", frameAvgMs)
+                + " frameMaxMs=" + String.format(java.util.Locale.ROOT, "%.2f", frameMaxMs)
+                + " frames=" + totalFrames
+                + " browserPx=" + browserPixelWidth + "x" + browserPixelHeight
+                + " idleTransitions=" + idleTransitions + " lifecycleEvents=" + lifecycleEvents
+                + " paletteAttempts=" + paletteAttempts + " glRestores=" + McefGlStateGuard.restoreCount()
+                + " | overlay released; carver chalk/dust resume");
     }
 
     private long ms(long startedNanos) {

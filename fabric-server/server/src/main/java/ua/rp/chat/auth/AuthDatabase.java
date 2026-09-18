@@ -23,7 +23,7 @@ public class AuthDatabase {
         this.dbFile = new File(dataFolder, "auth.db");
     }
 
-    public void connect() throws SQLException {
+    public synchronized void connect() throws SQLException {
         if (connection != null && !connection.isClosed()) {
             return;
         }
@@ -34,9 +34,14 @@ public class AuthDatabase {
         }
         connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
 
-        // Enable WAL mode for better concurrency
+        // WAL for concurrent readers; busy_timeout so a contended writer waits instead of failing
+        // with SQLITE_BUSY; NORMAL sync is the safe WAL pairing. Access is additionally serialized
+        // by synchronizing every method (one shared xerial connection is not thread-safe).
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("PRAGMA journal_mode=WAL");
+            stmt.execute("PRAGMA busy_timeout=5000");
+            stmt.execute("PRAGMA synchronous=NORMAL");
+            stmt.execute("PRAGMA foreign_keys=ON");
         }
 
         createTables();
@@ -44,7 +49,7 @@ public class AuthDatabase {
         logger.info("AuthDatabase connected: " + dbFile.getAbsolutePath());
     }
 
-    private void createTables() throws SQLException {
+    private synchronized void createTables() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS players (
@@ -81,7 +86,7 @@ public class AuthDatabase {
         }
     }
 
-    private void upgradeDatabase() {
+    private synchronized void upgradeDatabase() {
         try (Statement stmt = connection.createStatement()) {
             try {
                 stmt.execute("ALTER TABLE players ADD COLUMN login_name TEXT");
@@ -133,7 +138,7 @@ public class AuthDatabase {
         }
     }
 
-    private void migratePlayerCharacters() {
+    private synchronized void migratePlayerCharacters() {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT uuid, login_name, rp_name, appearance_model, appearance_hash, appearance_url, appearance_storage_key, appearance_updated_at, registered_at "
                         + "FROM players WHERE rp_name IS NOT NULL AND TRIM(rp_name) <> ''");
@@ -165,7 +170,7 @@ public class AuthDatabase {
     /**
      * Checks if a player has a registered account.
      */
-    public boolean isRegistered(UUID uuid) {
+    public synchronized boolean isRegistered(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT 1 FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
@@ -179,7 +184,7 @@ public class AuthDatabase {
     /**
      * Gets the stored login name for a player.
      */
-    public String getLoginName(UUID uuid) {
+    public synchronized String getLoginName(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT login_name FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
@@ -196,7 +201,7 @@ public class AuthDatabase {
     /**
      * Gets the stored RP name for a player.
      */
-    public String getRpName(UUID uuid) {
+    public synchronized String getRpName(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT rp_name FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
@@ -210,7 +215,7 @@ public class AuthDatabase {
         return null;
     }
 
-    public PlayerAccount getAccountByLoginName(String loginName) {
+    public synchronized PlayerAccount getAccountByLoginName(String loginName) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT uuid, login_name, rp_name, password_hash FROM players WHERE login_name = ? COLLATE NOCASE")) {
             ps.setString(1, loginName);
@@ -229,7 +234,7 @@ public class AuthDatabase {
         return null;
     }
 
-    public boolean rebindAccountUuid(String loginName, UUID newUuid) {
+    public synchronized boolean rebindAccountUuid(String loginName, UUID newUuid) {
         PlayerAccount account = getAccountByLoginName(loginName);
         if (account == null) {
             return false;
@@ -256,7 +261,7 @@ public class AuthDatabase {
         }
     }
 
-    public AppearanceProfile getAppearanceProfile(UUID uuid) {
+    public synchronized AppearanceProfile getAppearanceProfile(UUID uuid) {
         String rpName = getRpName(uuid);
         AppearanceProfile characterProfile = getAppearanceProfileByRpName(rpName);
         if (characterProfile != null) {
@@ -283,7 +288,7 @@ public class AuthDatabase {
         return null;
     }
 
-    public AppearanceProfile getAppearanceProfileByRpName(String rpName) {
+    public synchronized AppearanceProfile getAppearanceProfileByRpName(String rpName) {
         String key = characterKey(rpName);
         if (key.isBlank()) {
             return null;
@@ -309,11 +314,11 @@ public class AuthDatabase {
         return null;
     }
 
-    public boolean updateAppearance(UUID uuid, String model, String hash) {
+    public synchronized boolean updateAppearance(UUID uuid, String model, String hash) {
         return updateAppearance(uuid, model, hash, null, null);
     }
 
-    public boolean updateAppearance(UUID uuid, String model, String hash, String url, String storageKey) {
+    public synchronized boolean updateAppearance(UUID uuid, String model, String hash, String url, String storageKey) {
         String rpName = getRpName(uuid);
         boolean characterUpdated = updateCharacterAppearance(rpName, model, hash, url, storageKey);
         try (PreparedStatement ps = connection.prepareStatement(
@@ -331,7 +336,7 @@ public class AuthDatabase {
         }
     }
 
-    public boolean updateCharacterAppearance(String rpName, String model, String hash, String url, String storageKey) {
+    public synchronized boolean updateCharacterAppearance(String rpName, String model, String hash, String url, String storageKey) {
         String key = characterKey(rpName);
         if (key.isBlank()) {
             return false;
@@ -356,7 +361,7 @@ public class AuthDatabase {
     /**
      * Checks if a login name is already registered by another user.
      */
-    public boolean isLoginNameTaken(String loginName) {
+    public synchronized boolean isLoginNameTaken(String loginName) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT 1 FROM players WHERE login_name = ? COLLATE NOCASE")) {
             ps.setString(1, loginName);
@@ -367,7 +372,7 @@ public class AuthDatabase {
         }
     }
 
-    public boolean isRpNameTaken(String rpName) {
+    public synchronized boolean isRpNameTaken(String rpName) {
         String key = characterKey(rpName);
         if (key.isBlank()) {
             return false;
@@ -386,7 +391,7 @@ public class AuthDatabase {
     /**
      * Gets the stored password hash for a player.
      */
-    public String getPasswordHash(UUID uuid) {
+    public synchronized String getPasswordHash(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT password_hash FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
@@ -403,7 +408,7 @@ public class AuthDatabase {
     /**
      * Registers a new player with the given details.
      */
-    public boolean register(UUID uuid, String loginName, String rpName, String email, String passwordHash) {
+    public synchronized boolean register(UUID uuid, String loginName, String rpName, String email, String passwordHash) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO players (uuid, login_name, rp_name, email, password_hash, registered_at) VALUES (?, ?, ?, ?, ?, ?)")) {
             ps.setString(1, uuid.toString());
@@ -422,12 +427,12 @@ public class AuthDatabase {
         }
     }
 
-    private boolean createCharacterForAccount(String loginName, UUID uuid, String rpName, long createdAt) {
+    private synchronized boolean createCharacterForAccount(String loginName, UUID uuid, String rpName, long createdAt) {
         return upsertCharacter(characterKey(rpName), loginName, uuid.toString(), rpName,
                 null, null, null, null, 0L, createdAt);
     }
 
-    public boolean deleteAccount(UUID uuid) {
+    public synchronized boolean deleteAccount(UUID uuid) {
         String rpName = getRpName(uuid);
         String key = characterKey(rpName);
         try {
@@ -458,7 +463,7 @@ public class AuthDatabase {
         }
     }
 
-    private void updateCharacterOwner(String rpName, String loginName, UUID uuid) {
+    private synchronized void updateCharacterOwner(String rpName, String loginName, UUID uuid) {
         String key = characterKey(rpName);
         if (key.isBlank()) {
             return;
@@ -475,7 +480,7 @@ public class AuthDatabase {
         }
     }
 
-    private boolean upsertCharacter(
+    private synchronized boolean upsertCharacter(
             String characterKey,
             String loginName,
             String uuid,
@@ -533,7 +538,7 @@ public class AuthDatabase {
     /**
      * Updates the last login IP and timestamp.
      */
-    public void updateLogin(UUID uuid, String ip) {
+    public synchronized void updateLogin(UUID uuid, String ip) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "UPDATE players SET last_ip = ?, last_login = ? WHERE uuid = ?")) {
             ps.setString(1, ip);
@@ -548,7 +553,7 @@ public class AuthDatabase {
     /**
      * Gets the last login IP for session-based auto-login.
      */
-    public String getLastIp(UUID uuid) {
+    public synchronized String getLastIp(UUID uuid) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT last_ip FROM players WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
@@ -565,7 +570,7 @@ public class AuthDatabase {
     /**
      * Changes a player's password.
      */
-    public boolean changePassword(UUID uuid, String newPasswordHash) {
+    public synchronized boolean changePassword(UUID uuid, String newPasswordHash) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "UPDATE players SET password_hash = ? WHERE uuid = ?")) {
             ps.setString(1, newPasswordHash);
@@ -577,7 +582,7 @@ public class AuthDatabase {
         }
     }
 
-    public void disconnect() {
+    public synchronized void disconnect() {
         if (connection != null) {
             try {
                 connection.close();

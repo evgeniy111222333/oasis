@@ -139,7 +139,11 @@ public final class MicrovoxelMiningEngine {
         MicrovoxelMiningSession current = sessions.get(playerId);
         if (current == null || !current.key().equals(key) || current.cell() != cell
                 || current.revision() != volume.revision()
-                || !current.material().equals(material)) {
+                || !current.material().equals(material)
+                || current.requiredTicks() != requiredTicks) {
+            // requiredTicks is part of the identity: swapping to a faster tool must not keep
+            // the old (lower) budget, and swapping away must not keep the fast one. A changed
+            // speed restarts the session, exactly like vanilla resets destroy progress.
             sessions.put(playerId, new MicrovoxelMiningSession(
                     playerId, worldId, key, cell, material, volume.revision(), requiredTicks,
                     0.0f, now, -1, toolOk, false));
@@ -196,8 +200,7 @@ public final class MicrovoxelMiningEngine {
         // otherwise starting with Efficiency V and swapping to an empty hand keeps full speed.
         boolean toolOkNow = player.hasCorrectToolForDrops(cellState);
         if (toolOkNow && !session.material().isBlank()) {
-            economy.refundMaterialUnits(player, session.material(),
-                    ua.rp.chat.microvoxel.econ.MicrovoxelMaterialEconomy.UNITS_PER_CELL);
+            economy.refundMaterialUnits(player, session.material(), refundUnitsFor(volume, session.cell()));
         }
         ServerLevel level = context.runtime().getWorld(session.worldId());
         if (level != null) {
@@ -221,6 +224,15 @@ public final class MicrovoxelMiningEngine {
         // Clear the crack explicitly: on a successful break the session is dropped without a
         // -1 frame, so onlookers would otherwise keep the last stage until the next tick.
         broadcastMineStage(session.key(), session.cell(), -1);
+    }
+
+    /**
+     * Shape-aware refund: a mined cell returns exactly the units its shape cost to place, so
+     * place/mine cycles on slabs, ramps and bevels cannot mint material. A full cube refunds a
+     * whole cell, a half slab half a cell, matching {@link MicrovoxelMaterialEconomy#cellCost(int)}.
+     */
+    static int refundUnitsFor(MicrovoxelVolume volume, int cell) {
+        return MicrovoxelMaterialEconomy.cellCost(volume.shapeAt(cell));
     }
 
     private static BlockPos keyBlockPos(MicrovoxelKey key) {

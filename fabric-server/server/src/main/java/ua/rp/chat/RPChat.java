@@ -142,7 +142,7 @@ public class RPChat implements DedicatedServerModInitializer {
         carverManager.reloadTuning();
         itemPickupManager = new ItemPickupManager(this);
         itemPickupManager.start();
-        ua.rp.chat.crawling.CrawlingServerManager.init();
+        ua.rp.chat.crawling.CrawlingServerManager.init(this::isPendingAuth);
 
         // Extract web resources for customizability
         extractWebAssets();
@@ -150,6 +150,9 @@ public class RPChat implements DedicatedServerModInitializer {
         // Start Web Server
         int webPort = config.getInt("web.port", 8080);
         authWebServer = new AuthWebServer(this, authManager, staminaManager);
+        // Vitals API authorization reuses the per-login microvoxel session token: a request may
+        // only read/treat a player whose token it presents (or a short-lived vitals cookie).
+        authWebServer.setApiTokenAuthorizer(microvoxelManager::acceptSessionNonce);
 
         // Register every payload used by the paired Fabric client before play connections are created.
         var serverbound = net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay();
@@ -240,6 +243,7 @@ public class RPChat implements DedicatedServerModInitializer {
             if (isPendingAuth(player)
                     && !MicrovoxelProtocol.isSynchronizationAction(payload.action())) return;
             microvoxelManager.handleAction(player, payload.protocolVersion(), payload.transactionId(),
+                    payload.sessionNonce(),
                     payload.action(), payload.x(), payload.y(), payload.z(), payload.cell(), payload.revision(),
                     new net.minecraft.world.phys.Vec3(payload.lookX(), payload.lookY(), payload.lookZ()),
                     new net.minecraft.world.phys.Vec3(payload.eyeX(), payload.eyeY(), payload.eyeZ()),
@@ -260,6 +264,7 @@ public class RPChat implements DedicatedServerModInitializer {
                 if (isPendingAuth(player)
                         && !MicrovoxelProtocol.isSynchronizationAction(entry.action())) return;
                 microvoxelManager.handleAction(player, payload.protocolVersion(), entry.transactionId(),
+                        payload.sessionNonce(),
                         entry.action(), entry.x(), entry.y(), entry.z(), entry.cell(), entry.revision(),
                         look, eye, entry.material());
             }
@@ -294,7 +299,8 @@ public class RPChat implements DedicatedServerModInitializer {
                         return;
                     }
                     context.server().execute(() -> carverManager.handleAction(actionPlayer,
-                            payload.action(), payload.x(), payload.y(), payload.z(), payload.data()));
+                            payload.action(), payload.x(), payload.y(), payload.z(),
+                            payload.sessionNonce(), payload.data()));
                 });
 
         // Restore the gameplay hooks that previously came from Bukkit listeners.
@@ -666,15 +672,9 @@ public class RPChat implements DedicatedServerModInitializer {
 
             dispatcher.register(Commands.literal("microvoxel")
                 .requires(source -> RPChat.hasPermission(source, "rpchat.microvoxels.edit", 2))
-                .then(Commands.literal("convert")
-                    .executes(context -> {
-                        ServerPlayer player = context.getSource().getPlayerOrException();
-                        microvoxelManager.handleAction(player, MicrovoxelProtocol.VERSION, 0L,
-                                MicrovoxelProtocol.ACTION_CONVERT, 0, 0, 0, 0, 0,
-                                Vec3.ZERO, Vec3.ZERO, "");
-                        return 1;
-                    })
-                )
+                // "convert" was removed with the carver rework: conversion of a full block into a
+                // 16³ volume is now done by the carver work tick, and the old command was broken
+                // (it targeted 0,0,0 and reused transaction id 0, which the replay shield rejects).
                 .then(Commands.literal("restore")
                     .executes(context -> microvoxelManager.restoreLookedAt(
                             context.getSource().getPlayerOrException()) ? 1 : 0))
@@ -731,7 +731,12 @@ public class RPChat implements DedicatedServerModInitializer {
         };
         for (String filename : files) {
             File output = new File(webFolder, filename);
-            boolean managed = filename.startsWith("appearance.");
+            // Security-relevant client scripts and built bundles are always refreshed from the jar,
+            // so a server upgrade cannot leave a stale page that still sends the token in a URL.
+            boolean managed = filename.startsWith("appearance.")
+                    || filename.equals("app.js")
+                    || filename.equals("body.js")
+                    || filename.startsWith("assets/");
             if (!managed && output.exists()) continue;
             File parent = output.getParentFile();
             if (parent != null) parent.mkdirs();

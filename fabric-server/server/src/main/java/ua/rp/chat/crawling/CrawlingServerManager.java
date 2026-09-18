@@ -2,29 +2,41 @@ package ua.rp.chat.crawling;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Pose;
+import ua.rp.chat.antiabuse.ActionRateLimiter;
 import ua.rp.chat.client.crawling.CrawlStatePayload;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
+/**
+ * Server authority for the crawling/prone pose. The pose is client-driven for feel, but every
+ * state change is gated on authentication, rate-limited and clamped, and the per-player state is
+ * cleaned on disconnect so an offline-name relog can never inherit a stale pose.
+ */
 public final class CrawlingServerManager {
-    private static final Map<UUID, PlayerCrawlState> STATES = new HashMap<>();
+    private static final Map<UUID, PlayerCrawlState> STATES = new ConcurrentHashMap<>();
+    /** Per-player packet budget: crawl state is cosmetic, so a tight cap is enough. */
+    private static final ActionRateLimiter CRAWL_RATE = new ActionRateLimiter(20.0, 20.0);
+    /** Pending-auth predicate wired from RPChat: an unauthenticated player must not mutate pose. */
+    private static volatile Predicate<ServerPlayer> pendingAuth = player -> false;
 
     public record PlayerCrawlState(boolean crawling, boolean stealth, float progress, long updatedAt) {}
 
     private CrawlingServerManager() {}
 
-    public static void init() {
+    public static void init(Predicate<ServerPlayer> isPendingAuth) {
+        if (isPendingAuth != null) pendingAuth = isPendingAuth;
         PayloadTypeRegistry.serverboundPlay().register(CrawlStatePayload.TYPE, CrawlStatePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(CrawlStatePayload.TYPE, CrawlStatePayload.CODEC);
-        System.out.println("[CRAWL-DEBUG-SERVER] Registered CrawlStatePayload codecs on server");
 
         ServerPlayNetworking.registerGlobalReceiver(CrawlStatePayload.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
@@ -32,74 +44,60 @@ public final class CrawlingServerManager {
             context.server().execute(() -> handleClientCrawlState(player, payload));
         });
 
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            dispatcher.register(Commands.literal("crawl")
-                    .executes(ctx -> {
-                        ServerPlayer player = ctx.getSource().getPlayer();
-                        if (player != null) {
-                            System.out.println("[CRAWL-DEBUG-SERVER] Command /crawl executed by " + player.getName().getString());
-                            toggleCrawl(player);
-                        }
-                        return 1;
-                    }));
-            dispatcher.register(Commands.literal("prone")
-                    .executes(ctx -> {
-                        ServerPlayer player = ctx.getSource().getPlayer();
-                        if (player != null) {
-                            System.out.println("[CRAWL-DEBUG-SERVER] Command /prone executed by " + player.getName().getString());
-                            toggleCrawl(player);
-                        }
-                        return 1;
-                    }));
-            dispatcher.register(Commands.literal("lay")
-                    .executes(ctx -> {
-                        ServerPlayer player = ctx.getSource().getPlayer();
-                        if (player != null) {
-                            System.out.println("[CRAWL-DEBUG-SERVER] Command /lay executed by " + player.getName().getString());
-                            toggleCrawl(player);
-                        }
-                        return 1;
-                    }));
+        // Clean the static state map: a disconnected player must not leave a swimming pose that a
+        // same-name (offline UUID) relog would otherwise inherit before sending any packet.
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            ServerPlayer player = handler.getPlayer();
+            if (player != null) STATES.remove(player.getUUID());
         });
-        System.out.println("[CRAWL-DEBUG-SERVER] Registered commands /crawl, /prone, /lay");
+
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(Commands.literal("crawl").executes(ctx -> commandToggle(ctx.getSource().getPlayer())));
+            dispatcher.register(Commands.literal("prone").executes(ctx -> commandToggle(ctx.getSource().getPlayer())));
+            dispatcher.register(Commands.literal("lay").executes(ctx -> commandToggle(ctx.getSource().getPlayer())));
+        });
+    }
+
+    private static int commandToggle(ServerPlayer player) {
+        if (player != null && !pendingAuth.test(player)) toggleCrawl(player);
+        return 1;
     }
 
     public static void handleClientCrawlState(ServerPlayer player, CrawlStatePayload payload) {
-        if (player == null) return;
+        if (player == null || pendingAuth.test(player)) return;
+        if (!CRAWL_RATE.tryAcquire(player.getUUID())) return;
         UUID uuid = player.getUUID();
         PlayerCrawlState previous = STATES.get(uuid);
 
-        System.out.println("[CRAWL-DEBUG-SERVER] Received CrawlStatePayload from " + player.getName().getString()
-                + " -> crawling=" + payload.crawling() + ", stealth=" + payload.stealth() + ", progress=" + payload.progress());
+        boolean crawling = payload.crawling();
+        boolean stealth = payload.stealth();
+        // Clamp before anything is broadcast: a crafted NaN/Infinity/huge progress must never
+        // reach nearby clients or the stored state.
+        float progress = payload.progress();
+        if (!Float.isFinite(progress)) progress = 0.0f;
+        progress = Math.max(0.0f, Math.min(1.0f, progress));
 
-        if (payload.crawling()) {
+        if (crawling) {
             player.setPose(Pose.SWIMMING);
-        } else if (previous != null && previous.crawling() && !payload.crawling()) {
-            // Check ceiling clearance
+        } else if (previous != null && previous.crawling()) {
             if (!hasStandingClearance(player)) {
                 player.sendSystemMessage(Component.literal("Занадто низько, щоб підвестися!"), true);
-                System.out.println("[CRAWL-DEBUG-SERVER] Player " + player.getName().getString() + " cannot stand up due to ceiling");
-                ServerPlayNetworking.send(player, new CrawlStatePayload(true, payload.stealth(), 1.0f));
+                ServerPlayNetworking.send(player, new CrawlStatePayload(true, stealth, 1.0f));
                 return;
             }
             player.setPose(Pose.STANDING);
         }
 
-        STATES.put(uuid, new PlayerCrawlState(payload.crawling(), payload.stealth(), payload.progress(), System.currentTimeMillis()));
+        STATES.put(uuid, new PlayerCrawlState(crawling, stealth, progress, System.currentTimeMillis()));
 
-        // Broadcast to tracking players
-        CrawlStatePayload broadcastPayload = new CrawlStatePayload(payload.crawling(), payload.stealth(), payload.progress());
+        CrawlStatePayload broadcastPayload = new CrawlStatePayload(crawling, stealth, progress);
         ServerLevel level = (ServerLevel) player.level();
-        int count = 0;
         for (ServerPlayer other : level.players()) {
-            if (other != player && other.distanceToSqr(player) < 16384.0) {
-                if (ServerPlayNetworking.canSend(other, CrawlStatePayload.TYPE)) {
-                    ServerPlayNetworking.send(other, broadcastPayload);
-                    count++;
-                }
+            if (other != player && other.distanceToSqr(player) < 16384.0
+                    && ServerPlayNetworking.canSend(other, CrawlStatePayload.TYPE)) {
+                ServerPlayNetworking.send(other, broadcastPayload);
             }
         }
-        System.out.println("[CRAWL-DEBUG-SERVER] Broadcasted crawl state for " + player.getName().getString() + " to " + count + " nearby players");
     }
 
     public static void toggleCrawl(ServerPlayer player) {
@@ -113,16 +111,13 @@ public final class CrawlingServerManager {
                 player.setPose(Pose.STANDING);
                 STATES.put(uuid, new PlayerCrawlState(false, false, 0.0f, System.currentTimeMillis()));
                 ServerPlayNetworking.send(player, new CrawlStatePayload(false, false, 0.0f));
-                System.out.println("[CRAWL-DEBUG-SERVER] Toggled off crawl mode for " + player.getName().getString());
             } else {
                 player.sendSystemMessage(Component.literal("Занадто низько, щоб підвестися!"), true);
-                System.out.println("[CRAWL-DEBUG-SERVER] Blocked toggle off crawl mode for " + player.getName().getString() + " (ceiling low)");
             }
         } else {
             player.setPose(Pose.SWIMMING);
             STATES.put(uuid, new PlayerCrawlState(true, false, 1.0f, System.currentTimeMillis()));
             ServerPlayNetworking.send(player, new CrawlStatePayload(true, false, 1.0f));
-            System.out.println("[CRAWL-DEBUG-SERVER] Toggled on crawl mode for " + player.getName().getString());
         }
     }
 

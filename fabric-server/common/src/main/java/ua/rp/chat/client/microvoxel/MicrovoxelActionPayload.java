@@ -5,7 +5,13 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
-public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
+/**
+ * One microvoxel action. {@code sessionNonce} is the per-login token the server issued in
+ * {@code HELLO_ACK}; the server rejects a replay-sensitive action whose token is not current, so a
+ * packet captured in an earlier session (or before a restart) cannot be replayed. Control actions
+ * (HELLO/READY/RESYNC) send {@link ua.rp.chat.microvoxel.MicrovoxelSessionToken#NONE}.
+ */
+public record MicrovoxelActionPayload(int protocolVersion, long sessionNonce, long transactionId,
                                       int action, int x, int y, int z, int cell, String material,
                                       int revision,
                                       float lookX, float lookY, float lookZ,
@@ -17,16 +23,17 @@ public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
             MicrovoxelActionPayload::write, MicrovoxelActionPayload::read);
 
     /** Backwards-compatible constructor for actions that carry no material (everything but place). */
-    public MicrovoxelActionPayload(int protocolVersion, long transactionId,
+    public MicrovoxelActionPayload(int protocolVersion, long sessionNonce, long transactionId,
                                    int action, int x, int y, int z, int cell, int revision,
                                    float lookX, float lookY, float lookZ,
                                    float eyeX, float eyeY, float eyeZ) {
-        this(protocolVersion, transactionId, action, x, y, z, cell, "", revision,
+        this(protocolVersion, sessionNonce, transactionId, action, x, y, z, cell, "", revision,
                 lookX, lookY, lookZ, eyeX, eyeY, eyeZ);
     }
 
     private void write(RegistryFriendlyByteBuf buffer) {
         buffer.writeVarInt(protocolVersion);
+        buffer.writeLong(sessionNonce);
         buffer.writeVarLong(transactionId);
         buffer.writeByte(action);
         buffer.writeInt(x);
@@ -47,7 +54,7 @@ public record MicrovoxelActionPayload(int protocolVersion, long transactionId,
 
     private static MicrovoxelActionPayload read(RegistryFriendlyByteBuf buffer) {
         return new MicrovoxelActionPayload(
-                buffer.readVarInt(), buffer.readVarLong(),
+                buffer.readVarInt(), buffer.readLong(), buffer.readVarLong(),
                 buffer.readUnsignedByte(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readVarInt(), buffer.readUtf(), buffer.readInt(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readFloat(),

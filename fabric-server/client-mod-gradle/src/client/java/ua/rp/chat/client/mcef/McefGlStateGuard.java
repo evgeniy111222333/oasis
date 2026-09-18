@@ -35,12 +35,12 @@ public final class McefGlStateGuard {
     private static final int GL_TEXTURE0 = 33984;
     /** The GUI/entity pipelines only ever sample from the first few texture units. */
     private static final int GUARDED_TEXTURE_UNITS = 4;
-    /** Cheap probe window: stop calling glGetInteger after this many frames without a leak. */
-    private static final int LEAK_PROBE_FRAMES = 240;
 
     private static volatile boolean browserActive;
     private static volatile boolean leakDetected;
-    private static int probeFrames;
+    /** The GL state probe is a blocking GPU sync, so it runs exactly once per session. */
+    private static boolean probed;
+    private static long restores;
     private static boolean warned;
 
     private McefGlStateGuard() {
@@ -60,7 +60,12 @@ public final class McefGlStateGuard {
             return;
         }
         try {
-            probeForLeakedState();
+            // One blocking glGetInteger pass only; the old build probed for 240 frames, which
+            // stalled the render thread with a GPU sync on every one of them.
+            if (!probed) {
+                probed = true;
+                probeForLeakedState();
+            }
             for (int unit = 0; unit < GUARDED_TEXTURE_UNITS; unit++) {
                 GL33C.glBindSampler(unit, 0);
             }
@@ -73,6 +78,7 @@ public final class McefGlStateGuard {
             GlStateManager._pixelStore(GL_UNPACK_SKIP_ROWS, 0);
             GlStateManager._pixelStore(GL_UNPACK_SKIP_PIXELS, 0);
             GlStateManager._pixelStore(GL_UNPACK_ALIGNMENT, 4);
+            restores++;
         } catch (Throwable error) {
             if (!warned) {
                 warned = true;
@@ -81,15 +87,16 @@ public final class McefGlStateGuard {
         }
     }
 
+    /** How many frames the guard has cleaned this session; surfaced in the radial perf log. */
+    public static long restoreCount() {
+        return restores;
+    }
+
     /**
-     * One-shot diagnostic: the first time MCEF is observed to leave the unpack stride dirty we
-     * log it, then stop probing. This is the exact state that used to bleed into the GUI.
+     * One-shot diagnostic: if MCEF left the unpack stride dirty we log it once. This is the exact
+     * state that used to bleed into the GUI; it no longer runs every frame.
      */
     private static void probeForLeakedState() {
-        if (leakDetected || probeFrames >= LEAK_PROBE_FRAMES) {
-            return;
-        }
-        probeFrames++;
         int rowLength = GL11.glGetInteger(GL_UNPACK_ROW_LENGTH);
         int skipRows = GL11.glGetInteger(GL_UNPACK_SKIP_ROWS);
         int skipPixels = GL11.glGetInteger(GL_UNPACK_SKIP_PIXELS);

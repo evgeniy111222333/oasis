@@ -27,6 +27,13 @@ public final class MicrovoxelProjection {
     /** Whole chunks reconciled per tick. Chunk loading is itself rate-limited by the chunk system,
      *  so this cap cannot produce territory-scale catch-up. */
     public static final int MAX_RECONCILES_PER_TICK = 2;
+    /**
+     * Hard cap on unload-time tombstones. They exist so a volume removed while its chunk is away
+     * still clears its marker when the chunk loads; without a chunk-unload expiry a server that
+     * edits and unloads chunks it never revisits would grow this set forever. Beyond the cap we
+     * drop the oldest tombstones (a rare orphan marker the client self-heal path can clear).
+     */
+    private static final int MAX_CLEARED_WHILE_UNLOADED = 65_536;
 
     private static final java.util.logging.Logger LOGGER =
             java.util.logging.Logger.getLogger("MicrovoxelProjection");
@@ -49,8 +56,10 @@ public final class MicrovoxelProjection {
     private final CoalescingWorkQueue<ChunkKey> reconcileQueue = new CoalescingWorkQueue<>();
     private boolean shuttingDown;
 
-    /** Volumes removed while their chunk was unloaded; their markers are cleared on reconcile. */
-    private final Set<MicrovoxelKey> clearedWhileUnloaded = ConcurrentHashMap.newKeySet();
+    /** Volumes removed while their chunk was unloaded; their markers are cleared on reconcile.
+     *  Insertion-ordered and capped so it cannot grow without bound (server-thread only). */
+    private final java.util.LinkedHashSet<MicrovoxelKey> clearedWhileUnloaded =
+            new java.util.LinkedHashSet<>();
 
     /**
      * Derives the full marker blockstate (light, sound, fluid flag) for one volume. Injected
@@ -124,7 +133,7 @@ public final class MicrovoxelProjection {
         if (level == null) return;
         LevelChunk chunk = world.loadedChunk(key.worldId(), key.chunkX(), key.chunkZ());
         if (chunk == null) {
-            clearedWhileUnloaded.add(key);
+            rememberCleared(key);
             reconcileQueue.schedule(ChunkKey.of(key));
             return;
         }
@@ -140,7 +149,7 @@ public final class MicrovoxelProjection {
         if (level == null) return;
         LevelChunk chunk = world.loadedChunk(key.worldId(), key.chunkX(), key.chunkZ());
         if (chunk == null) {
-            clearedWhileUnloaded.add(key);
+            rememberCleared(key);
             reconcileQueue.schedule(ChunkKey.of(key));
             return;
         }
@@ -262,8 +271,20 @@ public final class MicrovoxelProjection {
         }
     }
 
-    private void clearMarker(ServerLevel level, LevelChunk chunk, MicrovoxelKey key) {
-        BlockPos pos = pos(key);
+    /** Records an unload tombstone, evicting the oldest when the cap is reached. */
+    private void rememberCleared(MicrovoxelKey key) {
+        if (clearedWhileUnloaded.size() >= MAX_CLEARED_WHILE_UNLOADED) {
+            java.util.Iterator<MicrovoxelKey> oldest = clearedWhileUnloaded.iterator();
+            if (oldest.hasNext()) {
+                oldest.next();
+                oldest.remove();
+                LOGGER.warning("Microvoxel unload-tombstone cap reached; evicted the oldest clear marker");
+            }
+        }
+        clearedWhileUnloaded.add(key);
+    }
+
+    private void clearMarker(ServerLevel level, LevelChunk chunk, MicrovoxelKey key) {        BlockPos pos = pos(key);
         BlockState current = chunk.getBlockState(pos);
         if (MicrovoxelBlocks.isMarker(current)) {
             world.setBlock(level, chunk, pos, Blocks.AIR.defaultBlockState());

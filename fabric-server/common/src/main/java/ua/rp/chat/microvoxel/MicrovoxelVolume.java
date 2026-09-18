@@ -34,7 +34,7 @@ public final class MicrovoxelVolume {
      * {@link #copy()} instead. Derived transient caches (collision plan/cuboids) stay writable —
      * they are never serialised and never affect the published state.
      */
-    private boolean frozen;
+    private volatile boolean frozen;
 
     public MicrovoxelVolume(int revision, List<String> palette, byte[] cells) {
         this(revision, palette, cells, null);
@@ -195,17 +195,27 @@ public final class MicrovoxelVolume {
         byte[] theirs = other.cells;
         int length = Math.min(mine.length, theirs.length);
         for (int i = 0; i < length; i++) {
-            if (mine[i] != theirs[i]) {
-                int cx = x(i);
-                int cy = y(i);
-                int cz = z(i);
-                if (cx == 0 || cx == RESOLUTION - 1 || cy == 0 || cy == RESOLUTION - 1
-                        || cz == 0 || cz == RESOLUTION - 1) {
-                    return true;
-                }
+            if (mine[i] != theirs[i] && onBoundary(i)) {
+                return true;
             }
         }
-        return mine.length != theirs.length;
+        if (mine.length != theirs.length) return true;
+        // The material shell can be identical while a boundary cell's shape changed (a full
+        // cube gaining a top slab, a slab losing its boundary face). Neighbour meshes cull
+        // against this volume's boundary, so a shape-only change must also invalidate them.
+        if (geometry == other.geometry) return false;
+        for (int cell = 0; cell < CELL_COUNT; cell++) {
+            if (onBoundary(cell) && shapeAt(cell) != other.shapeAt(cell)) return true;
+        }
+        return false;
+    }
+
+    private static boolean onBoundary(int cell) {
+        int cx = cell & 15;
+        int cy = (cell >>> 8) & 15;
+        int cz = (cell >>> 4) & 15;
+        return cx == 0 || cx == RESOLUTION - 1 || cy == 0 || cy == RESOLUTION - 1
+                || cz == 0 || cz == RESOLUTION - 1;
     }
 
     /**
@@ -542,9 +552,20 @@ public final class MicrovoxelVolume {
         if (existing != null) return existing;
         CollisionPlan plan = collisionPlan;
         if (plan != null && plan.backend() == CollisionBackend.CUBOIDS) return plan.cuboids();
-        List<Cuboid> result = buildCuboids(Integer.MAX_VALUE);
-        collisionCuboids = result;
-        return result;
+        // Double-checked: the light engine and entity collision can both ask for the same
+        // volume, and each miss would otherwise rebuild the full cuboid plan.
+        synchronized (this) {
+            existing = collisionCuboids;
+            if (existing != null) return existing;
+            plan = collisionPlan;
+            if (plan != null && plan.backend() == CollisionBackend.CUBOIDS) {
+                collisionCuboids = plan.cuboids();
+                return collisionCuboids;
+            }
+            List<Cuboid> result = buildCuboids(Integer.MAX_VALUE);
+            collisionCuboids = result;
+            return result;
+        }
     }
 
     /**
@@ -592,29 +613,39 @@ public final class MicrovoxelVolume {
     public CollisionPlan collisionPlan() {
         CollisionPlan existing = collisionPlan;
         if (existing != null) return existing;
+        synchronized (this) {
+            existing = collisionPlan;
+            if (existing != null) return existing;
 
-        short[] xLines = new short[RESOLUTION * RESOLUTION];
-        short[] yLines = new short[RESOLUTION * RESOLUTION];
-        short[] zLines = new short[RESOLUTION * RESOLUTION];
-        for (int y = 0; y < RESOLUTION; y++) {
-            for (int z = 0; z < RESOLUTION; z++) {
-                for (int x = 0; x < RESOLUTION; x++) {
-                    if (!collisionCell(index(x, y, z))) continue;
-                    xLines[(y << 4) | z] |= (short) (1 << x);
-                    yLines[(z << 4) | x] |= (short) (1 << y);
-                    zLines[(y << 4) | x] |= (short) (1 << z);
+            // Build the cheap merged cuboids first: an all-cube volume stays on the CUBOIDS
+            // backend and must not pay for three 256-entry line masks it will never read.
+            List<Cuboid> simpleCuboids = buildCuboids(SIMPLE_COLLISION_CUBOID_LIMIT + 1);
+            if (simpleCuboids.size() <= SIMPLE_COLLISION_CUBOID_LIMIT) {
+                CollisionPlan compiled = new CollisionPlan(
+                        CollisionBackend.CUBOIDS, simpleCuboids, null, null, null);
+                collisionCuboids = compiled.cuboids();
+                collisionPlan = compiled;
+                return compiled;
+            }
+
+            short[] xLines = new short[RESOLUTION * RESOLUTION];
+            short[] yLines = new short[RESOLUTION * RESOLUTION];
+            short[] zLines = new short[RESOLUTION * RESOLUTION];
+            for (int y = 0; y < RESOLUTION; y++) {
+                for (int z = 0; z < RESOLUTION; z++) {
+                    for (int x = 0; x < RESOLUTION; x++) {
+                        if (!collisionCell(index(x, y, z))) continue;
+                        xLines[(y << 4) | z] |= (short) (1 << x);
+                        yLines[(z << 4) | x] |= (short) (1 << y);
+                        zLines[(y << 4) | x] |= (short) (1 << z);
+                    }
                 }
             }
+            CollisionPlan compiled = new CollisionPlan(
+                    CollisionBackend.GRID, List.of(), xLines, yLines, zLines);
+            collisionPlan = compiled;
+            return compiled;
         }
-
-        List<Cuboid> simpleCuboids = buildCuboids(SIMPLE_COLLISION_CUBOID_LIMIT + 1);
-        CollisionBackend backend = simpleCuboids.size() <= SIMPLE_COLLISION_CUBOID_LIMIT
-                ? CollisionBackend.CUBOIDS : CollisionBackend.GRID;
-        List<Cuboid> retained = backend == CollisionBackend.CUBOIDS ? simpleCuboids : List.of();
-        CollisionPlan compiled = new CollisionPlan(backend, retained, xLines, yLines, zLines);
-        if (backend == CollisionBackend.CUBOIDS) collisionCuboids = retained;
-        collisionPlan = compiled;
-        return compiled;
     }
 
     private List<Cuboid> buildCuboids(int stopAfter) {
@@ -734,6 +765,30 @@ public final class MicrovoxelVolume {
 
     private static void requireCell(int cell) {
         if (cell < 0 || cell >= CELL_COUNT) throw new IndexOutOfBoundsException("Invalid microvoxel cell " + cell);
+    }
+
+    /**
+     * Value equality over palette, cells and the geometry channel (revision excluded, matching the
+     * history conflict predicate). Volumes are position-keyed in the store, so this only matters
+     * for value comparisons/dedup; without it every comparison was identity-only.
+     */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof MicrovoxelVolume volume)) return false;
+        if (!palette.equals(volume.palette) || !Arrays.equals(cells, volume.cells)) return false;
+        MicrovoxelGeometry left = geometry;
+        MicrovoxelGeometry right = volume.geometry;
+        if (left == null || right == null) return left == right;
+        return left.equals(right);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = palette.hashCode();
+        result = 31 * result + Arrays.hashCode(cells);
+        result = 31 * result + (geometry == null ? 0 : geometry.hashCode());
+        return result;
     }
 
     public record Cuboid(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {

@@ -34,7 +34,32 @@ public final class MicrovoxelMaterialPalette {
 
     /** Converts a server ledger amount (sub-cells) into whole display cells (rounded up). */
     public static int toCells(int subUnits) {
-        return (Math.max(0, subUnits) + SUB_UNITS_PER_CELL - 1) / SUB_UNITS_PER_CELL;
+        // Long math: adding the rounding bias to a near-MAX_VALUE ledger amount overflowed int.
+        long units = Math.max(0, subUnits);
+        return (int) Math.min(Integer.MAX_VALUE, (units + SUB_UNITS_PER_CELL - 1) / SUB_UNITS_PER_CELL);
+    }
+
+    /**
+     * Canonical material identity: the bare block registry id without block-state properties.
+     *
+     * <p>Two stacks of the same block type must read as one material. Breaking a leaf/stairs/log
+     * yields an exact state ({@code minecraft:oak_leaves[distance=3,persistent=false,...]}), while
+     * the inventory item is the default state, so keying the palette, the economy ledger and the
+     * fragments by the raw state string would surface visually identical duplicate entries and
+     * split one material across several stacks. Stripping {@code [...]} gives one identity per
+     * block type; rendering and parsing fall back to the block's default state.</p>
+     */
+    public static String canonicalMaterial(String material) {
+        if (material == null) return "";
+        int bracket = material.indexOf('[');
+        String base = bracket < 0 ? material : material.substring(0, bracket);
+        return base.trim();
+    }
+
+    /** True when two material strings refer to the same block type, ignoring state properties. */
+    public static boolean sameMaterial(String a, String b) {
+        if (a == null || b == null) return false;
+        return canonicalMaterial(a).equals(canonicalMaterial(b));
     }
 
     // Item custom-data tags shared with the server-side economy.
@@ -89,9 +114,12 @@ public final class MicrovoxelMaterialPalette {
         if (stacks == null || stacks.isEmpty()) return List.of();
 
         // LinkedHashMap keeps first-seen order so the hotbar leads the palette.
-        Map<String, long[]> totals = new LinkedHashMap<>(); // material -> [units, fragmentFlag]
+        Map<String, long[]> totals = new LinkedHashMap<>(); // canonical material -> [units, fragmentFlag]
         for (Stack stack : stacks) {
-            long[] aggregate = totals.computeIfAbsent(stack.material(), key -> new long[]{0L, 0L});
+            // One bar per block type: state variants of the same block collapse into one entry.
+            String key = canonicalMaterial(stack.material());
+            if (key.isBlank()) continue;
+            long[] aggregate = totals.computeIfAbsent(key, k -> new long[]{0L, 0L});
             aggregate[0] += stack.units();
             if (stack.fragment()) aggregate[1] = 1L;
         }

@@ -150,7 +150,7 @@ public final class MicrovoxelEditHistory {
         int baseRevision = current == null ? desired.revision() : current.revision();
         int revision = MicrovoxelRevision.next(baseRevision);
         MicrovoxelVolume restored = MicrovoxelVolume.restore(
-                revision, desired.palette(), desired.cellsCopy());
+                revision, desired.palette(), desired.cellsCopy(), desired.geometryOrNull());
         context.runtime().projection().materialize(key, restored);
         // The dematerialize branch above invalidates; the materialize branch must too, or the
         // collision AND light caches keep serving the pre-undo geometry after an undo/redo.

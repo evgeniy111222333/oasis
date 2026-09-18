@@ -52,10 +52,12 @@ public final class CarverCameraRig {
     private static int traceTicks;
     private static boolean traceAnnounced;
     private static int traceApplies;
+    /** Camera wiring/perf traces are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
 
-    /** Temporary wiring trace: logs the first frames the mixin actually applies. */
+    /** Wiring trace: logs the first frames the mixin actually applies (debug only). */
     public static void traceApplied(Pose pose) {
-        if (traceApplies < 3) {
+        if (DEBUG && traceApplies < 3) {
             traceApplies++;
             ua.rp.chat.client.EclipseClientMod.LOGGER.info(
                     "[CARVER-CAM] mixin applied " + pose.position());
@@ -64,8 +66,10 @@ public final class CarverCameraRig {
 
     public static void beginDesign(BlockPos focusBlock) {
         Minecraft minecraft = Minecraft.getInstance();
-        ua.rp.chat.client.EclipseClientMod.LOGGER.info(
-                "[CARVER-CAM] beginDesign focus=" + focusBlock.toShortString());
+        if (DEBUG) {
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CARVER-CAM] beginDesign focus=" + focusBlock.toShortString());
+        }
         traceAnnounced = false;
         mode = Mode.FLY;
         focus = focusBlock;
@@ -197,7 +201,7 @@ public final class CarverCameraRig {
 
     public static void tick(Minecraft minecraft) {
         if (mode == Mode.IDLE || focus == null) return;
-        if (!traceAnnounced) {
+        if (DEBUG && !traceAnnounced) {
             traceAnnounced = true;
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-CAM] tick alive, mode=" + mode);
         }
@@ -207,7 +211,7 @@ public final class CarverCameraRig {
         prevPosePitch = posePitch;
         lastTickNanos = System.nanoTime();
         traceTicks++;
-        if (traceTicks % 40 == 1) {
+        if (DEBUG && traceTicks % 40 == 1) {
             ua.rp.chat.client.EclipseClientMod.LOGGER.info("[CARVER-CAM] mode=" + mode
                     + " pose=" + posePosition + " yaw=" + poseYaw + " pitch=" + posePitch);
         }

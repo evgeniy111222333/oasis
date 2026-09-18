@@ -903,7 +903,8 @@ public final class CarverClientState {
     private static void send(int action, BlockPos pos, byte[] data) {
         if (!ClientPlayNetworking.canSend(CarverActionPayload.TYPE)) return;
         ClientPlayNetworking.send(new CarverActionPayload(
-                CarverProtocol.VERSION, action,
+                CarverProtocol.VERSION,
+                ua.rp.chat.client.microvoxel.MicrovoxelClientState.sessionNonce(), action,
                 pos.getX(), pos.getY(), pos.getZ(), data));
     }
 

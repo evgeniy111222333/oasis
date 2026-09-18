@@ -39,7 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function fetchStatus() {
     try {
-        const response = await fetch(`/api/status?token=${encodeURIComponent(authToken)}`);
+        const response = await fetch(`/api/status`, { headers: { "X-Eclipse-Token": authToken } });
         const data = await response.json();
 
         if (!data.success) {
@@ -92,11 +92,10 @@ async function recoverAuthSession(message) {
                     cache: "no-store"
                 });
                 if (response.status === 200) {
-                    const data = await response.json();
-                    if (data.success && data.authUrl) {
-                        window.location.replace(`${data.authUrl}${data.authUrl.includes("?") ? "&" : "?"}recover=${Date.now()}`);
-                        return true;
-                    }
+                    // A pending click-to-login session exists, but its bearer token is delivered
+                    // only to the game client. The web page must not be able to fetch it, so stop
+                    // retrying and let the caller ask the player to reopen the auth window.
+                    return false;
                 }
             } catch (error) {
                 // The server or token may still be starting; retry inside the bounded window.
@@ -406,7 +405,7 @@ async function submitAuth(buttonId, url, payload, errorBox, onSuccess) {
     try {
         const response = await fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Eclipse-Token": authToken },
             body: JSON.stringify(payload)
         });
         const result = await response.json();

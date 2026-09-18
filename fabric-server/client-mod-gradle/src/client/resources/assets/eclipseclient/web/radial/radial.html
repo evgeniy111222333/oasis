@@ -108,18 +108,31 @@
   .ornament .spin-rev { transform-origin: 260px 260px; animation: spin 140s linear infinite reverse; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Performance: decorative layers are composited (transform/opacity only) while open and
-     fully paused while the wheel is closed, so the resident browser never repaints in the
-     background. Quality is unchanged — the same layers, just not re-rasterised every frame. */
-  .ornament .spin, .ornament .spin-rev, .emblem, .halo, .hub__icon, .sector__icon {
-    will-change: transform, opacity;
+  /* Performance: only the layers that truly animate a transform are promoted; the rest
+     stay unpromoted to save VRAM/composite work. Ambient animation is frozen the moment the
+     wheel closes and whenever the pointer goes idle (see .is-idle), so the resident browser
+     stops producing frames instead of repainting the whole surface every vsync. Quality is
+     unchanged — the same layers, just not re-rasterised when nothing is happening. */
+  .ornament .spin, .ornament .spin-rev, .emblem {
+    will-change: transform;
     backface-visibility: hidden;
   }
+  /* Closed: every ambient animation is frozen (including the hub pulse, which the old guard
+     forgot — that omission kept CEF painting even with the wheel hidden). */
   .radial[data-open="false"] .ornament .spin,
   .radial[data-open="false"] .ornament .spin-rev,
   .radial[data-open="false"] .emblem,
   .radial[data-open="false"] .halo,
+  .radial[data-open="false"] .hub__ring,
   .radial[data-open="false"] .hub__icon {
+    animation-play-state: paused;
+  }
+  /* Idle: no pointer/key activity for a moment and not mid "breath" → freeze everything.
+     Any pointer move drops .is-idle instantly, so feedback is never delayed. */
+  .radial.is-idle:not(.is-breath) .ornament .spin,
+  .radial.is-idle:not(.is-breath) .ornament .spin-rev,
+  .radial.is-idle:not(.is-breath) .emblem,
+  .radial.is-idle:not(.is-breath) .hub__ring {
     animation-play-state: paused;
   }
 
@@ -161,14 +174,17 @@
     mask: radial-gradient(circle, transparent 120px, #000 170px, #000 355px, transparent 380px);
     transform: rotate(var(--ray-a, 0deg));
     transition: transform 0.26s var(--ease-open), opacity 0.2s ease;
-    opacity: 0; mix-blend-mode: screen;
+    /* No mix-blend-mode: over the transparent in-game overlay it composited identically to
+       source-over, but it forced a full-screen backdrop read every frame. */
+    opacity: 0;
   }
   .radial[data-open="true"] .ray { opacity: 0.9; }
 
   /* subtle parchment grain over the whole overlay */
   .grain {
     position: absolute; inset: 0; pointer-events: none;
-    mix-blend-mode: overlay;
+    /* mix-blend-mode: overlay removed — on the transparent overlay it read as source-over
+       anyway, but a full-screen blend forced the compositor to re-read the backdrop. */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     opacity: 0; transition: opacity 0.4s ease;
   }
@@ -197,11 +213,18 @@
     position: absolute; inset: -14px; border-radius: 50%;
     border: 1px solid rgba(232,220,196,0.16);
     box-shadow: 0 0 26px rgba(232,164,91,0.18), inset 0 0 18px rgba(0,0,0,0.5);
+  }
+  /* The pulse animates the OPACITY of a pre-baked glow (compositor-only), not box-shadow:
+     animating box-shadow repaints the layer — and therefore the whole CEF surface — per frame. */
+  .hub__ring::before {
+    content: ""; position: absolute; inset: -8px; border-radius: 50%;
+    box-shadow: 0 0 30px rgba(232,164,91,0.30), inset 0 0 18px rgba(0,0,0,0.5);
+    opacity: 0.45;
     animation: hubPulse 2.6s ease-in-out infinite;
   }
   @keyframes hubPulse {
-    0%,100% { box-shadow: 0 0 22px rgba(232,164,91,0.14), inset 0 0 18px rgba(0,0,0,0.5); }
-    50%     { box-shadow: 0 0 34px rgba(232,164,91,0.30), inset 0 0 18px rgba(0,0,0,0.5); }
+    0%,100% { opacity: 0.32; }
+    50%     { opacity: 0.85; }
   }
   .hub__icon { width: 46px; height: 46px; color: var(--paper); margin-bottom: 6px;
     transition: color 0.18s ease, transform 0.24s var(--ease-open); }
@@ -604,7 +627,9 @@
   // Carver-only wheel: убрать / поставить (+ material for placing) + draft history.
   const SECTORS = [
     { id: "erase",  label: "Убрать",    icon: "erase" },
-    { id: "place",  label: "Поставить", icon: "place" },
+    // «Поставить» is a folder, not a dead-end: placing always needs a material, so it fans
+    // out the palette and emits action "place" carrying the picked material.
+    { id: "place",  label: "Поставить", icon: "place", dynamic: "materials", action: "place" },
     { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
     { id: "history", label: "История",   icon: "history", children: [
         { id: "history.undo", label: "Отменить", icon: "undo" },
@@ -644,6 +669,15 @@
   const foliantBody  = document.getElementById("foliantBody");
   const foliantBack  = document.getElementById("foliantBack");
 
+  /* ---- in-game vs standalone prototype ----
+     The shipped page is embedded by MCEF. When the URL carries "ingame" every prototype-only
+     entry point (the Tab shortcut and the dev-toolbar button) is disabled, so a stray Tab can
+     never reopen the wheel behind the game once the overlay has closed itself. */
+  const rawHash = location.hash.replace(/^#/, "");
+  const hashTokens = rawHash.split(/[&,]/).filter(Boolean);
+  const inGame = hashTokens.includes("ingame") || location.search.includes("ingame");
+  if (inGame) document.body.classList.add("ingame");
+
   /* ============================ state ============================ */
   let isOpen        = false;
   let outerEls      = [];
@@ -660,6 +694,106 @@
   let panelOpen = false;
   let genType = "ramp";
   const genDims = { length: 5, width: 3, height: 1 };
+
+  /* ---- performance governor: idle gating + lightweight metrics ----
+     The wheel is a resident CEF surface: any running animation makes Chromium hand MCEF a
+     fresh full-screen frame to upload. So we (a) freeze everything while closed or idle and
+     (b) report page-side metrics over the same console bridge Java already listens on. */
+  const IDLE_MS = 1500;        // no activity this long → freeze ambient animation
+  const BREATH_EVERY_MS = 6000;
+  const BREATH_MS = 1400;
+  let idle = false;
+  let lastActivityAt = 0;
+  let activityTimer = null;
+  let watchTicks = 0;
+  let perfFramesMark = 0;
+  let breathTimer = null;
+  let rafId = null;
+  let frameCount = 0;
+
+  function emitBridge(payload) {
+    try { console.log("@eclipse/radial:" + JSON.stringify(payload)); } catch (ignore) { /* no bridge */ }
+  }
+
+  function startFrameProbe() {
+    if (rafId != null) return;
+    const loop = () => { frameCount++; rafId = requestAnimationFrame(loop); };
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stopFrameProbe() {
+    if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  function resumeFromIdle() {
+    idle = false;
+    perfFramesMark = 0;
+    clearTimeout(breathTimer);
+    root.classList.remove("is-idle");
+    root.classList.remove("is-breath");
+    emitBridge({ bridge: "idle", idle: false, open: isOpen });
+  }
+
+  /** Any pointer/key event: revive instantly and restart the idle countdown. */
+  function noteActivity() {
+    lastActivityAt = performance.now();
+    if (idle) resumeFromIdle();
+    startFrameProbe();
+  }
+
+  function goIdle() {
+    if (!isOpen || idle) return;
+    idle = true;
+    stopFrameProbe();
+    clearTimeout(breathTimer);
+    root.classList.remove("is-breath");
+    root.classList.add("is-idle");
+    emitBridge({ bridge: "idle", idle: true, open: true, pageFps: frameCount });
+    frameCount = 0;
+    perfFramesMark = 0;
+    scheduleBreath();
+  }
+
+  /** Cheap "still alive" hint while idle: one short pulse every few seconds, nothing else. */
+  function scheduleBreath() {
+    clearTimeout(breathTimer);
+    breathTimer = setTimeout(() => {
+      if (!isOpen || !idle) return;
+      root.classList.add("is-breath");
+      breathTimer = setTimeout(() => {
+        root.classList.remove("is-breath");
+        if (isOpen && idle) scheduleBreath();
+      }, BREATH_MS);
+    }, BREATH_EVERY_MS);
+  }
+
+  function startActivityWatch() {
+    lastActivityAt = performance.now();
+    watchTicks = 0;
+    perfFramesMark = 0;
+    if (activityTimer == null) {
+      activityTimer = setInterval(() => {
+        if (!isOpen) return;
+        watchTicks++;
+        if (!idle && performance.now() - lastActivityAt >= IDLE_MS) { goIdle(); return; }
+        // Once per second while active: how many frames the page itself produced. Compare with
+        // the Java-side FPS log to see whether the cost tracks the page animation or the world.
+        if (!idle && watchTicks % 2 === 0) {
+          emitBridge({ bridge: "perf", pageFps: frameCount - perfFramesMark, open: true });
+          perfFramesMark = frameCount;
+        }
+      }, 500);
+    }
+  }
+
+  function stopActivityWatch() {
+    if (activityTimer != null) { clearInterval(activityTimer); activityTimer = null; }
+    stopFrameProbe();
+    clearTimeout(breathTimer);
+    idle = false;
+    root.classList.remove("is-idle");
+    root.classList.remove("is-breath");
+  }
 
   /** Fit the whole wheel to the smaller screen dimension, so it adapts to any resolution. */
   function updateScale() {
@@ -708,8 +842,10 @@
   function optionsFor(parent) {
     if (!parent) return null;
     if (parent.dynamic === "materials") {
+      // A folder may re-label the pick: «Поставить» sends action "place", «Материал» "material".
+      const action = parent.action || "material";
       return MATERIALS.slice(0, 9).map((m) => ({
-        id: "material", label: m.name, material: m.id, fragment: !!m.fragment,
+        id: action, label: m.name, material: m.id, fragment: !!m.fragment,
         color: m.color, units: m.units
       }));
     }
@@ -925,6 +1061,12 @@
     root.style.setProperty("--cy", y + "px");
     root.setAttribute("aria-hidden", "false");
 
+    // fresh governor: reset idle/breath timers and start probing page frames
+    stopActivityWatch();
+    startActivityWatch();
+    noteActivity();
+    emitBridge({ bridge: "lifecycle", event: "open" });
+
     // keep the closed state one frame, then flip to open so the transition runs
     root.classList.add("is-animating");
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -939,6 +1081,8 @@
   function close(fireCancel = false) {
     if (!isOpen) return;
     isOpen = false;
+    stopActivityWatch();
+    emitBridge({ bridge: "lifecycle", event: "close" });
     closePanel();
     root.classList.add("is-animating");
     // reverse stagger: last item leaves first
@@ -1170,16 +1314,17 @@
   /* ============================ input ============================ */
   window.addEventListener("pointermove", (e) => {
     pointer = { x: e.clientX, y: e.clientY };
-    if (isOpen) updateHot();
+    if (isOpen) { noteActivity(); updateHot(); }
   });
   window.addEventListener("mousedown", (e) => {
     if (!isOpen) return;
     if (panelOpen) return;                                         // the foliant owns its clicks
     if (e.target.closest && e.target.closest(".devbar")) return;   // prototype chrome
     e.preventDefault();
+    noteActivity();
     confirm();
   });
-  window.addEventListener("wheel", (e) => { if (isOpen) { e.preventDefault(); cycleMaterial(Math.sign(e.deltaY)); } }, { passive: false });
+  window.addEventListener("wheel", (e) => { if (isOpen) { e.preventDefault(); noteActivity(); cycleMaterial(Math.sign(e.deltaY)); } }, { passive: false });
   window.addEventListener("contextmenu", (e) => { if (isOpen) e.preventDefault(); });
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isOpen) {
@@ -1189,15 +1334,19 @@
       return;
     }
     if (!isOpen) return;
+    noteActivity();
     if (e.key >= "1" && e.key <= "9") {
       const n = parseInt(e.key, 10) - 1;
       if (n < MATERIALS.length) selectMaterial(n);
     }
   });
 
-  // prototype entry: hold Tab (in-game this becomes the scroll gesture / key)
-  window.addEventListener("keydown", (e) => { if (e.key === "Tab" && !isOpen) { e.preventDefault(); openAt(); } });
-  openBtn.addEventListener("click", () => openAt());
+  // Prototype-only entry points. In-game the wheel is opened by Java (EclipseRadial.open)
+  // and the browser must never answer Tab — otherwise a stray keypress reopens the page.
+  if (!inGame) {
+    window.addEventListener("keydown", (e) => { if (e.key === "Tab" && !isOpen) { e.preventDefault(); openAt(); } });
+    if (openBtn) openBtn.addEventListener("click", () => openAt());
+  }
   if (foliantBack) foliantBack.addEventListener("click", () => closePanel());
 
   /* ============================ public bridge ============================ */
@@ -1241,12 +1390,7 @@
   // #open=<sectorId>   → open and pre-hover that sector (shows the outward pop)
   // &ingame            → hide the prototype chrome (dev toolbar + readout)
   // e.g. index.html#open=gen&ingame
-  const rawHash = location.hash.replace(/^#/, "");
-  const tokens = rawHash.split(/[&,]/).filter(Boolean);
-  if (tokens.includes("ingame") || location.search.includes("ingame")) {
-    document.body.classList.add("ingame");
-  }
-  const openToken = tokens.find((token) => token.startsWith("open"));
+  const openToken = hashTokens.find((token) => token.startsWith("open"));
   if (openToken) {
     const wanted = openToken.includes("=") ? openToken.split("=")[1] : null;
     setTimeout(() => {
