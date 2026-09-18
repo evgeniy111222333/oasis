@@ -72,8 +72,6 @@ public final class MicrovoxelClientState {
                 : MicrovoxelWire.CLIENT_CAPABILITIES & ~MicrovoxelWire.CAP_MINE_STAGE;
     }
     private static final int READY_RETRY_TICKS = 60;
-    private static final int MISSING_MARKER_GRACE_TICKS = 10;
-    private static final int MISSING_MARKER_TARGETED_RETRY_TICKS = 50;
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
     private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
@@ -135,8 +133,6 @@ public final class MicrovoxelClientState {
      * Compilation workers only enqueue immutable positions; all networking stays on the client
      * thread in {@link #clientTick(Minecraft)}.
      */
-    private static final Map<BlockPos, MissingMarker> MISSING_MARKERS =
-            new java.util.concurrent.ConcurrentHashMap<>();
     private static ClientLevel activeLevel;
     private static int clientTick;
     private static int stateGeneration;
@@ -179,6 +175,11 @@ public final class MicrovoxelClientState {
 
     static int maxBatchEntries() {
         return MAX_BATCH_ENTRIES;
+    }
+
+    /** Ready-retry cadence, shared with the marker-reconciliation retry budget. */
+    static int readyRetryTicks() {
+        return READY_RETRY_TICKS;
     }
     private MicrovoxelClientState() {
     }
@@ -263,7 +264,7 @@ public final class MicrovoxelClientState {
         // best-effort, the authoritative volume is the source of truth.
         if (authoritative == null) clearCracks(immutable);
         else pruneCracks(immutable, authoritative);
-        if (authoritative != null) MISSING_MARKERS.remove(immutable);
+        if (authoritative != null) MicrovoxelClientMarkers.remove(immutable);
         PENDING_PLACEMENTS.remove(immutable);
         if (MicrovoxelClientPrediction.hasPendingAt(immutable)) {
             if (authoritative == null) MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(immutable);
@@ -621,11 +622,7 @@ public final class MicrovoxelClientState {
     }
 
     public static void noteMissingVolume(BlockPos position) {
-        BlockPos immutable = position.immutable();
-        if (MicrovoxelClientVolumeStore.VOLUMES.containsKey(immutable)) return;
-        if (MISSING_MARKERS.size() >= MAX_MISSING_MARKERS) return;
-        MISSING_MARKERS.putIfAbsent(immutable,
-                new MissingMarker(clientTick, clientTick + MISSING_MARKER_GRACE_TICKS, 0));
+        MicrovoxelClientMarkers.note(position, clientTick);
     }
 
     /**
@@ -645,37 +642,18 @@ public final class MicrovoxelClientState {
     }
 
     private static void processMissingMarkers() {
-        if (activeLevel == null || MISSING_MARKERS.isEmpty()) return;
-        int inspected = 0;
-        for (Map.Entry<BlockPos, MissingMarker> entry : MISSING_MARKERS.entrySet()) {
-            if (inspected++ >= 32) break;
-            BlockPos position = entry.getKey();
-            MissingMarker missing = entry.getValue();
-            if (MicrovoxelClientVolumeStore.VOLUMES.containsKey(position)
-                    || !MicrovoxelBlocks.isMarker(activeLevel.getBlockState(position))) {
-                MISSING_MARKERS.remove(position, missing);
-                continue;
-            }
-            if (clientTick - missing.firstSeenTick() > READY_RETRY_TICKS * 10
-                    || missing.attempts() >= MISSING_MARKER_MAX_ATTEMPTS) {
-                MISSING_MARKERS.remove(position, missing);
-                continue;
-            }
-            if (clientTick < missing.nextAttemptTick() || !canRequestResync()) continue;
-            if (missing.attempts() == 0) {
-                requestChunkResync(position.getX() >> 4, position.getZ() >> 4,
-                        "rendered marker has no volume");
-                MISSING_MARKERS.replace(position, missing,
-                        new MissingMarker(missing.firstSeenTick(),
-                                clientTick + MISSING_MARKER_TARGETED_RETRY_TICKS, 1));
-            } else {
-                requestVolumeResync(position,
-                        "marker still has no volume after chunk resync");
-                MISSING_MARKERS.replace(position, missing,
-                        new MissingMarker(missing.firstSeenTick(),
-                                clientTick + READY_RETRY_TICKS, missing.attempts() + 1));
-            }
-        }
+        MicrovoxelClientMarkers.process(activeLevel, clientTick, canRequestResync(),
+                new MicrovoxelClientMarkers.ResyncSink() {
+                    @Override
+                    public void chunkResync(int chunkX, int chunkZ, String reason) {
+                        requestChunkResync(chunkX, chunkZ, reason);
+                    }
+
+                    @Override
+                    public void volumeResync(BlockPos position, String reason) {
+                        requestVolumeResync(position, reason);
+                    }
+                });
     }
 
     public static MicrovoxelCachedVolume get(BlockPos position) {
@@ -1434,7 +1412,7 @@ public final class MicrovoxelClientState {
         predictedFluidLava = false;
         MESHING_JOBS.clear();
         MESH_DIRTY_DURING_BUILD.clear();
-        MISSING_MARKERS.clear();
+        MicrovoxelClientMarkers.clear();
         MicrovoxelSectionModel.clearThreadCaches();
         MicrovoxelItemModel.clearCache();
     }
@@ -1447,7 +1425,7 @@ public final class MicrovoxelClientState {
                 MicrovoxelClientVolumeStore.VOLUMES.remove(pos);
                 MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(pos);
                 PENDING_PLACEMENTS.remove(pos);
-                MISSING_MARKERS.remove(pos);
+                MicrovoxelClientMarkers.remove(pos);
                 PENDING_LIGHT_CHECKS.remove(pos);
                 MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(pos);
                 clearCracks(pos);
@@ -1483,8 +1461,6 @@ public final class MicrovoxelClientState {
         return ((long) x << 32) ^ (z & 0xFFFFFFFFL);
     }
 
-    private record MissingMarker(int firstSeenTick, int nextAttemptTick, int attempts) {
-    }
 
     private static BlockPos readPosition(DataInputStream input) throws IOException {
         return MicrovoxelClientCodec.readPosition(input);
@@ -1631,6 +1607,4 @@ public final class MicrovoxelClientState {
         }
     }
 
-    private static final int MAX_MISSING_MARKERS = 256;
-    private static final int MISSING_MARKER_MAX_ATTEMPTS = 4;
 }
