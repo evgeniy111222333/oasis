@@ -72,11 +72,6 @@ public final class MicrovoxelClientState {
                 : MicrovoxelWire.CLIENT_CAPABILITIES & ~MicrovoxelWire.CAP_MINE_STAGE;
     }
     private static final int READY_RETRY_TICKS = 60;
-    private static final long MESH_BUDGET_NANOS = 3_000_000L;
-    private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
-    private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
-    private static final Map<BlockPos, MeshJob> MESHING_JOBS = new HashMap<>();
-    private static final Set<BlockPos> MESH_DIRTY_DURING_BUILD = new HashSet<>();
     private static final Map<BlockPos, Integer> PENDING_PLACEMENTS = new HashMap<>();
     private static final int PLACEMENT_PREDICTION_TIMEOUT_TICKS = 60;
     /**
@@ -86,41 +81,6 @@ public final class MicrovoxelClientState {
      * the marker is waterlogged) covers the race until the packet lands.
      */
 
-    private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
-            java.util.concurrent.Executors.newFixedThreadPool(
-                    Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)), r -> {
-                Thread t = new Thread(r, "OasisMesher");
-                t.setDaemon(true);
-                return t;
-            });
-    /**
-     * A block-state packet and the matching microvoxel sync packet can arrive in either order.
-     * Rebuilding once immediately is normally enough; rebuilding the same local boundary two
-     * client ticks later makes the result deterministic without polling every volume every tick.
-     */
-    private static final Map<BlockPos, Integer> DELAYED_BOUNDARY_REBUILDS = new HashMap<>();
-    /**
-     * Rendering never walks the global volume map.  A batch is a stable, flattened snapshot of
-     * one chunk's greedy faces and is rebuilt only when a volume in that chunk changes.  This is
-     * deliberately CPU-side for now: it gives us deterministic dirty-region work and keeps the
-     * renderer ready for a later VBO backend without making edit latency depend on GPU uploads.
-     */
-    private static final Map<Long, ChunkBatch> CHUNK_BATCHES = new HashMap<>();
-    private static final Set<Long> CHUNK_BATCH_QUEUE = new LinkedHashSet<>();
-    private static final Set<Long> SECTION_REBUILD_QUEUE = new LinkedHashSet<>();
-    private static final int MAX_SECTION_REBUILDS_PER_TICK = 8;
-    /**
-     * Hard cap on mesh builds in flight. Bounds both the worker backlog and the client-thread
-     * snapshot cost per tick (each build clones up to seven volumes); without it a burst of edits
-     * could submit hundreds of jobs in a single tick. Deferred positions stay in MESH_QUEUE and
-     * are retried next tick.
-     */
-    private static final int MAX_INFLIGHT_MESH_JOBS = 16;
-    /**
-     * Sanity cap on entries in one BATCH_UPSERT frame. The server batches at most a few dozen
-     * volumes, so anything larger is malformed and must be rejected before it drives a huge
-     * loop or a hostile pre-allocation.
-     */
     private static final int MAX_BATCH_ENTRIES = 4096;
     /**
      * One-shot runtime evidence for the microvoxel pipeline.  This is intentionally keyed by
@@ -181,6 +141,16 @@ public final class MicrovoxelClientState {
     static int readyRetryTicks() {
         return READY_RETRY_TICKS;
     }
+
+    /** Active client level, shared with the mesh scheduler. */
+    static ClientLevel activeLevel() {
+        return activeLevel;
+    }
+
+    /** Generation counter bumped on every level switch, shared with the mesh scheduler. */
+    static int stateGeneration() {
+        return stateGeneration;
+    }
     private MicrovoxelClientState() {
     }
 
@@ -191,7 +161,7 @@ public final class MicrovoxelClientState {
 
     /** Enqueues a volume for mesh rebuild; shared with the LOD review. */
     static void enqueueMesh(BlockPos position) {
-        MESH_QUEUE.add(position);
+        MicrovoxelClientMeshScheduler.enqueueMesh(position);
     }
 
     public static void clientTick(Minecraft minecraft) {
@@ -216,32 +186,30 @@ public final class MicrovoxelClientState {
             nextReadyTick = clientTick + READY_RETRY_TICKS;
         }
         processMissingMarkers();
-        processDelayedBoundaryRebuilds();
         processPendingPlacements();
         MicrovoxelClientPrediction.expirePendingEdits();
         reconcileFluidPrediction(minecraft);
         drainLightChecks(minecraft);
         MicrovoxelClientLod.tick();
-        drainWorkFocusFailsafe();
         // One client metrics line per minute at 20 TPS, correlatable with the server line.
         // Queue depths ride along every time: sustained growth here means meshing or section
         // rebuilds are not keeping up and LOD/mesh budgets need retuning.
         if (activeLevel != null && clientTick % 1200 == 0) {
             EclipseClientMod.LOGGER.info(MicrovoxelClientMetrics.summarize()
-                    + " meshQueue=" + MESH_QUEUE.size()
-                    + " sectionQueue=" + SECTION_REBUILD_QUEUE.size()
+                    + " meshQueue=" + MicrovoxelClientMeshScheduler.queuedMeshCount()
+                    + " sectionQueue=" + MicrovoxelClientMeshScheduler.sectionQueueSize()
                     + " volumes=" + MicrovoxelClientVolumeStore.VOLUMES.size()
                     + " pending=" + MicrovoxelClientPrediction.pendingCount());
-            if (MESH_QUEUE.size() > 512 || SECTION_REBUILD_QUEUE.size() > 64) {
+            if (MicrovoxelClientMeshScheduler.queuedMeshCount() > 512
+                    || MicrovoxelClientMeshScheduler.sectionQueueSize() > 64) {
                 EclipseClientMod.LOGGER.warn(
                         "[MICROVOXEL] Rebuild backlog is growing: meshes={}, sections={}. "
                                 + "Editing throughput exceeds background budgets.",
-                        MESH_QUEUE.size(), SECTION_REBUILD_QUEUE.size());
+                        MicrovoxelClientMeshScheduler.queuedMeshCount(),
+                        MicrovoxelClientMeshScheduler.sectionQueueSize());
             }
         }
-        rebuildQueuedMeshes();
-        rebuildQueuedChunkBatches();
-        rebuildQueuedSections(minecraft);
+        MicrovoxelClientMeshScheduler.tick(minecraft);
     }
 
     public static void handle(MicrovoxelSyncPayload payload) {
@@ -426,8 +394,7 @@ public final class MicrovoxelClientState {
         if (predictedFluidAt != null) {
             if (predictedFluidLava) {
                 MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(predictedFluidAt);
-                queueChunkBatch(predictedFluidAt);
-                scheduleBoundaryRebuild(predictedFluidAt);
+                MicrovoxelClientMeshScheduler.onFluidChanged(predictedFluidAt);
             } else {
                 MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(predictedFluidAt);
                 if (cached != null && minecraft.level != null) {
@@ -456,8 +423,7 @@ public final class MicrovoxelClientState {
         }
         if (!anyAir) return;
         MicrovoxelClientVolumeStore.CLIENT_FLUIDS.put(position, new MicrovoxelFluidView(levels, -1, true));
-        queueChunkBatch(position);
-        scheduleBoundaryRebuild(position);
+        MicrovoxelClientMeshScheduler.onFluidChanged(position);
         predictedFluidAt = position;
         predictedFluidLava = true;
         predictedFluidTick = clientTick;
@@ -510,8 +476,7 @@ public final class MicrovoxelClientState {
         }
         if (clientTick - predictedFluidTick >= FLUID_PREDICT_TIMEOUT_TICKS) {
             MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(predictedFluidAt, view);
-            queueChunkBatch(predictedFluidAt);
-            scheduleBoundaryRebuild(predictedFluidAt);
+            MicrovoxelClientMeshScheduler.onFluidChanged(predictedFluidAt);
             predictedFluidAt = null;
             MicrovoxelClientMetrics.inc("predict.fluid.reverted");
         }
@@ -527,9 +492,7 @@ public final class MicrovoxelClientState {
             if (oldCached == null) return;
             MicrovoxelClientVolumeStore.VOLUMES.remove(position);
             removeFromChunk(position);
-            queueRebuild(position);
-            queueChunkBatch(position);
-            scheduleBoundaryRebuild(position);
+            MicrovoxelClientMeshScheduler.onDisplayedRemoved(position);
             // Demolishing a sealed wall must relight even though no blockstate changes here:
             // the removal is mesh-side until the server confirms.
             if (wasSealed) PENDING_LIGHT_CHECKS.add(position.immutable());
@@ -556,11 +519,8 @@ public final class MicrovoxelClientState {
         // (and the volume/block packet order can race), so queue an explicit engine recheck.
         // Unchanged seals cost one boolean compare and nothing else.
         if (wasSealed != nowSealed) PENDING_LIGHT_CHECKS.add(position.immutable());
-        MicrovoxelClientLod.requestRebuild(position);
-        if (oldVolume == null || changesTouchBoundary(oldVolume, volume)) {
-            queueNeighborsRebuild(position);
-            scheduleBoundaryRebuild(position);
-        }
+        MicrovoxelClientMeshScheduler.onDisplayedChanged(position,
+                oldVolume == null || MicrovoxelClientMeshScheduler.changesTouchBoundary(oldVolume, volume));
     }
 
     static void requestFullResync(String reason) {
@@ -736,7 +696,7 @@ public final class MicrovoxelClientState {
             cached.mesh = MicrovoxelGreedyMesher.build(volume, volume::materialAt);
             cached.meshRevision = volume.revision();
             cached.renderFlags = computeRenderFlags(volume);
-            queueChunkBatch(immutable);
+            MicrovoxelClientMeshScheduler.queueChunkBatch(immutable);
         }
         PENDING_PLACEMENTS.put(
                 immutable, clientTick + PLACEMENT_PREDICTION_TIMEOUT_TICKS);
@@ -764,7 +724,7 @@ public final class MicrovoxelClientState {
             if (!activeLevel.getBlockState(immutable).equals(desired)) {
                 activeLevel.setBlock(immutable, desired, 11);
             }
-            queueRebuild(immutable);
+            MicrovoxelClientMeshScheduler.queueRebuild(immutable);
             return true;
         } catch (RuntimeException unreadable) {
             return false;
@@ -782,12 +742,12 @@ public final class MicrovoxelClientState {
         if (changed == null || activeLevel == null) return;
         BlockPos immutable = changed.immutable();
         if (MicrovoxelBlocks.isMarker(activeLevel.getBlockState(immutable))) return;
-        queueRebuild(immutable.offset(1, 0, 0));
-        queueRebuild(immutable.offset(-1, 0, 0));
-        queueRebuild(immutable.offset(0, 1, 0));
-        queueRebuild(immutable.offset(0, -1, 0));
-        queueRebuild(immutable.offset(0, 0, 1));
-        queueRebuild(immutable.offset(0, 0, -1));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(1, 0, 0));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(-1, 0, 0));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(0, 1, 0));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(0, -1, 0));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(0, 0, 1));
+        MicrovoxelClientMeshScheduler.queueRebuild(immutable.offset(0, 0, -1));
     }
 
     /** True when the per-cell crack overlay feature flag is on. */
@@ -813,23 +773,20 @@ public final class MicrovoxelClientState {
     /** Applies one MINE_STAGE frame and queues a rebuild on a real transition. */
     static void applyMineStage(BlockPos position, int cell, int stage) {
         if (MicrovoxelClientCracks.apply(position, cell, stage)) {
-            queueRebuild(position);
-            queueChunkBatch(position);
+            MicrovoxelClientMeshScheduler.onCracksChanged(position);
         }
     }
 
     /** Drops cracks whose cells no longer exist in an authoritative volume (e.g. after a break). */
     private static void pruneCracks(BlockPos position, MicrovoxelVolume authoritative) {
         if (MicrovoxelClientCracks.prune(position, authoritative)) {
-            queueRebuild(position);
-            queueChunkBatch(position);
+            MicrovoxelClientMeshScheduler.onCracksChanged(position);
         }
     }
 
     private static void clearCracks(BlockPos position) {
         if (MicrovoxelClientCracks.clear(position)) {
-            queueRebuild(position);
-            queueChunkBatch(position);
+            MicrovoxelClientMeshScheduler.onCracksChanged(position);
         }
     }
 
@@ -1003,39 +960,13 @@ public final class MicrovoxelClientState {
 
     public static Collection<Map.Entry<BlockPos, MicrovoxelCachedVolume>> volumesNear(
             double blockX, double blockZ, double radius) {
-        int minChunkX = floorChunk(blockX - radius);
-        int maxChunkX = floorChunk(blockX + radius);
-        int minChunkZ = floorChunk(blockZ - radius);
-        int maxChunkZ = floorChunk(blockZ + radius);
-        List<Map.Entry<BlockPos, MicrovoxelCachedVolume>> result = new ArrayList<>();
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                for (BlockPos position : MicrovoxelClientVolumeStore.CHUNKS.getOrDefault(chunkKey(chunkX, chunkZ), Set.of())) {
-                    MicrovoxelCachedVolume volume = MicrovoxelClientVolumeStore.VOLUMES.get(position);
-                    if (volume != null) result.add(Map.entry(position, volume));
-                }
-            }
-        }
-        return result;
+        return MicrovoxelClientMeshScheduler.volumesNear(blockX, blockZ, radius);
     }
 
     /** Returns immutable chunk-level render batches overlapping the requested horizontal radius. */
     public static Collection<ChunkBatch> batchesNear(double blockX, double blockZ, double radius) {
-        int minChunkX = floorChunk(blockX - radius);
-        int maxChunkX = floorChunk(blockX + radius);
-        int minChunkZ = floorChunk(blockZ - radius);
-        int maxChunkZ = floorChunk(blockZ + radius);
-        List<ChunkBatch> result = new ArrayList<>();
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                ChunkBatch batch = CHUNK_BATCHES.get(chunkKey(chunkX, chunkZ));
-                if (batch != null && !batch.faces.isEmpty()) result.add(batch);
-            }
-        }
-        result.sort(java.util.Comparator.comparingDouble(batch -> batch.distanceSquaredTo(blockX, blockZ)));
-        return result;
+        return MicrovoxelClientMeshScheduler.batchesNear(blockX, blockZ, radius);
     }
-
     public static List<MicrovoxelRaycaster.Entry> raycastEntries(double x, double y, double z, double radius) {
         double radiusSquared = radius * radius;
         List<MicrovoxelRaycaster.Entry> result = new ArrayList<>();
@@ -1053,125 +984,7 @@ public final class MicrovoxelClientState {
     }
 
     static void rebuild(BlockPos position) {
-        BlockPos immutablePos = position.immutable();
-        MicrovoxelCachedVolume center = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos);
-        if (center == null) return;
-
-        int stride = center.volume.hasGeometry()
-                ? 1 : ua.rp.chat.microvoxel.MicrovoxelLodTiers.strideFor(center.lodTier);
-        MeshJob job = new MeshJob(stateGeneration, center.volume.revision(), stride);
-        if (MESHING_JOBS.putIfAbsent(immutablePos, job) != null) {
-            MESH_DIRTY_DURING_BUILD.add(immutablePos);
-            return;
-        }
-
-        MicrovoxelCachedVolume downVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.below());
-        MicrovoxelCachedVolume upVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.above());
-        MicrovoxelCachedVolume northVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.north());
-        MicrovoxelCachedVolume southVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.south());
-        MicrovoxelCachedVolume westVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.west());
-        MicrovoxelCachedVolume eastVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.east());
-
-        boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.below()).isSolidRender();
-        boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.above()).isSolidRender();
-        boolean northSolid = (northVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.north()).isSolidRender();
-        boolean southSolid = (southVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.south()).isSolidRender();
-        boolean westSolid = (westVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.west()).isSolidRender();
-        boolean eastSolid = (eastVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.east()).isSolidRender();
-
-        MicrovoxelVolume centerVol = center.volume.copy();
-        MicrovoxelVolume downVolSnap = downVol != null ? downVol.volume.copy() : null;
-        MicrovoxelVolume upVolSnap = upVol != null ? upVol.volume.copy() : null;
-        MicrovoxelVolume northVolSnap = northVol != null ? northVol.volume.copy() : null;
-        MicrovoxelVolume southVolSnap = southVol != null ? southVol.volume.copy() : null;
-        MicrovoxelVolume westVolSnap = westVol != null ? westVol.volume.copy() : null;
-        MicrovoxelVolume eastVolSnap = eastVol != null ? eastVol.volume.copy() : null;
-
-        final int jobStride = stride;
-        MESHING_EXECUTOR.submit(() -> {
-            try {
-                long meshStart = System.nanoTime();
-                MicrovoxelGreedyMesher.NeighbourLookup neighbours = (x, y, z) -> {
-                    if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16) {
-                        return centerVol.materialAt(x, y, z);
-                    }
-                    int ox = Math.floorDiv(x, 16);
-                    int oy = Math.floorDiv(y, 16);
-                    int oz = Math.floorDiv(z, 16);
-                    MicrovoxelVolume neighbourVol = null;
-                    boolean neighbourSolid = false;
-                    if (ox == -1) {
-                        neighbourVol = westVolSnap;
-                        neighbourSolid = westSolid;
-                    } else if (ox == 1) {
-                        neighbourVol = eastVolSnap;
-                        neighbourSolid = eastSolid;
-                    } else if (oy == -1) {
-                        neighbourVol = downVolSnap;
-                        neighbourSolid = downSolid;
-                    } else if (oy == 1) {
-                        neighbourVol = upVolSnap;
-                        neighbourSolid = upSolid;
-                    } else if (oz == -1) {
-                        neighbourVol = northVolSnap;
-                        neighbourSolid = northSolid;
-                    } else if (oz == 1) {
-                        neighbourVol = southVolSnap;
-                        neighbourSolid = southSolid;
-                    }
-                    if (neighbourVol != null) {
-                        return neighbourVol.materialAt(
-                                Math.floorMod(x, MicrovoxelVolume.RESOLUTION),
-                                Math.floorMod(y, MicrovoxelVolume.RESOLUTION),
-                                Math.floorMod(z, MicrovoxelVolume.RESOLUTION));
-                    }
-                    return neighbourSolid ? 1 : 0;
-                };
-                List<MicrovoxelGreedyMesher.Face> mesh = center.volume.hasGeometry()
-                        ? MicrovoxelGreedyMesher.build(centerVol, neighbours,
-                                cell -> centerVol.shapeAt(cell) != 0)
-                        : MicrovoxelGreedyMesher.build(centerVol, neighbours, jobStride);
-                MicrovoxelClientMetrics.inc("mesh.jobs");
-                MicrovoxelClientMetrics.add("mesh.us", (System.nanoTime() - meshStart) / 1000L);
-
-                Minecraft.getInstance().execute(() -> {
-                    if (!MESHING_JOBS.remove(immutablePos, job)) return;
-                    MicrovoxelCachedVolume currentCenter = job.generation == stateGeneration ? MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos) : null;
-                    boolean current = currentCenter != null && currentCenter.volume.revision() == job.revision;
-                    if (currentCenter != null && job.generation == stateGeneration) {
-                        // A continuously edited volume may already be one revision ahead. Showing
-                        // this completed intermediate mesh is still strictly better than freezing
-                        // the old geometry until the mouse button is released. Only one job per
-                        // position exists, so intermediate results remain monotonically ordered.
-                        // All three tiers cache side by side so LOD flips never trigger
-                        // a fresh background build on their own.
-                        if (job.stride == 1) {
-                            currentCenter.mesh = mesh;
-                            currentCenter.meshRevision = job.revision;
-                        } else if (job.stride == 2) {
-                            currentCenter.midMesh = mesh;
-                            currentCenter.midMeshRevision = job.revision;
-                        } else {
-                            currentCenter.farMesh = mesh;
-                            currentCenter.farMeshRevision = job.revision;
-                        }
-                        queueChunkBatch(immutablePos);
-                    }
-                    if (job.generation == stateGeneration
-                            && (MESH_DIRTY_DURING_BUILD.remove(immutablePos) || !current)) {
-                        requeueMesh(immutablePos);
-                    }
-                });
-            } catch (Exception error) {
-                EclipseClientMod.LOGGER.error("Failed background meshing for " + immutablePos, error);
-                Minecraft.getInstance().execute(() -> {
-                    if (!MESHING_JOBS.remove(immutablePos, job)) return;
-                    if (job.generation == stateGeneration && MESH_DIRTY_DURING_BUILD.remove(immutablePos)) {
-                        requeueMesh(immutablePos);
-                    }
-                });
-            }
-        });
+        MicrovoxelClientMeshScheduler.rebuild(position);
     }
 
     /** Used by the renderer's vertex AO sampler. Coordinates are local to {@code base}. */
@@ -1223,184 +1036,20 @@ public final class MicrovoxelClientState {
         return MicrovoxelShape.byId(shapeId).occupied(x, y, z);
     }
 
-    static boolean changesTouchBoundary(MicrovoxelVolume oldVolume, MicrovoxelVolume newVolume) {
-        if (oldVolume == null || newVolume == null) return true;
-        // Zero-copy shell comparison; the old double-clone price is gone.
-        return oldVolume.boundaryDiffersFrom(newVolume);
-    }
-
-    private static void queueRebuild(BlockPos position) {
-        MESH_QUEUE.add(position.immutable());
-        queueNeighborsRebuild(position);
-    }
-
-    private static void queueNeighborsRebuild(BlockPos position) {
-        MESH_QUEUE.add(position.offset(1, 0, 0));
-        MESH_QUEUE.add(position.offset(-1, 0, 0));
-        MESH_QUEUE.add(position.offset(0, 1, 0));
-        MESH_QUEUE.add(position.offset(0, -1, 0));
-        MESH_QUEUE.add(position.offset(0, 0, 1));
-        MESH_QUEUE.add(position.offset(0, 0, -1));
-    }
-
-    private static void scheduleBoundaryRebuild(BlockPos position) {
-        DELAYED_BOUNDARY_REBUILDS.put(position.immutable(), clientTick + 2);
-    }
-
-    private static void processDelayedBoundaryRebuilds() {
-        Iterator<Map.Entry<BlockPos, Integer>> iterator = DELAYED_BOUNDARY_REBUILDS.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<BlockPos, Integer> entry = iterator.next();
-            if (entry.getValue() > clientTick) continue;
-            queueRebuild(entry.getKey());
-            iterator.remove();
-        }
-    }
-
-    private static void queueChunkBatch(BlockPos position) {
-        if (Boolean.getBoolean("rpchat.microvoxel.legacyRenderer")) {
-            CHUNK_BATCH_QUEUE.add(chunkKey(position.getX() >> 4, position.getZ() >> 4));
-        }
-        if (workFocus != null && workFocus.equals(position.immutable())) {
-            HELD_WORK_SECTIONS.add(SectionPos.asLong(
-                    position.getX() >> 4, position.getY() >> 4, position.getZ() >> 4));
-            MicrovoxelClientMetrics.inc("section.workheld");
-            return;
-        }
-        SECTION_REBUILD_QUEUE.add(SectionPos.asLong(
-                position.getX() >> 4, position.getY() >> 4, position.getZ() >> 4));
-    }
-
-    /**
-     * Carving work focus for throttled section rebuilds. While set, render sections
-     * covering the focused volume are held back and flushed on work-phase crossings
-     * instead of every applied slice. Clearing the focus always flushes first, so no
-     * update can ever strand.
-     */
-    private static BlockPos workFocus;
-    private static final java.util.Set<Long> HELD_WORK_SECTIONS = new java.util.LinkedHashSet<>();
-    private static final java.util.Set<BlockPos> PENDING_WORK_MESH = new java.util.LinkedHashSet<>();
-    private static int lastWorkFlushTick;
-
+    /** Carving work focus for throttled section rebuilds; delegates to the mesh scheduler. */
     public static void setWorkFocus(BlockPos focus) {
-        if (focus == null && workFocus == null) return;
-        workFocus = focus == null ? null : focus.immutable();
-        if (focus == null) {
-            flushWorkFocus();
-        }
+        MicrovoxelClientMeshScheduler.setWorkFocus(focus);
     }
 
     /** Moves held focus sections and coalesced mesh jobs back to the live queues. */
     public static void flushWorkFocus() {
-        if (!HELD_WORK_SECTIONS.isEmpty()) {
-            MicrovoxelClientMetrics.add("section.workflushes", HELD_WORK_SECTIONS.size());
-            SECTION_REBUILD_QUEUE.addAll(HELD_WORK_SECTIONS);
-            HELD_WORK_SECTIONS.clear();
-        }
-        if (!PENDING_WORK_MESH.isEmpty()) {
-            MESH_QUEUE.addAll(PENDING_WORK_MESH);
-            PENDING_WORK_MESH.clear();
-        }
-        lastWorkFlushTick = clientTick;
+        MicrovoxelClientMeshScheduler.flushWorkFocus();
     }
-
-    /** Coalesced mesh requeue: focus volumes wait for the next phase flush. */
-    private static void requeueMesh(BlockPos position) {
-        if (workFocus != null && workFocus.equals(position)) {
-            PENDING_WORK_MESH.add(position);
-            MicrovoxelClientMetrics.inc("mesh.workcoalesced");
-            return;
-        }
-        MESH_QUEUE.add(position);
-    }
-
-    /** Fail-safe: a stalled work session flushes held updates within ~3 seconds. */
-    private static void drainWorkFocusFailsafe() {
-        if (workFocus == null) return;
-        if ((!HELD_WORK_SECTIONS.isEmpty() || !PENDING_WORK_MESH.isEmpty())
-                && clientTick - lastWorkFlushTick > 60) {
-            flushWorkFocus();
-        }
-    }
-
-    private static void rebuildQueuedSections(Minecraft minecraft) {
-        if (minecraft.level == null) {
-            SECTION_REBUILD_QUEUE.clear();
-            return;
-        }
-        Iterator<Long> iterator = SECTION_REBUILD_QUEUE.iterator();
-        int rebuilt = 0;
-        while (iterator.hasNext() && rebuilt < MAX_SECTION_REBUILDS_PER_TICK) {
-            long section = iterator.next();
-            iterator.remove();
-            minecraft.levelRenderer.setSectionDirty(
-                    SectionPos.x(section), SectionPos.y(section), SectionPos.z(section));
-            rebuilt++;
-        }
-        if (rebuilt > 0) MicrovoxelClientMetrics.add("section.rebuilds", rebuilt);
-    }
-
-    private static void rebuildQueuedMeshes() {
-        // Backpressure first: cap in-flight jobs so the worker queue (and the per-job client-thread
-        // snapshots) cannot spike. If the pool is saturated, leave the queue intact for next tick.
-        int admits = MicrovoxelMeshBackpressure.admitCount(
-                MESHING_JOBS.size(), MESH_QUEUE.size(), MAX_INFLIGHT_MESH_JOBS);
-        if (admits <= 0) return;
-        long deadline = System.nanoTime() + MESH_BUDGET_NANOS;
-        Iterator<BlockPos> iterator = MESH_QUEUE.iterator();
-        int rebuilt = 0;
-        while (iterator.hasNext() && rebuilt < admits
-                && (rebuilt == 0 || System.nanoTime() < deadline)) {
-            BlockPos position = iterator.next();
-            iterator.remove();
-            rebuild(position);
-            rebuilt++;
-        }
-    }
-
-    private static void rebuildQueuedChunkBatches() {
-        if (!Boolean.getBoolean("rpchat.microvoxel.legacyRenderer")) {
-            CHUNK_BATCH_QUEUE.clear();
-            CHUNK_BATCHES.clear();
-            return;
-        }
-        long deadline = System.nanoTime() + CHUNK_BATCH_BUDGET_NANOS;
-        Iterator<Long> iterator = CHUNK_BATCH_QUEUE.iterator();
-        int rebuilt = 0;
-        while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
-            long key = iterator.next();
-            iterator.remove();
-            Set<BlockPos> positions = MicrovoxelClientVolumeStore.CHUNKS.get(key);
-            if (positions == null || positions.isEmpty()) {
-                CHUNK_BATCHES.remove(key);
-                rebuilt++;
-                continue;
-            }
-            List<ChunkFace> faces = new ArrayList<>();
-            for (BlockPos position : positions) {
-                MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
-                if (cached == null) continue;
-                for (MicrovoxelGreedyMesher.Face face : cached.mesh) {
-                    faces.add(new ChunkFace(position, cached, face));
-                }
-            }
-            CHUNK_BATCHES.put(key, new ChunkBatch((int) (key >> 32), (int) key, faces));
-            rebuilt++;
-        }
-    }
-
     static void clearVolumes() {
         MicrovoxelClientVolumeStore.VOLUMES.clear();
         MicrovoxelClientVolumeStore.CHUNKS.clear();
-        MESH_QUEUE.clear();
+        MicrovoxelClientMeshScheduler.clear();
         MicrovoxelClientLod.clear();
-        HELD_WORK_SECTIONS.clear();
-        PENDING_WORK_MESH.clear();
-        workFocus = null;
-        DELAYED_BOUNDARY_REBUILDS.clear();
-        CHUNK_BATCHES.clear();
-        CHUNK_BATCH_QUEUE.clear();
-        SECTION_REBUILD_QUEUE.clear();
         PROBE_EMITTED.clear();
         MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.clear();
         MicrovoxelClientPrediction.clear();
@@ -1410,8 +1059,6 @@ public final class MicrovoxelClientState {
         MicrovoxelClientCracks.clearAll();
         predictedFluidAt = null;
         predictedFluidLava = false;
-        MESHING_JOBS.clear();
-        MESH_DIRTY_DURING_BUILD.clear();
         MicrovoxelClientMarkers.clear();
         MicrovoxelSectionModel.clearThreadCaches();
         MicrovoxelItemModel.clearCache();
@@ -1429,13 +1076,11 @@ public final class MicrovoxelClientState {
                 PENDING_LIGHT_CHECKS.remove(pos);
                 MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(pos);
                 clearCracks(pos);
-                if (workFocus != null && workFocus.equals(pos)) {
-                    setWorkFocus(null);
-                }
-                queueRebuild(pos);
+                MicrovoxelClientMeshScheduler.clearWorkFocusIf(pos);
+                MicrovoxelClientMeshScheduler.queueRebuild(pos);
             }
             MicrovoxelClientPrediction.dropChunkPredictions(chunkX, chunkZ);
-            CHUNK_BATCH_QUEUE.add(key);
+            MicrovoxelClientMeshScheduler.enqueueChunkBatch(key);
         }
     }
 
@@ -1450,14 +1095,14 @@ public final class MicrovoxelClientState {
         if (indexed == null) return;
         indexed.remove(position);
         if (indexed.isEmpty()) MicrovoxelClientVolumeStore.CHUNKS.remove(key);
-        CHUNK_BATCH_QUEUE.add(key);
+        MicrovoxelClientMeshScheduler.enqueueChunkBatch(key);
     }
 
-    private static int floorChunk(double blockCoordinate) {
+    static int floorChunk(double blockCoordinate) {
         return ((int) Math.floor(blockCoordinate)) >> 4;
     }
 
-    private static long chunkKey(int x, int z) {
+    static long chunkKey(int x, int z) {
         return ((long) x << 32) ^ (z & 0xFFFFFFFFL);
     }
 
@@ -1486,14 +1131,12 @@ public final class MicrovoxelClientState {
         if (current != null && !MicrovoxelRevision.isNewer(revision, current.revision())) return;
         MicrovoxelClientVolumeStore.CLIENT_FLUIDS.put(position, new MicrovoxelFluidView(levels, revision, lava));
         MicrovoxelClientMetrics.inc("fluid.received");
-        queueChunkBatch(position);
-        scheduleBoundaryRebuild(position);
+        MicrovoxelClientMeshScheduler.onFluidChanged(position);
     }
 
     static void dropFluid(BlockPos position) {
         if (MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(position) != null) {
-            queueChunkBatch(position);
-            scheduleBoundaryRebuild(position);
+            MicrovoxelClientMeshScheduler.onFluidChanged(position);
         }
     }
 
@@ -1573,7 +1216,7 @@ public final class MicrovoxelClientState {
         private final int chunkZ;
         private final List<ChunkFace> faces;
 
-        private ChunkBatch(int chunkX, int chunkZ, List<ChunkFace> faces) {
+        ChunkBatch(int chunkX, int chunkZ, List<ChunkFace> faces) {
             this.chunkX = chunkX;
             this.chunkZ = chunkZ;
             this.faces = List.copyOf(faces);
@@ -1583,7 +1226,7 @@ public final class MicrovoxelClientState {
             return faces;
         }
 
-        private double distanceSquaredTo(double blockX, double blockZ) {
+        double distanceSquaredTo(double blockX, double blockZ) {
             double dx = (chunkX << 4) + 8.0 - blockX;
             double dz = (chunkZ << 4) + 8.0 - blockZ;
             return dx * dx + dz * dz;

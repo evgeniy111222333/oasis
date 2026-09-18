@@ -265,6 +265,8 @@ tasks.register("verifyMicrovoxelNativeMarker") {
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
     def clientSync = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientSync.java")
+    def clientMeshScheduler = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientMeshScheduler.java")
     def clientRenderer = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientRenderer.java")
     def sectionModel = rootProject.layout.projectDirectory.file(
@@ -281,13 +283,14 @@ tasks.register("verifyMicrovoxelNativeMarker") {
             "src/main/java/ua/rp/chat/RPChat.java")
     def authSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/auth/AuthManager.java")
-    inputs.files(managerSource, serverMarker, clientMarker, clientState, clientSync, clientRenderer,
-            sectionModel, interaction, gameModeMixin, serverBlockStateMixin, protocolSource,
-            bootstrapSource, authSource)
+    inputs.files(managerSource, serverMarker, clientMarker, clientState, clientSync, clientMeshScheduler,
+            clientRenderer, sectionModel, interaction, gameModeMixin, serverBlockStateMixin,
+            protocolSource, bootstrapSource, authSource)
     doLast {
         def manager = managerSource.asFile.getText("UTF-8")
         def state = clientState.asFile.getText("UTF-8")
         def sync = clientSync.asFile.getText("UTF-8")
+        def meshScheduler = clientMeshScheduler.asFile.getText("UTF-8")
         def renderer = clientRenderer.asFile.getText("UTF-8")
         def section = sectionModel.asFile.getText("UTF-8")
         assert serverMarker.asFile.getText("UTF-8") == clientMarker.asFile.getText("UTF-8"):
@@ -304,10 +307,10 @@ tasks.register("verifyMicrovoxelNativeMarker") {
                 "The native marker is registered but rejected by the client renderer"
         assert section.contains("ModelLoadingPlugin.register")
                 && section.contains("extends WrapperBlockStateModel")
-                && state.contains("setSectionDirty"):
+                && meshScheduler.contains("setSectionDirty"):
                 "Microvoxel geometry must compile into bounded persistent terrain section buffers"
         assert state.contains("oldCached.updateVolume(volume)")
-                && state.contains("currentCenter.mesh = mesh")
+                && meshScheduler.contains("currentCenter.mesh = mesh")
                 && !state.contains("oldCached == null ? null : oldCached.getShape()"):
                 "Continuous edits must coalesce shape work and publish intermediate meshes"
         assert interaction.asFile.getText("UTF-8").contains("handleRadialSelection")

@@ -340,7 +340,8 @@ public final class MicrovoxelClientSync {
                         String.format("%.2f", decodeUs),
                         String.format("%.2f", rebuildUs),
                         now == null ? 0 : now.mesh.size(),
-                        oldCached == null || MicrovoxelClientState.changesTouchBoundary(oldCached.volume, volume));
+                        oldCached == null
+                                || MicrovoxelClientMeshScheduler.changesTouchBoundary(oldCached.volume, volume));
             }
         } catch (IOException | RuntimeException error) {
             EclipseClientMod.LOGGER.warn("[MICROVOXEL] Rejected sync payload: " + error.getMessage());
