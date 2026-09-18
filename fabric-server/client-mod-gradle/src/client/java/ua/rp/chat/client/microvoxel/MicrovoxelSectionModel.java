@@ -136,7 +136,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
     public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos,
                           BlockState state, RandomSource random,
                           Predicate<@Nullable Direction> cullTest) {
-        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(pos);
+        MicrovoxelCachedVolume cached = MicrovoxelClientState.get(pos);
         if (cached == null) {
             MicrovoxelClientState.noteMissingVolume(pos);
             return;
@@ -148,7 +148,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
             return;
         }
 
-        MicrovoxelClientState.FluidView fluid = MicrovoxelClientState.fluidAt(pos);
+        MicrovoxelFluidView fluid = MicrovoxelClientState.fluidAt(pos);
         // Lava is exempt from the Sodium gate: vanilla draws nothing for lava markers (no
         // lava fluidstate exists), so there is no double-render to avoid — only invisible
         // burning pools if we skip. Water keeps the gate (vanilla full-cube fallback).
@@ -439,7 +439,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
     @Override
     public @Nullable Object createGeometryKey(BlockAndTintGetter level, BlockPos pos,
                                                BlockState state, RandomSource random) {
-        MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(pos);
+        MicrovoxelCachedVolume cached = MicrovoxelClientState.get(pos);
         if (cached == null) {
             MicrovoxelClientState.noteMissingVolume(pos);
             return GeometryKey.EMPTY;
@@ -500,7 +500,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
      * other emitted quad.
      */
     private static void emitFluidSurface(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos,
-                                         MicrovoxelClientState.FluidView fluid) {
+                                         MicrovoxelFluidView fluid) {
         net.minecraft.client.resources.model.sprite.Material.Baked waterMaterial;
         net.minecraft.client.renderer.texture.TextureAtlasSprite sprite;
         int tint;
@@ -609,7 +609,7 @@ public final class MicrovoxelSectionModel extends WrapperBlockStateModel {
         net.minecraft.world.level.block.state.BlockState state = level.getBlockState(neighbour);
         if (state.isSolidRender()) return -1.0f;
         if (MicrovoxelBlocks.isMarker(state)) {
-            MicrovoxelClientState.FluidView neighbourFluid =
+            MicrovoxelFluidView neighbourFluid =
                     MicrovoxelClientState.fluidAt(neighbour);
             if (neighbourFluid == null) return 1.0f;
             float top = 0.0f;

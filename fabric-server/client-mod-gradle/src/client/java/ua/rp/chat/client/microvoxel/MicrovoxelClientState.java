@@ -76,11 +76,7 @@ public final class MicrovoxelClientState {
     private static final int MISSING_MARKER_TARGETED_RETRY_TICKS = 50;
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
     private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
-    /** Read by terrain compilation workers; authoritative writes remain on the client thread. */
-    private static final Map<BlockPos, CachedVolume> VOLUMES = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Map<Long, Set<BlockPos>> CHUNKS = new HashMap<>();
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
-    private static final Map<BlockPos, MicrovoxelVolume> AUTHORITATIVE_VOLUMES = new HashMap<>();
     private static final java.util.LinkedHashMap<Long, PendingEdit> PENDING_EDITS =
             new java.util.LinkedHashMap<>();
     private static final Map<BlockPos, MeshJob> MESHING_JOBS = new HashMap<>();
@@ -93,19 +89,6 @@ public final class MicrovoxelClientState {
      * A missing entry means dry вЂ” or not yet arrived, in which case vanilla water (when
      * the marker is waterlogged) covers the race until the packet lands.
      */
-    private static final Map<BlockPos, FluidView> CLIENT_FLUIDS =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Immutable authoritative fluid snapshot for one volume, water or lava. */
-    public record FluidView(byte[] levels, int revision, boolean lava) {
-        public FluidView {
-            levels = levels.clone();
-        }
-
-        public int level(int cell) {
-            return Byte.toUnsignedInt(levels[cell]);
-        }
-    }
 
     private static final java.util.concurrent.ExecutorService MESHING_EXECUTOR =
             java.util.concurrent.Executors.newFixedThreadPool(
@@ -210,7 +193,7 @@ public final class MicrovoxelClientState {
             EclipseClientMod.LOGGER.info(MicrovoxelClientMetrics.summarize()
                     + " meshQueue=" + MESH_QUEUE.size()
                     + " sectionQueue=" + SECTION_REBUILD_QUEUE.size()
-                    + " volumes=" + VOLUMES.size()
+                    + " volumes=" + MicrovoxelClientVolumeStore.VOLUMES.size()
                     + " pending=" + PENDING_EDITS.size());
             if (MESH_QUEUE.size() > 512 || SECTION_REBUILD_QUEUE.size() > 64) {
                 EclipseClientMod.LOGGER.warn(
@@ -359,9 +342,9 @@ public final class MicrovoxelClientState {
                 BlockPos position = new BlockPos(x, posY, z);
                 BlockPos immutable = position.immutable();
 
-                MicrovoxelVolume base = AUTHORITATIVE_VOLUMES.get(immutable);
+                MicrovoxelVolume base = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.get(immutable);
                 if (base == null) {
-                    CachedVolume cached = VOLUMES.get(immutable);
+                    MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
                     base = cached == null ? null : cached.volume;
                 }
                 if (base == null) {
@@ -478,7 +461,7 @@ public final class MicrovoxelClientState {
             MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells, geometry);
             BlockPos immutable = position.immutable();
             if (!isFreshAuthoritative(immutable, revision)) return;
-            CachedVolume oldCached = VOLUMES.get(immutable);
+            MicrovoxelCachedVolume oldCached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
             long tRebuildStart = System.nanoTime();
             acceptAuthoritative(immutable, volume);
             long tRebuildEnd = System.nanoTime();
@@ -498,7 +481,7 @@ public final class MicrovoxelClientState {
                         String.format("%.2f", decodeUs),
                         String.format("%.2f", rebuildUs),
                         String.format("%.2f", queueUs),
-                        VOLUMES.get(immutable) == null ? 0 : VOLUMES.get(immutable).mesh.size(),
+                        MicrovoxelClientVolumeStore.VOLUMES.get(immutable) == null ? 0 : MicrovoxelClientVolumeStore.VOLUMES.get(immutable).mesh.size(),
                         oldCached == null || changesTouchBoundary(oldCached.volume, volume)
                 );
             }
@@ -531,9 +514,9 @@ public final class MicrovoxelClientState {
             EclipseClientMod.LOGGER.info("[MICROVOXEL] Rolling back rejected edit {}", transactionId);
         }
         if (authoritative == null) {
-            AUTHORITATIVE_VOLUMES.remove(target);
+            MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(target);
         } else if (isFreshAuthoritative(target, authoritative.revision())) {
-            AUTHORITATIVE_VOLUMES.put(target, authoritative.copy());
+            MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.put(target, authoritative.copy());
         } else {
             // A duplicated/reordered EDIT_RESULT for an older revision must not clobber the newer
             // state we already hold; keep the fresher stored volume and just settle the prediction.
@@ -555,7 +538,7 @@ public final class MicrovoxelClientState {
         if (hasPendingAt(position)) {
             rebuildPredicted(position);
         } else {
-            MicrovoxelVolume authoritative = AUTHORITATIVE_VOLUMES.remove(position);
+            MicrovoxelVolume authoritative = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(position);
             replaceDisplayed(position, authoritative);
         }
     }
@@ -566,9 +549,9 @@ public final class MicrovoxelClientState {
      * with no resync trigger.
      */
     private static boolean isFreshAuthoritative(BlockPos position, int revision) {
-        MicrovoxelVolume base = AUTHORITATIVE_VOLUMES.get(position);
+        MicrovoxelVolume base = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.get(position);
         if (base == null) {
-            CachedVolume cached = VOLUMES.get(position);
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
             base = cached == null ? null : cached.volume;
         }
         if (base == null) return true;
@@ -584,8 +567,8 @@ public final class MicrovoxelClientState {
         if (authoritative != null) MISSING_MARKERS.remove(immutable);
         PENDING_PLACEMENTS.remove(immutable);
         if (hasPendingAt(immutable)) {
-            if (authoritative == null) AUTHORITATIVE_VOLUMES.remove(immutable);
-            else AUTHORITATIVE_VOLUMES.put(immutable, authoritative.copy());
+            if (authoritative == null) MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(immutable);
+            else MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.put(immutable, authoritative.copy());
             rebuildPredicted(immutable);
         } else {
             replaceDisplayed(immutable, authoritative);
@@ -605,7 +588,7 @@ public final class MicrovoxelClientState {
      * never discards the preview of later clicks from the same rapid editing stream.
      */
     private static void rebuildPredicted(BlockPos position) {
-        MicrovoxelVolume authoritative = AUTHORITATIVE_VOLUMES.get(position);
+        MicrovoxelVolume authoritative = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.get(position);
         List<MicrovoxelPrediction.PredictedOp> ops = new java.util.ArrayList<>();
         for (PendingEdit pending : PENDING_EDITS.values()) {
             pending.collectOps(position, ops);
@@ -639,7 +622,7 @@ public final class MicrovoxelClientState {
 
         @Override
         public List<MicrovoxelGreedyMesher.Face> meshFor(BlockPos position) {
-            CachedVolume cached = VOLUMES.get(position.immutable());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
             if (cached == null) return List.of();
             if (cached.volume.hasGeometry()) {
                 // Shaped cells are rendered by the section model, not the full-cube greedy mesh,
@@ -666,10 +649,10 @@ public final class MicrovoxelClientState {
                 return MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS;
             }
             // Any fluid forces the translucent pass even for otherwise opaque volumes.
-            if (CLIENT_FLUIDS.containsKey(position.immutable())) {
+            if (MicrovoxelClientVolumeStore.CLIENT_FLUIDS.containsKey(position.immutable())) {
                 return MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS;
             }
-            CachedVolume cached = VOLUMES.get(position.immutable());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
             return cached == null
                     ? MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS
                     : cached.renderFlags;
@@ -677,14 +660,14 @@ public final class MicrovoxelClientState {
 
         @Override
         public int revisionOf(BlockPos position) {
-            CachedVolume cached = VOLUMES.get(position.immutable());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
             return cached == null ? Integer.MIN_VALUE : cached.volume.revision();
         }
 
         /** Fluid revision for the geometry key; unknown volumes report the minimum. */
         @Override
         public int fluidRevisionOf(BlockPos position) {
-            FluidView view = CLIENT_FLUIDS.get(position.immutable());
+            MicrovoxelFluidView view = MicrovoxelClientVolumeStore.CLIENT_FLUIDS.get(position.immutable());
             return view == null ? Integer.MIN_VALUE : view.revision();
         }
 
@@ -746,7 +729,7 @@ public final class MicrovoxelClientState {
         }
         if (!held.is(net.minecraft.world.item.Items.WATER_BUCKET)) return;
         abandonFluidPrediction(minecraft);
-        CachedVolume cached = VOLUMES.get(position);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
         if (cached == null) return;
         net.minecraft.world.level.block.state.BlockState current =
                 minecraft.level.getBlockState(position);
@@ -777,11 +760,11 @@ public final class MicrovoxelClientState {
     private static void abandonFluidPrediction(Minecraft minecraft) {
         if (predictedFluidAt != null) {
             if (predictedFluidLava) {
-                CLIENT_FLUIDS.remove(predictedFluidAt);
+                MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(predictedFluidAt);
                 queueChunkBatch(predictedFluidAt);
                 scheduleBoundaryRebuild(predictedFluidAt);
             } else {
-                CachedVolume cached = VOLUMES.get(predictedFluidAt);
+                MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(predictedFluidAt);
                 if (cached != null && minecraft.level != null) {
                     minecraft.level.setBlock(predictedFluidAt, MicrovoxelBlocks.markerState(
                             lightLevel(cached.volume), soundProfile(cached.volume), false), 3);
@@ -796,8 +779,8 @@ public final class MicrovoxelClientState {
 
     private static void predictLavaFill(Minecraft minecraft, BlockPos position) {
         abandonFluidPrediction(minecraft);
-        CachedVolume cached = VOLUMES.get(position);
-        if (cached == null || CLIENT_FLUIDS.containsKey(position)) return;
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
+        if (cached == null || MicrovoxelClientVolumeStore.CLIENT_FLUIDS.containsKey(position)) return;
         byte[] levels = new byte[MicrovoxelVolume.CELL_COUNT];
         boolean anyAir = false;
         for (int cell = 0; cell < levels.length; cell++) {
@@ -807,7 +790,7 @@ public final class MicrovoxelClientState {
             }
         }
         if (!anyAir) return;
-        CLIENT_FLUIDS.put(position, new FluidView(levels, -1, true));
+        MicrovoxelClientVolumeStore.CLIENT_FLUIDS.put(position, new MicrovoxelFluidView(levels, -1, true));
         queueChunkBatch(position);
         scheduleBoundaryRebuild(position);
         predictedFluidAt = position;
@@ -834,7 +817,7 @@ public final class MicrovoxelClientState {
         }
         if (clientTick - predictedFluidTick >= FLUID_PREDICT_TIMEOUT_TICKS) {
             // Denied fill: take the preview back instead of showing phantom water.
-            CachedVolume cached = VOLUMES.get(predictedFluidAt);
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(predictedFluidAt);
             if (cached != null) {
                 minecraft.level.setBlock(predictedFluidAt, MicrovoxelBlocks.markerState(
                         lightLevel(cached.volume), soundProfile(cached.volume), false), 3);
@@ -849,7 +832,7 @@ public final class MicrovoxelClientState {
      * revision, reverted (data dropped, mesh rebuilt) on timeout.
      */
     private static void reconcileLavaPrediction(Minecraft minecraft) {
-        FluidView view = CLIENT_FLUIDS.get(predictedFluidAt);
+        MicrovoxelFluidView view = MicrovoxelClientVolumeStore.CLIENT_FLUIDS.get(predictedFluidAt);
         if (view == null) {
             // Data vanished underneath (chunk clear, authoritative remove): nothing to settle.
             predictedFluidAt = null;
@@ -861,7 +844,7 @@ public final class MicrovoxelClientState {
             return;
         }
         if (clientTick - predictedFluidTick >= FLUID_PREDICT_TIMEOUT_TICKS) {
-            CLIENT_FLUIDS.remove(predictedFluidAt, view);
+            MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(predictedFluidAt, view);
             queueChunkBatch(predictedFluidAt);
             scheduleBoundaryRebuild(predictedFluidAt);
             predictedFluidAt = null;
@@ -870,14 +853,14 @@ public final class MicrovoxelClientState {
     }
 
     private static void replaceDisplayed(BlockPos position, MicrovoxelVolume volume) {
-        CachedVolume oldCached = VOLUMES.get(position);
+        MicrovoxelCachedVolume oldCached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
         MicrovoxelVolume oldVolume = oldCached == null ? null : oldCached.volume;
         // Seal status before the swap; missing volumes count as unsealed.
         boolean wasSealed = oldCached != null && oldCached.lightSealed;
         if (volume == null) {
             PENDING_PLACEMENTS.remove(position);
             if (oldCached == null) return;
-            VOLUMES.remove(position);
+            MicrovoxelClientVolumeStore.VOLUMES.remove(position);
             removeFromChunk(position);
             queueRebuild(position);
             queueChunkBatch(position);
@@ -890,10 +873,10 @@ public final class MicrovoxelClientState {
         boolean nowSealed = volume.isLightSealed(MicrovoxelClientState::isOpaqueMaterial);
         if (oldCached == null) {
             addToChunk(position);
-            CachedVolume created = new CachedVolume(position, volume, null);
+            MicrovoxelCachedVolume created = new MicrovoxelCachedVolume(position, volume, null);
             created.renderFlags = computeRenderFlags(volume);
             created.lightSealed = nowSealed;
-            VOLUMES.put(position, created);
+            MicrovoxelClientVolumeStore.VOLUMES.put(position, created);
         } else {
             // Keep one cache object for the lifetime of a placed volume. Replacing it on every
             // predicted click used to spawn an unbounded chain of shape jobs and made every
@@ -934,7 +917,7 @@ public final class MicrovoxelClientState {
         MicrovoxelClientMetrics.inc("resync.volume.requested");
         if (!canRequestResync()) return;
         lastResyncRequestTick = clientTick;
-        CachedVolume cached = VOLUMES.get(position);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
         int revision = cached == null ? 0 : cached.volume.revision();
         EclipseClientMod.LOGGER.warn("[MICROVOXEL] Requesting volume resync at {}: {}",
                 position.toShortString(), reason);
@@ -1004,7 +987,7 @@ public final class MicrovoxelClientState {
 
     public static void noteMissingVolume(BlockPos position) {
         BlockPos immutable = position.immutable();
-        if (VOLUMES.containsKey(immutable)) return;
+        if (MicrovoxelClientVolumeStore.VOLUMES.containsKey(immutable)) return;
         if (MISSING_MARKERS.size() >= MAX_MISSING_MARKERS) return;
         MISSING_MARKERS.putIfAbsent(immutable,
                 new MissingMarker(clientTick, clientTick + MISSING_MARKER_GRACE_TICKS, 0));
@@ -1033,7 +1016,7 @@ public final class MicrovoxelClientState {
             if (inspected++ >= 32) break;
             BlockPos position = entry.getKey();
             MissingMarker missing = entry.getValue();
-            if (VOLUMES.containsKey(position)
+            if (MicrovoxelClientVolumeStore.VOLUMES.containsKey(position)
                     || !MicrovoxelBlocks.isMarker(activeLevel.getBlockState(position))) {
                 MISSING_MARKERS.remove(position, missing);
                 continue;
@@ -1060,8 +1043,8 @@ public final class MicrovoxelClientState {
         }
     }
 
-    public static CachedVolume get(BlockPos position) {
-        return VOLUMES.get(position.immutable());
+    public static MicrovoxelCachedVolume get(BlockPos position) {
+        return MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
     }
 
     /**
@@ -1078,12 +1061,12 @@ public final class MicrovoxelClientState {
             if (hit.entry().x() != position.getX()
                     || hit.entry().y() != position.getY()
                     || hit.entry().z() != position.getZ()) return null;
-            CachedVolume cached = VOLUMES.get(position.immutable());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
             if (cached == null || cached.volume == null) return null;
             int cell = hit.cell();
             if (cell < 0 || cell >= ua.rp.chat.microvoxel.MicrovoxelVolume.CELL_COUNT
                     || !cached.volume.occupied(cell)) return null;
-            return CachedVolume.parseBlockState(cached.volume.material(cell));
+            return MicrovoxelCachedVolume.parseBlockState(cached.volume.material(cell));
         } catch (RuntimeException unreadable) {
             return null;
         }
@@ -1097,9 +1080,9 @@ public final class MicrovoxelClientState {
      */
     public static net.minecraft.world.level.block.state.BlockState parentState(BlockPos position) {
         if (position == null) return null;
-        CachedVolume cached;
+        MicrovoxelCachedVolume cached;
         try {
-            cached = VOLUMES.get(position.immutable());
+            cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         } catch (RuntimeException unreadable) {
             return null;
         }
@@ -1112,7 +1095,7 @@ public final class MicrovoxelClientState {
         }
         if (dominant == null) return null;
         try {
-            return CachedVolume.parseBlockState(dominant);
+            return MicrovoxelCachedVolume.parseBlockState(dominant);
         } catch (RuntimeException unreadable) {
             return null;
         }
@@ -1133,7 +1116,7 @@ public final class MicrovoxelClientState {
         BlockPos immutable = position.immutable();
         MicrovoxelVolume volume = parsed.volume().copy();
         replaceDisplayed(immutable, volume);
-        CachedVolume cached = VOLUMES.get(immutable);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
         if (cached != null) {
             // Placement is infrequent. This bounded synchronous mesh makes the first section
             // compilation exact; the normal queued job subsequently adds neighbour culling.
@@ -1160,7 +1143,7 @@ public final class MicrovoxelClientState {
     public static boolean refreshMarker(BlockPos position) {
         if (activeLevel == null || position == null) return false;
         BlockPos immutable = position.immutable();
-        CachedVolume cached = VOLUMES.get(immutable);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
         if (cached == null || cached.volume == null) return false;
         try {
             net.minecraft.world.level.block.state.BlockState desired = MicrovoxelBlocks.markerState(
@@ -1254,7 +1237,7 @@ public final class MicrovoxelClientState {
         return volume.emissionLevel(material -> {
             if (waterlogged && isDowsedMaterial(material)) return 0;
             try {
-                return CachedVolume.parseBlockState(material).getLightEmission();
+                return MicrovoxelCachedVolume.parseBlockState(material).getLightEmission();
             } catch (RuntimeException unparsable) {
                 return 0;
             }
@@ -1276,7 +1259,7 @@ public final class MicrovoxelClientState {
         for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
             if (volume.occupied(cell)) {
                 return MicrovoxelBlocks.soundProfile(
-                        CachedVolume.parseBlockState(volume.material(cell)));
+                        MicrovoxelCachedVolume.parseBlockState(volume.material(cell)));
             }
         }
         return 0;
@@ -1334,11 +1317,11 @@ public final class MicrovoxelClientState {
      */
     public static boolean predictRemove(BlockPos position, int cell, long transactionId) {
         BlockPos immutable = position.immutable();
-        CachedVolume cached = VOLUMES.get(immutable);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
         if (cached == null || !cached.volume.occupied(cell)) return false;
         MicrovoxelClientMetrics.inc("predict.remove");
         if (!reservePendingSlot()) return false;
-        AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
+        MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
         PENDING_EDITS.put(transactionId,
                 new PendingEdit(transactionId, immutable, cell, "", null, clientTick));
         rebuildPredicted(immutable);
@@ -1353,11 +1336,11 @@ public final class MicrovoxelClientState {
     public static boolean predictAdd(BlockPos position, int cell, String material, long transactionId) {
         BlockPos immutable = position.immutable();
         if (material == null || material.isEmpty()) return false;
-        CachedVolume cached = VOLUMES.get(immutable);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
         if (cached != null && cached.volume.occupied(cell)) return false;
         MicrovoxelClientMetrics.inc("predict.add");
         if (!reservePendingSlot()) return false;
-        if (cached != null) AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
+        if (cached != null) MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
         PENDING_EDITS.put(transactionId,
                 new PendingEdit(transactionId, immutable, cell, material, null, clientTick));
         rebuildPredicted(immutable);
@@ -1375,12 +1358,12 @@ public final class MicrovoxelClientState {
         if (!reservePendingSlot()) return false;
         java.util.HashSet<BlockPos> bases = new java.util.HashSet<>();
         for (BrushOp op : targets) {
-            CachedVolume cached = VOLUMES.get(op.position());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(op.position());
             if (cached == null) continue;
             if (op.material().isEmpty() && !cached.volume.occupied(op.cell())) continue;
             if (!op.material().isEmpty() && cached.volume.occupied(op.cell())) continue;
             if (bases.add(op.position())) {
-                AUTHORITATIVE_VOLUMES.putIfAbsent(op.position(), cached.volume.copy());
+                MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(op.position(), cached.volume.copy());
             }
         }
         if (bases.isEmpty()) return false;
@@ -1404,7 +1387,7 @@ public final class MicrovoxelClientState {
     }
 
     public static VoxelShape collisionShape(BlockPos position) {
-        CachedVolume cached = VOLUMES.get(position.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         return cached == null ? null : cached.getShape();
     }
 
@@ -1415,11 +1398,11 @@ public final class MicrovoxelClientState {
      * glass and carved builds always resolve to transparent.
      */
     public static net.minecraft.world.level.block.state.BlockState resolveLightState(BlockPos position) {
-        CachedVolume cached = VOLUMES.get(position.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         if (cached == null) return null;
         // Lava volumes never report a parent: the server keeps their glowing marker so sealed
         // forges shine, and the client must agree instead of going dark.
-        FluidView fluid = CLIENT_FLUIDS.get(position.immutable());
+        MicrovoxelFluidView fluid = MicrovoxelClientVolumeStore.CLIENT_FLUIDS.get(position.immutable());
         if (fluid != null && fluid.lava()) return null;
         int revision = cached.volume.revision();
         if (cached.lightParentRevision == revision) return cached.lightParent;
@@ -1429,7 +1412,7 @@ public final class MicrovoxelClientState {
                 if (!cached.volume.occupied(cell)) continue;
                 String material = cached.volume.material(cell);
                 if (isOpaqueMaterial(material)) {
-                    parent = CachedVolume.parseBlockState(material);
+                    parent = MicrovoxelCachedVolume.parseBlockState(material);
                     break;
                 }
             }
@@ -1441,7 +1424,7 @@ public final class MicrovoxelClientState {
 
     private static boolean isOpaqueMaterial(String material) {
         try {
-            return CachedVolume.parseBlockState(material).isSolidRender();
+            return MicrovoxelCachedVolume.parseBlockState(material).isSolidRender();
         } catch (RuntimeException unparsable) {
             return false;
         }
@@ -1449,7 +1432,7 @@ public final class MicrovoxelClientState {
 
     public static void probeShape(String hook, BlockPos position, VoxelShape shape) {
         if (!DEBUG) return;
-        CachedVolume cached = VOLUMES.get(position.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         if (cached == null) return;
         String key = "shape:" + hook + ':' + position.asLong() + ':' + cached.volume.revision();
         if (!PROBE_EMITTED.add(key)) return;
@@ -1463,7 +1446,7 @@ public final class MicrovoxelClientState {
                                    String material, int layerCount, String renderType, boolean translucent,
                                    float minU, float maxU, float minV, float maxV) {
         if (!DEBUG) return;
-        CachedVolume cached = VOLUMES.get(position.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         if (cached == null) return;
         String key = "render:" + position.asLong() + ':' + cached.volume.revision();
         if (!PROBE_EMITTED.add(key)) return;
@@ -1473,17 +1456,17 @@ public final class MicrovoxelClientState {
                 renderType, translucent, minU, maxU, minV, maxV);
     }
 
-    public static Collection<Map.Entry<BlockPos, CachedVolume>> volumesNear(
+    public static Collection<Map.Entry<BlockPos, MicrovoxelCachedVolume>> volumesNear(
             double blockX, double blockZ, double radius) {
         int minChunkX = floorChunk(blockX - radius);
         int maxChunkX = floorChunk(blockX + radius);
         int minChunkZ = floorChunk(blockZ - radius);
         int maxChunkZ = floorChunk(blockZ + radius);
-        List<Map.Entry<BlockPos, CachedVolume>> result = new ArrayList<>();
+        List<Map.Entry<BlockPos, MicrovoxelCachedVolume>> result = new ArrayList<>();
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                for (BlockPos position : CHUNKS.getOrDefault(chunkKey(chunkX, chunkZ), Set.of())) {
-                    CachedVolume volume = VOLUMES.get(position);
+                for (BlockPos position : MicrovoxelClientVolumeStore.CHUNKS.getOrDefault(chunkKey(chunkX, chunkZ), Set.of())) {
+                    MicrovoxelCachedVolume volume = MicrovoxelClientVolumeStore.VOLUMES.get(position);
                     if (volume != null) result.add(Map.entry(position, volume));
                 }
             }
@@ -1511,7 +1494,7 @@ public final class MicrovoxelClientState {
     public static List<MicrovoxelRaycaster.Entry> raycastEntries(double x, double y, double z, double radius) {
         double radiusSquared = radius * radius;
         List<MicrovoxelRaycaster.Entry> result = new ArrayList<>();
-        for (Map.Entry<BlockPos, CachedVolume> entry : volumesNear(x, z, radius)) {
+        for (Map.Entry<BlockPos, MicrovoxelCachedVolume> entry : volumesNear(x, z, radius)) {
             BlockPos position = entry.getKey();
             double dx = position.getX() + 0.5 - x;
             double dy = position.getY() + 0.5 - y;
@@ -1567,7 +1550,7 @@ public final class MicrovoxelClientState {
         int mid = 0;
         int far = 0;
         int farBuilds = 0;
-        for (CachedVolume cached : VOLUMES.values()) {
+        for (MicrovoxelCachedVolume cached : MicrovoxelClientVolumeStore.VOLUMES.values()) {
             double distanceSquared = cameraDistanceSquared(cached.position);
             ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier want =
                     ua.rp.chat.microvoxel.MicrovoxelLodTiers.wantTier(
@@ -1618,7 +1601,7 @@ public final class MicrovoxelClientState {
             }
             BlockPos pos = hit.getBlockPos();
             if (cameraDistanceSquared(pos) > LOD_HERO_DISTANCE_SQUARED) return null;
-            CachedVolume cached = VOLUMES.get(pos.immutable());
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(pos.immutable());
             return cached == null ? null : pos.immutable();
         } catch (RuntimeException unavailable) {
             return null;
@@ -1631,7 +1614,7 @@ public final class MicrovoxelClientState {
      * rebuild immediately; the queue drain moves throttled ones when due.
      */
     private static void requestRebuild(BlockPos position) {
-        CachedVolume cached = VOLUMES.get(position.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         if (cached != null
                 && cached.lodTier == ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.FAR) {
             FAR_THROTTLED_REBUILDS.put(position.immutable(), (long) clientTick + LOD_FAR_THROTTLE_TICKS);
@@ -1656,7 +1639,7 @@ public final class MicrovoxelClientState {
 
     private static void rebuild(BlockPos position) {
         BlockPos immutablePos = position.immutable();
-        CachedVolume center = VOLUMES.get(immutablePos);
+        MicrovoxelCachedVolume center = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos);
         if (center == null) return;
 
         int stride = center.volume.hasGeometry()
@@ -1667,12 +1650,12 @@ public final class MicrovoxelClientState {
             return;
         }
 
-        CachedVolume downVol = VOLUMES.get(immutablePos.below());
-        CachedVolume upVol = VOLUMES.get(immutablePos.above());
-        CachedVolume northVol = VOLUMES.get(immutablePos.north());
-        CachedVolume southVol = VOLUMES.get(immutablePos.south());
-        CachedVolume westVol = VOLUMES.get(immutablePos.west());
-        CachedVolume eastVol = VOLUMES.get(immutablePos.east());
+        MicrovoxelCachedVolume downVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.below());
+        MicrovoxelCachedVolume upVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.above());
+        MicrovoxelCachedVolume northVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.north());
+        MicrovoxelCachedVolume southVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.south());
+        MicrovoxelCachedVolume westVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.west());
+        MicrovoxelCachedVolume eastVol = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos.east());
 
         boolean downSolid = (downVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.below()).isSolidRender();
         boolean upSolid = (upVol == null && activeLevel != null) && activeLevel.getBlockState(immutablePos.above()).isSolidRender();
@@ -1738,7 +1721,7 @@ public final class MicrovoxelClientState {
 
                 Minecraft.getInstance().execute(() -> {
                     if (!MESHING_JOBS.remove(immutablePos, job)) return;
-                    CachedVolume currentCenter = job.generation == stateGeneration ? VOLUMES.get(immutablePos) : null;
+                    MicrovoxelCachedVolume currentCenter = job.generation == stateGeneration ? MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos) : null;
                     boolean current = currentCenter != null && currentCenter.volume.revision() == job.revision;
                     if (currentCenter != null && job.generation == stateGeneration) {
                         // A continuously edited volume may already be one revision ahead. Showing
@@ -1807,12 +1790,12 @@ public final class MicrovoxelClientState {
         int localY = Math.floorMod(y, 16);
         int localZ = Math.floorMod(z, 16);
         if (offsetX == 0 && offsetY == 0 && offsetZ == 0) {
-            CachedVolume cached = VOLUMES.get(base);
+            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(base);
             return cached != null && microSolid(cached.volume, localX, localY, localZ);
         }
         BlockPos.MutableBlockPos scratch = SCRATCH_POS.get();
         scratch.set(base.getX() + offsetX, base.getY() + offsetY, base.getZ() + offsetZ);
-        CachedVolume cached = VOLUMES.get(scratch);
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(scratch);
         if (cached != null) return microSolid(cached.volume, localX, localY, localZ);
         if (activeLevel == null) return false;
         return activeLevel.getBlockState(scratch).isSolidRender();
@@ -1972,7 +1955,7 @@ public final class MicrovoxelClientState {
         while (iterator.hasNext() && (rebuilt == 0 || System.nanoTime() < deadline)) {
             long key = iterator.next();
             iterator.remove();
-            Set<BlockPos> positions = CHUNKS.get(key);
+            Set<BlockPos> positions = MicrovoxelClientVolumeStore.CHUNKS.get(key);
             if (positions == null || positions.isEmpty()) {
                 CHUNK_BATCHES.remove(key);
                 rebuilt++;
@@ -1980,7 +1963,7 @@ public final class MicrovoxelClientState {
             }
             List<ChunkFace> faces = new ArrayList<>();
             for (BlockPos position : positions) {
-                CachedVolume cached = VOLUMES.get(position);
+                MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
                 if (cached == null) continue;
                 for (MicrovoxelGreedyMesher.Face face : cached.mesh) {
                     faces.add(new ChunkFace(position, cached, face));
@@ -1992,8 +1975,8 @@ public final class MicrovoxelClientState {
     }
 
     private static void clearVolumes() {
-        VOLUMES.clear();
-        CHUNKS.clear();
+        MicrovoxelClientVolumeStore.VOLUMES.clear();
+        MicrovoxelClientVolumeStore.CHUNKS.clear();
         MESH_QUEUE.clear();
         FAR_THROTTLED_REBUILDS.clear();
         HELD_WORK_SECTIONS.clear();
@@ -2004,11 +1987,11 @@ public final class MicrovoxelClientState {
         CHUNK_BATCH_QUEUE.clear();
         SECTION_REBUILD_QUEUE.clear();
         PROBE_EMITTED.clear();
-        AUTHORITATIVE_VOLUMES.clear();
+        MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.clear();
         PENDING_EDITS.clear();
         PENDING_PLACEMENTS.clear();
         PENDING_LIGHT_CHECKS.clear();
-        CLIENT_FLUIDS.clear();
+        MicrovoxelClientVolumeStore.CLIENT_FLUIDS.clear();
         MicrovoxelClientCracks.clearAll();
         predictedFluidAt = null;
         predictedFluidLava = false;
@@ -2021,15 +2004,15 @@ public final class MicrovoxelClientState {
 
     public static void clearChunk(int chunkX, int chunkZ) {
         long key = chunkKey(chunkX, chunkZ);
-        Set<BlockPos> positions = CHUNKS.remove(key);
+        Set<BlockPos> positions = MicrovoxelClientVolumeStore.CHUNKS.remove(key);
         if (positions != null) {
             for (BlockPos pos : positions) {
-                VOLUMES.remove(pos);
-                AUTHORITATIVE_VOLUMES.remove(pos);
+                MicrovoxelClientVolumeStore.VOLUMES.remove(pos);
+                MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(pos);
                 PENDING_PLACEMENTS.remove(pos);
                 MISSING_MARKERS.remove(pos);
                 PENDING_LIGHT_CHECKS.remove(pos);
-                CLIENT_FLUIDS.remove(pos);
+                MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(pos);
                 clearCracks(pos);
                 if (workFocus != null && workFocus.equals(pos)) {
                     setWorkFocus(null);
@@ -2050,7 +2033,7 @@ public final class MicrovoxelClientState {
                     java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
                     seen.add(dropped.position());
                     for (BrushOp op : dropped.brushTargets()) {
-                        if (seen.add(op.position()) && VOLUMES.containsKey(op.position())) {
+                        if (seen.add(op.position()) && MicrovoxelClientVolumeStore.VOLUMES.containsKey(op.position())) {
                             settlePredicted(op.position());
                         }
                     }
@@ -2075,16 +2058,16 @@ public final class MicrovoxelClientState {
     }
 
     private static void addToChunk(BlockPos position) {
-        CHUNKS.computeIfAbsent(chunkKey(position.getX() >> 4, position.getZ() >> 4), ignored -> new HashSet<>())
+        MicrovoxelClientVolumeStore.CHUNKS.computeIfAbsent(chunkKey(position.getX() >> 4, position.getZ() >> 4), ignored -> new HashSet<>())
                 .add(position);
     }
 
     private static void removeFromChunk(BlockPos position) {
         long key = chunkKey(position.getX() >> 4, position.getZ() >> 4);
-        Set<BlockPos> indexed = CHUNKS.get(key);
+        Set<BlockPos> indexed = MicrovoxelClientVolumeStore.CHUNKS.get(key);
         if (indexed == null) return;
         indexed.remove(position);
-        if (indexed.isEmpty()) CHUNKS.remove(key);
+        if (indexed.isEmpty()) MicrovoxelClientVolumeStore.CHUNKS.remove(key);
         CHUNK_BATCH_QUEUE.add(key);
     }
 
@@ -2124,178 +2107,51 @@ public final class MicrovoxelClientState {
      */
     private static void acceptFluid(BlockPos position, int revision, boolean lava, byte[] levels) {
         if (levels.length != MicrovoxelVolume.CELL_COUNT) return;
-        FluidView current = CLIENT_FLUIDS.get(position);
+        MicrovoxelFluidView current = MicrovoxelClientVolumeStore.CLIENT_FLUIDS.get(position);
         if (current != null && !MicrovoxelRevision.isNewer(revision, current.revision())) return;
-        CLIENT_FLUIDS.put(position, new FluidView(levels, revision, lava));
+        MicrovoxelClientVolumeStore.CLIENT_FLUIDS.put(position, new MicrovoxelFluidView(levels, revision, lava));
         MicrovoxelClientMetrics.inc("fluid.received");
         queueChunkBatch(position);
         scheduleBoundaryRebuild(position);
     }
 
     private static void dropFluid(BlockPos position) {
-        if (CLIENT_FLUIDS.remove(position) != null) {
+        if (MicrovoxelClientVolumeStore.CLIENT_FLUIDS.remove(position) != null) {
             queueChunkBatch(position);
             scheduleBoundaryRebuild(position);
         }
     }
 
     /** Raw authoritative levels for rendering and physics refinement, or null when dry. */
-    public static FluidView fluidAt(BlockPos position) {
-        return CLIENT_FLUIDS.get(position.immutable());
+    public static MicrovoxelFluidView fluidAt(BlockPos position) {
+        return MicrovoxelClientFluids.at(position);
     }
 
-    /**
-     * Client mirror of the server voxel-exact water override: true only when vanilla sees
-     * water but feet, mid-body and eyes all stand on dry 1/16 cells of marker-fluid volumes
-     * with no vanilla water anywhere in the bounding box. Callers apply it to submersion,
-     * height and eye reads together, never partially.
-     */
     public static boolean shouldIgnoreWater(net.minecraft.world.entity.Entity entity) {
-        if (CLIENT_FLUIDS.isEmpty()) return false;
-        if (!(entity.level() instanceof net.minecraft.client.multiplayer.ClientLevel level)) {
-            return false;
-        }
-        net.minecraft.world.phys.AABB box = entity.getBoundingBox().inflate(0.001);
-        if (box.getXsize() > 4.0 || box.getYsize() > 4.0 || box.getZsize() > 4.0) return false;
-        int minX = (int) Math.floor(box.minX);
-        int maxX = (int) Math.floor(box.maxX);
-        int minY = (int) Math.floor(box.minY);
-        int maxY = (int) Math.floor(box.maxY);
-        int minZ = (int) Math.floor(box.minZ);
-        int maxZ = (int) Math.floor(box.maxZ);
-        if ((maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1) > 64) return false;
-        boolean touchedMarkerFluid = false;
-        for (int bx = minX; bx <= maxX; bx++) {
-            for (int by = minY; by <= maxY; by++) {
-                for (int bz = minZ; bz <= maxZ; bz++) {
-                    BlockPos pos = new BlockPos(bx, by, bz);
-                    net.minecraft.world.level.block.state.BlockState state =
-                            level.getBlockState(pos);
-                    if (state.getFluidState().isEmpty()) continue;
-                    if (!MicrovoxelBlocks.isMarker(state)) return false;
-                    touchedMarkerFluid = true;
-                }
-            }
-        }
-        if (!touchedMarkerFluid) return false;
-        net.minecraft.world.phys.Vec3 feet = entity.position();
-        net.minecraft.world.phys.Vec3 eye = feet.add(0.0, entity.getEyeHeight(), 0.0);
-        net.minecraft.world.phys.Vec3 mid = feet.add(0.0, entity.getBbHeight() / 2.0, 0.0);
-        return !cellWet(feet) && !cellWet(mid) && !cellWet(eye);
+        return MicrovoxelClientFluids.shouldIgnoreWater(entity);
     }
 
-    /**
-     * Client mirror of the server voxel-lava height: max lava fraction touching the bounding
-     * box, or -1 when vanilla already sees lava or nothing does. Vanilla damage, ignition
-     * and fog then apply through the standard reads on both sides.
-     */
     public static double voxelLavaHeight(net.minecraft.world.entity.Entity entity) {
-        if (CLIENT_FLUIDS.isEmpty()) return -1.0;
-        if (!(entity.level() instanceof net.minecraft.client.multiplayer.ClientLevel level)) {
-            return -1.0;
-        }
-        net.minecraft.world.phys.AABB box = entity.getBoundingBox().inflate(0.001);
-        if (box.getXsize() > 4.0 || box.getYsize() > 4.0 || box.getZsize() > 4.0) return -1.0;
-        int minX = (int) Math.floor(box.minX);
-        int maxX = (int) Math.floor(box.maxX);
-        int minY = (int) Math.floor(box.minY);
-        int maxY = (int) Math.floor(box.maxY);
-        int minZ = (int) Math.floor(box.minZ);
-        int maxZ = (int) Math.floor(box.maxZ);
-        if ((maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1) > 64) return -1.0;
-        double height = -1.0;
-        for (int bx = minX; bx <= maxX; bx++) {
-            for (int by = minY; by <= maxY; by++) {
-                for (int bz = minZ; bz <= maxZ; bz++) {
-                    BlockPos pos = new BlockPos(bx, by, bz);
-                    if (!level.getFluidState(pos).isEmpty()
-                            && !level.getFluidState(pos).is(
-                                    net.minecraft.world.level.material.Fluids.WATER)) {
-                        return -1.0;
-                    }
-                    if (!MicrovoxelBlocks.isMarker(level.getBlockState(pos))) continue;
-                    FluidView view = CLIENT_FLUIDS.get(pos);
-                    if (view == null || !view.lava()) continue;
-                    int x0 = Math.max(0, (int) Math.floor((box.minX - bx) * 16.0));
-                    int x1 = Math.min(15, (int) Math.floor((box.maxX - bx) * 16.0 - 1.0E-7));
-                    int y0 = Math.max(0, (int) Math.floor((box.minY - by) * 16.0));
-                    int y1 = Math.min(15, (int) Math.floor((box.maxY - by) * 16.0 - 1.0E-7));
-                    int z0 = Math.max(0, (int) Math.floor((box.minZ - bz) * 16.0));
-                    int z1 = Math.min(15, (int) Math.floor((box.maxZ - bz) * 16.0 - 1.0E-7));
-                    for (int cx = x0; cx <= x1; cx++) {
-                        for (int cy = y0; cy <= y1; cy++) {
-                            for (int cz = z0; cz <= z1; cz++) {
-                                int wet = view.level(MicrovoxelVolume.index(cx, cy, cz));
-                                if (wet <= 0) continue;
-                                double cell = wet / 16.0;
-                                if (cell > height) height = cell;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return height;
+        return MicrovoxelClientFluids.voxelLavaHeight(entity);
     }
 
-    /** Lava height at one exact position, or -1 when dry. Single-cell eye-check path. */
     public static double voxelLavaHeightAt(net.minecraft.world.entity.Entity entity,
                                            net.minecraft.world.phys.Vec3 exact) {
-        if (CLIENT_FLUIDS.isEmpty()) return -1.0;
-        if (!(entity.level() instanceof net.minecraft.client.multiplayer.ClientLevel)) {
-            return -1.0;
-        }
-        return voxelLavaHeightAt(entity.level(), exact);
+        return MicrovoxelClientFluids.voxelLavaHeightAt(entity, exact);
     }
 
-    /** Level-based core shared by entity and camera refinements. */
     public static double voxelLavaHeightAt(net.minecraft.world.level.Level level,
                                            net.minecraft.world.phys.Vec3 exact) {
-        if (CLIENT_FLUIDS.isEmpty() || level == null) return -1.0;
-        BlockPos pos = BlockPos.containing(exact);
-        if (!MicrovoxelBlocks.isMarker(level.getBlockState(pos))) return -1.0;
-        FluidView view = CLIENT_FLUIDS.get(pos);
-        if (view == null || !view.lava()) return -1.0;
-        int cellX = (int) Math.floor((exact.x - pos.getX()) * 16.0);
-        int cellY = (int) Math.floor((exact.y - pos.getY()) * 16.0);
-        int cellZ = (int) Math.floor((exact.z - pos.getZ()) * 16.0);
-        if (cellX < 0 || cellX > 15 || cellY < 0 || cellY > 15 || cellZ < 0 || cellZ > 15) {
-            return -1.0;
-        }
-        int wet = view.level(MicrovoxelVolume.index(cellX, cellY, cellZ));
-        return wet > 0 ? wet / 16.0 : -1.0;
+        return MicrovoxelClientFluids.voxelLavaHeightAt(level, exact);
     }
 
-    /** True when the exact 1/16 cell under a precise position holds water. */
     public static boolean cellWet(net.minecraft.world.phys.Vec3 exact) {
-        BlockPos pos = BlockPos.containing(exact);
-        FluidView view = CLIENT_FLUIDS.get(pos);
-        if (view == null) return false;
-        int cellX = (int) Math.floor((exact.x - pos.getX()) * 16.0);
-        int cellY = (int) Math.floor((exact.y - pos.getY()) * 16.0);
-        int cellZ = (int) Math.floor((exact.z - pos.getZ()) * 16.0);
-        if (cellX < 0 || cellX > 15 || cellY < 0 || cellY > 15 || cellZ < 0 || cellZ > 15) {
-            return false;
-        }
-        return view.level(MicrovoxelVolume.index(cellX, cellY, cellZ)) > 0;
+        return MicrovoxelClientFluids.cellWet(exact);
     }
 
-    /**
-     * Fluid level at global micro coordinates, transparent across volume borders (floor
-     * division, like the solid sampler). Returns 0 outside known fluid data.
-     */
     public static int fluidLevelAt(BlockPos base, int x, int y, int z) {
-        int offsetX = Math.floorDiv(x, 16);
-        int offsetY = Math.floorDiv(y, 16);
-        int offsetZ = Math.floorDiv(z, 16);
-        BlockPos target = offsetX == 0 && offsetY == 0 && offsetZ == 0 ? base
-                : new BlockPos(base.getX() + offsetX, base.getY() + offsetY, base.getZ() + offsetZ);
-        FluidView view = CLIENT_FLUIDS.get(target);
-        if (view == null) return 0;
-        return view.level(MicrovoxelVolume.index(
-                Math.floorMod(x, 16), Math.floorMod(y, 16), Math.floorMod(z, 16)));
+        return MicrovoxelClientFluids.fluidLevelAt(base, x, y, z);
     }
-
     /** Mirror of the server RLE fluid codec. Public for unit tests; delegates to the codec. */
     public static byte[] decodeLevels(byte[] encoded) throws IOException {
         return MicrovoxelClientCodec.decodeLevels(encoded);
@@ -2312,15 +2168,8 @@ public final class MicrovoxelClientState {
     private record TransactionChange(BlockPos position, MicrovoxelVolume volume) {
     }
 
-    private static final java.util.concurrent.ExecutorService SHAPE_EXECUTOR =
-            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "Microvoxel-Shape-Generator");
-                thread.setDaemon(true);
-                return thread;
-            });
-
     public static net.minecraft.world.level.block.state.BlockState getBaseBlockState(BlockPos pos) {
-        CachedVolume cached = VOLUMES.get(pos.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(pos.immutable());
         if (cached == null) return null;
         return cached.getBaseBlockState();
     }
@@ -2331,7 +2180,7 @@ public final class MicrovoxelClientState {
             net.minecraft.world.phys.Vec3 worldPosition,
             net.minecraft.world.phys.Vec3 outwardNormal
     ) {
-        CachedVolume cached = VOLUMES.get(pos.immutable());
+        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(pos.immutable());
         if (cached == null) return null;
         net.minecraft.world.phys.Vec3 inside = worldPosition.subtract(
                 outwardNormal.normalize().scale(0.002));
@@ -2343,108 +2192,7 @@ public final class MicrovoxelClientState {
                 (int) Math.floor((inside.z - pos.getZ()) * 16.0)));
         int material = cached.volume.materialAt(x, y, z);
         if (material <= 0 || material >= cached.volume.palette().size()) return null;
-        return CachedVolume.parseBlockState(cached.volume.palette().get(material));
-    }
-
-    public static final class CachedVolume {
-        public final BlockPos position;
-        public volatile MicrovoxelVolume volume;
-        private final VoxelShape fallback;
-        private volatile VoxelShape shape;
-        private volatile int shapeRevision;
-        private volatile boolean shapeGenerating = false;
-        public volatile List<MicrovoxelGreedyMesher.Face> mesh = List.of();
-        /** Revision the near (stride-1) mesh was built for; 0 means never built. */
-        volatile int meshRevision;
-        /** Stride-2 LOD mesh for mid-range viewing, with its own revision gate. */
-        volatile List<MicrovoxelGreedyMesher.Face> midMesh;
-        volatile int midMeshRevision = Integer.MIN_VALUE;
-        /** Stride-4 silhouette mesh for far viewing, with its own revision gate. */
-        volatile List<MicrovoxelGreedyMesher.Face> farMesh;
-        volatile int farMeshRevision = Integer.MIN_VALUE;
-        /** Display tier owned by the LOD review; rebuilds compile for this stride. */
-        volatile ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier lodTier =
-                ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.NEAR;
-        /** GPU render-pass flags snapshot, refreshed on every displayed volume install. */
-        volatile int renderFlags = MicrovoxelSectionModel.GENERAL_MATERIAL_FLAGS;
-        /** Light-seal snapshot twin of renderFlags: drives explicit engine rechecks on flips. */
-        volatile boolean lightSealed;
-        /** Cached light-engine parent state with its revision gate (null = transparent). */
-        volatile net.minecraft.world.level.block.state.BlockState lightParent;
-        volatile int lightParentRevision = Integer.MIN_VALUE;
-        private net.minecraft.world.level.block.state.BlockState baseBlockState;
-
-        private CachedVolume(BlockPos position, MicrovoxelVolume volume, VoxelShape fallback) {
-            this.position = position.immutable();
-            this.volume = volume;
-            this.fallback = fallback;
-        }
-
-        private synchronized void updateVolume(MicrovoxelVolume replacement) {
-            this.volume = replacement;
-            this.baseBlockState = null;
-            if (!shapeGenerating) triggerAsyncShapeGen();
-        }
-
-        public net.minecraft.world.level.block.state.BlockState getBaseBlockState() {
-            if (baseBlockState == null) {
-                String matStr = null;
-                for (int cell = 0; cell < MicrovoxelVolume.CELL_COUNT; cell++) {
-                    if (volume.occupied(cell)) {
-                        matStr = volume.material(cell);
-                        break;
-                    }
-                }
-                if (matStr != null && !matStr.isEmpty()) {
-                    baseBlockState = parseBlockState(matStr);
-                } else {
-                    baseBlockState = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
-                }
-            }
-            return baseBlockState;
-        }
-
-        private static net.minecraft.world.level.block.state.BlockState parseBlockState(String value) {
-            return MicrovoxelSectionModel.parseBlockState(value);
-        }
-
-        public VoxelShape getShape() {
-            VoxelShape s = shape;
-            if (s == null || shapeRevision != volume.revision()) {
-                triggerAsyncShapeGen();
-                if (s == null) return fallback != null ? fallback : Shapes.block();
-            }
-            return s;
-        }
-
-        private synchronized void triggerAsyncShapeGen() {
-            if (shapeGenerating || shapeRevision == volume.revision()) return;
-            shapeGenerating = true;
-            MicrovoxelVolume snapshot = volume.copy();
-            int requestedRevision = snapshot.revision();
-            SHAPE_EXECUTOR.submit(() -> {
-                try {
-                    long start = System.nanoTime();
-                    VoxelShape newShape = MicrovoxelClientShapes.build(snapshot);
-                    long durationNs = System.nanoTime() - start;
-                    Minecraft.getInstance().execute(() -> {
-                        if (volume.revision() == requestedRevision) {
-                            this.shape = newShape;
-                            this.shapeRevision = requestedRevision;
-                        }
-                        shapeGenerating = false;
-                        if (shapeRevision != volume.revision()) triggerAsyncShapeGen();
-                    });
-                    EclipseClientMod.LOGGER.info(
-                            "[MICROVOXEL-PERF] ASYNC_SHAPE_GEN pos={} | Duration: {}us | Backend: {}",
-                            position.toShortString(), String.format("%.2f", durationNs / 1000.0),
-                            snapshot.collisionPlan().backend());
-                } catch (Throwable t) {
-                    EclipseClientMod.LOGGER.error("Failed to generate async shape", t);
-                    Minecraft.getInstance().execute(() -> shapeGenerating = false);
-                }
-            });
-        }
+        return MicrovoxelCachedVolume.parseBlockState(cached.volume.palette().get(material));
     }
 
     public static final class ChunkBatch {
@@ -2469,7 +2217,7 @@ public final class MicrovoxelClientState {
         }
     }
 
-    public record ChunkFace(BlockPos position, CachedVolume cached, MicrovoxelGreedyMesher.Face face) {
+    public record ChunkFace(BlockPos position, MicrovoxelCachedVolume cached, MicrovoxelGreedyMesher.Face face) {
     }
 
     private record MeshJob(int generation, int revision, int stride) {

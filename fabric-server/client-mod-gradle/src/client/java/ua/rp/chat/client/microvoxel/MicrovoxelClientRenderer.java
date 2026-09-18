@@ -186,7 +186,7 @@ public final class MicrovoxelClientRenderer {
         UvPatch uv;
         if (hit != null) {
             position = new BlockPos(hit.entry().x(), hit.entry().y(), hit.entry().z());
-            MicrovoxelClientState.CachedVolume cached = MicrovoxelClientState.get(position);
+            MicrovoxelCachedVolume cached = MicrovoxelClientState.get(position);
             if (cached == null) return;
             int materialIndex = cached.volume.materialAt(MicrovoxelVolume.x(hit.cell()),
                     MicrovoxelVolume.y(hit.cell()), MicrovoxelVolume.z(hit.cell()));
