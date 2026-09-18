@@ -263,6 +263,8 @@ tasks.register("verifyMicrovoxelNativeMarker") {
     def clientMarker = serverMarker
     def clientState = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    def clientSync = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientSync.java")
     def clientRenderer = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientRenderer.java")
     def sectionModel = rootProject.layout.projectDirectory.file(
@@ -279,12 +281,13 @@ tasks.register("verifyMicrovoxelNativeMarker") {
             "src/main/java/ua/rp/chat/RPChat.java")
     def authSource = layout.projectDirectory.file(
             "src/main/java/ua/rp/chat/auth/AuthManager.java")
-    inputs.files(managerSource, serverMarker, clientMarker, clientState, clientRenderer, sectionModel,
-            interaction, gameModeMixin, serverBlockStateMixin, protocolSource, bootstrapSource,
-            authSource)
+    inputs.files(managerSource, serverMarker, clientMarker, clientState, clientSync, clientRenderer,
+            sectionModel, interaction, gameModeMixin, serverBlockStateMixin, protocolSource,
+            bootstrapSource, authSource)
     doLast {
         def manager = managerSource.asFile.getText("UTF-8")
         def state = clientState.asFile.getText("UTF-8")
+        def sync = clientSync.asFile.getText("UTF-8")
         def renderer = clientRenderer.asFile.getText("UTF-8")
         def section = sectionModel.asFile.getText("UTF-8")
         assert serverMarker.asFile.getText("UTF-8") == clientMarker.asFile.getText("UTF-8"):
@@ -294,8 +297,8 @@ tasks.register("verifyMicrovoxelNativeMarker") {
                 && serverMarker.asFile.getText("UTF-8").contains("SOUND_PROFILE")
                 && serverMarker.asFile.getText("UTF-8").contains("WATERLOGGED"):
                 "Microvoxel volumes still use a vanilla placeholder marker"
-        assert state.contains('requestVolumeResync(immutable, "delta without base volume')
-                && state.contains('MicrovoxelRevision.isImmediateNext'):
+        assert sync.contains('requestVolumeResync(immutable, "delta without base volume')
+                && sync.contains('MicrovoxelRevision.isImmediateNext'):
                 "Missing or out-of-order deltas must request an authoritative targeted volume"
         assert renderer.contains("MicrovoxelBlocks.isMarker(state)"):
                 "The native marker is registered but rejected by the client renderer"
@@ -493,6 +496,8 @@ tasks.register("verifyMicrovoxelProtocolParity") {
             "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java")
     def clientState = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    def clientSync = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientSync.java")
     def batchPayload = rootProject.layout.projectDirectory.file(
             "common/src/main/java/ua/rp/chat/client/microvoxel/MicrovoxelBatchPayload.java")
     def actionPayload = rootProject.layout.projectDirectory.file(
@@ -503,12 +508,13 @@ tasks.register("verifyMicrovoxelProtocolParity") {
             "src/main/java/ua/rp/chat/RPChat.java")
     def clientBootstrap = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/EclipseClientMod.java")
-    inputs.files(wireSource, protocolSource, clientState, batchPayload, actionPayload,
+    inputs.files(wireSource, protocolSource, clientState, clientSync, batchPayload, actionPayload,
             sessionToken, bootstrapSource, clientBootstrap)
     doLast {
         def wire = wireSource.asFile.getText("UTF-8")
         def protocol = protocolSource.asFile.getText("UTF-8")
         def state = clientState.asFile.getText("UTF-8")
+        def sync = clientSync.asFile.getText("UTF-8")
         // The shared contract owns the frame and the codes.
         assert wire.contains("public static final int MAJOR =")
                 && wire.contains("public static final int MINOR =")
@@ -519,8 +525,8 @@ tasks.register("verifyMicrovoxelProtocolParity") {
         // Server builders and client decoder both consume it, never a copied constant table.
         assert protocol.contains("MicrovoxelWire.MAGIC") && protocol.contains("MicrovoxelWire.frame("):
                 "Server builders must use the shared frame"
-        assert state.contains("MicrovoxelWire.readFrame") && state.contains("MicrovoxelWire.MINE_STAGE")
-                && state.contains("MicrovoxelWire.CLEAR") && state.contains("MicrovoxelWire.ACTION_HELLO"):
+        assert sync.contains("MicrovoxelWire.readFrame") && sync.contains("MicrovoxelWire.MINE_STAGE")
+                && sync.contains("MicrovoxelWire.CLEAR") && state.contains("MicrovoxelWire.ACTION_HELLO"):
                 "Client must consume the shared contract instead of a private mirror"
         assert !state.contains("private static final int UPSERT = 2"):
                 "Client must not re-declare wire message codes"
@@ -543,7 +549,7 @@ tasks.register("verifyMicrovoxelProtocolParity") {
         assert actionPayload.asFile.getText("UTF-8").contains("long sessionNonce")
                 && batchPayload.asFile.getText("UTF-8").contains("long sessionNonce"):
                 "Both action payloads must carry the per-login session token"
-        assert state.contains("sessionNonce = input.readLong()")
+        assert sync.contains("setSessionNonce(input.readLong())")
                 && protocol.contains("helloAck(int major, int minor, int capabilities, long sessionNonce)"):
                 "Client must store the token and the server must issue it in HELLO_ACK"
     }
@@ -704,9 +710,11 @@ tasks.register("verifyMicrovoxelFluidWiring") {
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelSectionModel.java")
     def clientState = rootProject.layout.projectDirectory.file(
             "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+    def clientSync = rootProject.layout.projectDirectory.file(
+            "client-mod-gradle/src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientSync.java")
     inputs.files(serverMarker, clientMarker, managerSource, simSource, bootstrapSource,
             entityMixin, clientEntityMixin, cameraMixin, fluidRendererMixin, sectionModel,
-            clientState, blockStateMixin)
+            clientState, clientSync, blockStateMixin)
     doLast {
         def marker = serverMarker.asFile.getText("UTF-8")
         assert marker == clientMarker.asFile.getText("UTF-8"):
@@ -741,9 +749,10 @@ tasks.register("verifyMicrovoxelFluidWiring") {
         def protocol = layout.projectDirectory.file(
                 "src/main/java/ua/rp/chat/microvoxel/MicrovoxelProtocol.java").asFile.getText("UTF-8")
         def state = clientState.asFile.getText("UTF-8")
+        def sync = clientSync.asFile.getText("UTF-8")
         assert protocol.contains("FLUID_UPSERT") && protocol.contains("FLUID_REMOVE")
                 && protocol.contains("encodeLevels") && protocol.contains("decodeLevels")
-                && protocol.contains("kindCode") && state.contains("kindCode"):
+                && protocol.contains("kindCode") && sync.contains("kindCode"):
                 "Fluid levels must travel in revision-guarded RLE packets with kind"
         assert sim.contains("syncFluid") && sim.contains("nearbyPlayers")
                 && sim.contains("shouldIgnoreWater"):
