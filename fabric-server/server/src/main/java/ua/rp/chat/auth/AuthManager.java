@@ -145,6 +145,22 @@ public class AuthManager {
         return false;
     }
 
+    /**
+     * A fixed-format password hash used only to equalize the cost of an unknown-account login.
+     * Without it, a missing account returns before any PBKDF2 work while an existing one runs
+     * 600k rounds, leaking which usernames exist through response timing.
+     */
+    private volatile String timingEqualizerHash;
+
+    private void equalizeLoginTiming(String password) {
+        String dummy = timingEqualizerHash;
+        if (dummy == null) {
+            dummy = PasswordHasher.hash("eclipse-timing-equalizer");
+            timingEqualizerHash = dummy;
+        }
+        PasswordHasher.verify(password, dummy);
+    }
+
     public boolean attemptLogin(ServerPlayer player, String loginName, String password, boolean rememberDevice) {
         UUID uuid = player.getUUID();
         if (!pendingAuth.contains(uuid)) {
@@ -153,12 +169,16 @@ public class AuthManager {
 
         AuthDatabase.PlayerAccount account = database.getAccountByLoginName(loginName);
         if (account == null) {
+            // Burn the same PBKDF2 cost as a real verification so response time cannot reveal
+            // whether the login name exists (user enumeration).
+            equalizeLoginTiming(password);
             plugin.getLogger().info("[AUTH-AUDIT] login rejected: account not found; player=" + player.getGameProfile().name() + ", login=" + loginName);
             return false;
         }
 
         String storedHash = account.passwordHash();
         if (storedHash == null) {
+            equalizeLoginTiming(password);
             plugin.getLogger().warning("[AUTH-AUDIT] login rejected: account has no password hash; player=" + player.getGameProfile().name() + ", login=" + loginName);
             return false;
         }
@@ -556,12 +576,14 @@ public class AuthManager {
 
         AuthDatabase.PlayerAccount account = database.getAccountByLoginName(loginName);
         if (account == null) {
+            equalizeLoginTiming(password);
             plugin.getLogger().info("[AUTH-AUDIT] login rejected: account not found; player=" + player.getScoreboardName() + ", login=" + loginName);
             return false;
         }
 
         String storedHash = account.passwordHash();
         if (storedHash == null) {
+            equalizeLoginTiming(password);
             plugin.getLogger().warning("[AUTH-AUDIT] login rejected: account has no password hash; player=" + player.getScoreboardName() + ", login=" + loginName);
             return false;
         }

@@ -19,6 +19,16 @@ VPS_DEST_DIR = "/var/eclipse-dist"
 WINDOWS_OPENSSH = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "OpenSSH"
 SCP_COMMAND = str(WINDOWS_OPENSSH / "scp.exe") if (WINDOWS_OPENSSH / "scp.exe").is_file() else "scp"
 SSH_COMMAND = str(WINDOWS_OPENSSH / "ssh.exe") if (WINDOWS_OPENSSH / "ssh.exe").is_file() else "ssh"
+# Persist host keys so the first connection is trusted and any later change is rejected, instead
+# of disabling verification entirely (which would let a MITM hijack the sudo commands run here).
+KNOWN_HOSTS = Path(__file__).resolve().parent.parent / "secrets" / "known_hosts"
+
+def ssh_options():
+    KNOWN_HOSTS.parent.mkdir(parents=True, exist_ok=True)
+    return [
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={KNOWN_HOSTS}",
+    ]
 
 def make_tarfile(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:
@@ -57,7 +67,7 @@ def main():
         scp_args = [
             SCP_COMMAND,
             "-i", SSH_KEY,
-            "-o", "StrictHostKeyChecking=no",
+            *ssh_options(),
             str(tar_path),
             str(client_tar_path),
             str(sync_script),
@@ -82,7 +92,7 @@ def main():
     ssh_args = [
         SSH_COMMAND,
         "-i", SSH_KEY,
-        "-o", "StrictHostKeyChecking=no",
+        *ssh_options(),
         f"{VPS_USER}@{VPS_HOST}",
         remote_cmds
     ]

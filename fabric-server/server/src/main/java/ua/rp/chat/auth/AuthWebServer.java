@@ -12,6 +12,7 @@ import ua.rp.chat.RPChat;
 import ua.rp.chat.vitals.StaminaManager;
 
 import java.io.*;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +41,18 @@ public class AuthWebServer {
     private static final int MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
     /** Origins allowed to read the API cross-origin; empty means same-origin only. */
     private final java.util.Set<String> allowedOrigins = new java.util.HashSet<>();
+    /**
+     * Content-Security-Policy for the served HTML pages. They load only same-origin assets plus
+     * Google Fonts and Minotar avatars, so everything else is denied; inline styles are allowed
+     * because the pages set a few element styles directly.
+     */
+    private static final String CONTENT_SECURITY_POLICY =
+            "default-src 'self'; "
+            + "img-src 'self' data: https://minotar.net https://crafatar.com; "
+            + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            + "font-src 'self' https://fonts.gstatic.com; "
+            + "script-src 'self'; connect-src 'self'; "
+            + "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     /** Credential-attempt budgets: per remote IP and per account, to stop online brute force. */
     private final ua.rp.chat.antiabuse.ActionRateLimiter ipAttempts =
             new ua.rp.chat.antiabuse.ActionRateLimiter(0.1, 10.0);
@@ -183,7 +196,15 @@ public class AuthWebServer {
                     }
                 }
             }
-            server = HttpServer.create(new InetSocketAddress(port), 0);
+            // Bind to loopback by default: the public edge is the reverse proxy (Caddy), which
+            // terminates TLS and forwards to 127.0.0.1. Binding all interfaces would expose the
+            // plaintext auth API and its bearer tokens directly to the network. Set
+            // web.bind-address only when the deployment has no reverse proxy in front.
+            String bindAddress = plugin.getConfig().getString("web.bind-address", "127.0.0.1");
+            InetAddress address = (bindAddress == null || bindAddress.isBlank())
+                    ? InetAddress.getLoopbackAddress()
+                    : InetAddress.getByName(bindAddress);
+            server = HttpServer.create(new InetSocketAddress(address, port), 0);
             
             // Route web UI page
             server.createContext("/auth", new StaticFileHandler("index.html", "text/html; charset=utf-8"));
@@ -312,8 +333,7 @@ public class AuthWebServer {
                 if (grant != null && grant.expiresAt() >= System.currentTimeMillis()) {
                     String id = UUID.randomUUID().toString().replace("-", "");
                     vitalsGrants.put(id, grant);
-                    exchange.getResponseHeaders().add("Set-Cookie",
-                            "eclipse_vitals=" + id + "; Path=/api/vitals; HttpOnly; SameSite=Strict; Max-Age=600");
+                    exchange.getResponseHeaders().add("Set-Cookie", vitalsCookie(exchange, id));
                 }
                 String location = "/body";
                 if (username != null && !username.isBlank()) {
@@ -329,8 +349,7 @@ public class AuthWebServer {
                 String id = UUID.randomUUID().toString().replace("-", "");
                 vitalsGrants.put(id, new VitalsGrant(player.getUUID(),
                         System.currentTimeMillis() + VITALS_GRANT_TTL_MILLIS));
-                exchange.getResponseHeaders().add("Set-Cookie",
-                        "eclipse_vitals=" + id + "; Path=/api/vitals; HttpOnly; SameSite=Strict; Max-Age=600");
+                exchange.getResponseHeaders().add("Set-Cookie", vitalsCookie(exchange, id));
             }
             delegate.handle(exchange);
         }
@@ -834,6 +853,22 @@ public class AuthWebServer {
         return future.get(3, TimeUnit.SECONDS);
     }
 
+    /** True when the request reached the auth server over TLS (directly or via the proxy). */
+    private static boolean isSecureRequest(HttpExchange exchange) {
+        String forwarded = exchange.getRequestHeaders().getFirst("X-Forwarded-Proto");
+        if (forwarded != null) {
+            return forwarded.split(",")[0].trim().equalsIgnoreCase("https");
+        }
+        return exchange instanceof com.sun.net.httpserver.HttpsExchange;
+    }
+
+    /** The short-lived vitals cookie; Secure is added whenever the request was over TLS. */
+    private static String vitalsCookie(HttpExchange exchange, String id) {
+        String cookie = "eclipse_vitals=" + id
+                + "; Path=/api/vitals; HttpOnly; SameSite=Strict; Max-Age=600";
+        return isSecureRequest(exchange) ? cookie + "; Secure" : cookie;
+    }
+
     private void sendResponse(HttpExchange exchange, int statusCode, String contentType, String content) throws IOException {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         sendResponse(exchange, statusCode, contentType, bytes);
@@ -841,6 +876,16 @@ public class AuthWebServer {
 
     private void sendResponse(HttpExchange exchange, int statusCode, String contentType, byte[] content) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", contentType);
+        // Baseline hardening on every response. The CSP is only meaningful for documents, but the
+        // other headers are harmless on API/asset responses too.
+        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
+        exchange.getResponseHeaders().set("X-Frame-Options", "DENY");
+        exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
+        exchange.getResponseHeaders().set("Permissions-Policy",
+                "geolocation=(), microphone=(), camera=()");
+        if (contentType != null && contentType.startsWith("text/html")) {
+            exchange.getResponseHeaders().set("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+        }
         // Same-origin pages need no CORS. Allow an explicitly allow-listed Origin, plus "null" —
         // the game client loads its CEF pages from file:// and calls the API cross-origin. Secrets
         // travel in the X-Eclipse-Token header, never the URL, so a cross-origin reader gains

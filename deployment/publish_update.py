@@ -11,6 +11,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def sign_distribution_manifest(deployment_dir: Path, repo: Path) -> None:
+    """Signs the final production manifest before it is uploaded to any mirror."""
+    manifest_path = repo / "distribution-build" / "manifests" / "production.json"
+    key_path = repo / "secrets" / "distribution-signing.key"
+    signer = deployment_dir / "sign_manifest.js"
+    if not key_path.is_file():
+        raise FileNotFoundError(
+            "Distribution signing key is missing (secrets/distribution-signing.key); "
+            "the launcher rejects unsigned manifests, so publishing is refused."
+        )
+    subprocess.run(["node", str(signer), str(manifest_path), str(key_path)], cwd=repo, check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--title", required=True)
@@ -69,6 +82,9 @@ def main() -> None:
             subprocess.run([sys.executable, str(drive_script), "--manifest-only"], cwd=repo, check=True)
         except subprocess.CalledProcessError as error:
             print(f"WARNING: Google Drive mirror was not published: {error}", file=sys.stderr)
+    # Re-sign last: the Drive --manifest-only step rewrites production.json, which would otherwise
+    # invalidate the signature the launcher enforces.
+    sign_distribution_manifest(deployment_dir, repo)
     subprocess.run([sys.executable, str(deployment_dir / "upload_r2_distribution.py")], cwd=repo, check=True)
     try:
         subprocess.run([sys.executable, str(deployment_dir / "upload_vps_distribution.py")], cwd=repo, check=True)

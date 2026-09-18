@@ -1,4 +1,5 @@
-const { ipcRenderer } = require('electron');
+// The allow-listed bridge from preload.js; the renderer has no Node integration.
+const ipcRenderer = window.ipcRenderer;
 
 const btnMinimize = document.getElementById('btnMinimize');
 const btnClose = document.getElementById('btnClose');

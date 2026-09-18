@@ -51,6 +51,11 @@ const DISTRIBUTION_MANIFEST_URLS = [
     DISTRIBUTION_MANIFEST_URL,
     joinUrl(GITHUB_DISTRIBUTION_BASE_URL, 'manifests/production.json')
 ];
+// Ed25519 public key of the distribution manifest signature. When set, the launcher rejects any
+// manifest without a valid signature, so a compromised mirror or repo cannot ship an installer.
+// Override for local testing with ECLIPSE_DISTRIBUTION_PUBLIC_KEY (empty disables enforcement).
+const DISTRIBUTION_PUBLIC_KEY = process.env.ECLIPSE_DISTRIBUTION_PUBLIC_KEY
+    || 'PBxj9O40kIzFg4kqIEg3DDmdGSCjqMdp2FURmfhay/M=';
 const LOCAL_CLIENT_SOURCE_ROOT = path.resolve(__dirname, '..', 'plugins', 'RPChat', 'client');
 const JAVA_RUNTIME_MAJOR = 25;
 const JAVA_DOWNLOAD_PAGE = 'https://adoptium.net/temurin/releases/?version=25';
@@ -130,6 +135,21 @@ function versionedArtifactUrl(url, descriptor = {}) {
     }
 }
 
+/**
+ * Artifacts must be fetched over TLS; plain HTTP is allowed only for loopback so local test
+ * servers keep working. A manifest that points an artifact at http:// is rejected outright.
+ */
+function isAllowedArtifactUrl(value) {
+    try {
+        const parsed = new URL(String(value));
+        if (parsed.protocol === 'https:') return true;
+        return parsed.protocol === 'http:'
+            && ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(parsed.hostname);
+    } catch (_) {
+        return false;
+    }
+}
+
 function distributionArtifactCandidates(descriptor, distributionPath, distribution) {
     const googleDriveUrl = googleDriveArtifactUrl(distribution, distributionPath, descriptor);
     return updateNetwork.uniqueUrls([
@@ -138,7 +158,7 @@ function distributionArtifactCandidates(descriptor, distributionPath, distributi
         versionedArtifactUrl(joinUrl(DISTRIBUTION_BASE_URL, distributionPath), descriptor),
         versionedArtifactUrl(joinUrl(GITHUB_DISTRIBUTION_BASE_URL, distributionPath), descriptor),
         googleDriveUrl
-    ]);
+    ].filter(isAllowedArtifactUrl));
 }
 
 function downloadFileWithFallback(urls, dest, onProgress, timeoutMs = 20000, descriptor = {}) {
@@ -504,7 +524,8 @@ async function fetchDistributionManifest() {
         urls: DISTRIBUTION_MANIFEST_URLS,
         cachePath: DISTRIBUTION_CACHE_PATH,
         timeoutMs: 10000,
-        log: logLauncher
+        log: logLauncher,
+        publicKey: DISTRIBUTION_PUBLIC_KEY
     });
     logLauncher(`Loaded Eclipse distribution manifest from ${result.source}${result.cached ? ' (last-known-good cache)' : ''}`);
     return result.manifest;
@@ -663,8 +684,13 @@ function createWindow() {
         backgroundColor: '#12100f',
         icon: path.join(__dirname, 'launcher_logo.png'),
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
+            // The renderer only talks to the main process through the allow-listed preload bridge;
+            // it gets no Node integration, runs sandboxed, and cannot reach remote content's Node.
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
+            webSecurity: true,
+            preload: path.join(__dirname, 'preload.js')
         }
     });
 

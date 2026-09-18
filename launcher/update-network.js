@@ -6,6 +6,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const { MirrorHealthStore } = require('./mirror-health');
+const { verifyManifestSignature } = require('./manifest-signing');
 
 const REDIRECT_CODES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 5;
@@ -784,10 +785,13 @@ function manifestTimestamp(manifest) {
     return 0;
 }
 
-function readManifestCache(cachePath) {
+function readManifestCache(cachePath, publicKey = '') {
     try {
         const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-        return cached && isValidDistributionManifest(cached.manifest) ? cached : null;
+        if (!cached || !isValidDistributionManifest(cached.manifest)) return null;
+        // A tampered or stale cache must never be trusted once signing is enforced.
+        if (publicKey && !verifyManifestSignature(cached.manifest, publicKey).ok) return null;
+        return cached;
     } catch (_) {
         return null;
     }
@@ -812,14 +816,22 @@ function writeManifestCache(cachePath, manifest, source) {
     throw lastError || new Error('Could not replace distribution cache');
 }
 
-async function fetchDistributionManifest({ urls, cachePath, timeoutMs = 8000, log = () => {} }) {
-    const cached = readManifestCache(cachePath);
+async function fetchDistributionManifest({ urls, cachePath, timeoutMs = 8000, log = () => {}, publicKey = '' }) {
+    const cached = readManifestCache(cachePath, publicKey);
     const successful = [];
     const attempts = uniqueUrls(urls).map(async (baseUrl, priority) => {
         const separator = baseUrl.includes('?') ? '&' : '?';
         const requestUrl = `${baseUrl}${separator}ts=${Date.now()}`;
         const manifest = await requestJson(requestUrl, timeoutMs);
         if (!isValidDistributionManifest(manifest)) throw new Error(`Invalid distribution manifest from ${baseUrl}`);
+        // When a public key is configured the manifest must carry a valid Ed25519 signature;
+        // HTTPS + hashes alone cannot stop a compromised mirror or repo from shipping an installer.
+        if (publicKey) {
+            const verification = verifyManifestSignature(manifest, publicKey);
+            if (!verification.ok) {
+                throw new Error(`Untrusted distribution manifest from ${baseUrl}: ${verification.reason}`);
+            }
+        }
         return { manifest, source: baseUrl, cached: false, priority };
     }).map(attempt => attempt.then(result => {
         successful.push(result);
@@ -858,7 +870,7 @@ async function fetchDistributionManifest({ urls, cachePath, timeoutMs = 8000, lo
 
     // Повторное чтение закрывает гонку двух одновременных IPC-проверок:
     // более старый ответ не сможет затереть только что сохранённый новый кеш.
-    const latestCached = readManifestCache(cachePath) || cached;
+    const latestCached = readManifestCache(cachePath, publicKey) || cached;
     if (latestCached && manifestTimestamp(latestCached.manifest) > manifestTimestamp(online.manifest)) {
         log(`[MANIFEST] Rejected older online manifest from ${online.source}; using newer cache`);
         return { manifest: latestCached.manifest, source: latestCached.source || 'local cache', cached: true };

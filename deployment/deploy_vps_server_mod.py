@@ -22,6 +22,19 @@ LIVE_JAR = f"{SERVER_ROOT}/mods/eclipseserver-1.4.5.jar"
 WINDOWS_OPENSSH = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "OpenSSH"
 SCP_COMMAND = str(WINDOWS_OPENSSH / "scp.exe") if (WINDOWS_OPENSSH / "scp.exe").is_file() else "scp"
 SSH_COMMAND = str(WINDOWS_OPENSSH / "ssh.exe") if (WINDOWS_OPENSSH / "ssh.exe").is_file() else "ssh"
+# Persist host keys outside the repo so the first connection is trusted and any later host-key
+# change is rejected. Blindly disabling verification (StrictHostKeyChecking=no) let a MITM serve a
+# malicious deploy script that this tooling then runs under sudo on the production host.
+KNOWN_HOSTS = Path(__file__).resolve().parent.parent / "secrets" / "known_hosts"
+
+
+def ssh_options() -> list[str]:
+    KNOWN_HOSTS.parent.mkdir(parents=True, exist_ok=True)
+    return [
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={KNOWN_HOSTS}",
+        "-o", "ConnectTimeout=15",
+    ]
 
 
 def sha256(path: Path) -> str:
@@ -36,8 +49,7 @@ def ssh_base() -> list[str]:
     return [
         SSH_COMMAND,
         "-i", str(SSH_KEY),
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=15",
+        *ssh_options(),
         f"{VPS_USER}@{VPS_HOST}",
     ]
 
@@ -175,7 +187,7 @@ def main() -> None:
         subprocess.run([
             SCP_COMMAND,
             "-i", str(SSH_KEY),
-            "-o", "StrictHostKeyChecking=no",
+            *ssh_options(),
             str(server_jar), target,
         ], check=True)
         subprocess.run(

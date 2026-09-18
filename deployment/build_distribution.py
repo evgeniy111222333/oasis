@@ -160,7 +160,26 @@ def build(repo: Path, output: Path, public_base_url: str) -> Path:
         json.dumps(launcher, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    sign_manifest(repo, manifest_path)
     return manifest_path
+
+
+def sign_manifest(repo: Path, manifest_path: Path) -> None:
+    """Signs the manifest with the offline Ed25519 release key when one is present.
+
+    The launcher embeds the matching public key and rejects unsigned manifests, so production
+    pipelines must have secrets/distribution-signing.key available.
+    """
+    key_path = repo / "secrets" / "distribution-signing.key"
+    if not key_path.is_file():
+        print("WARNING: distribution signing key is missing; manifest left unsigned "
+              "(the launcher will reject it once signature enforcement is on).")
+        return
+    signer = repo / "deployment" / "sign_manifest.js"
+    if not signer.is_file():
+        raise FileNotFoundError(f"Manifest signer is missing: {signer}")
+    import subprocess
+    subprocess.run(["node", str(signer), str(manifest_path), str(key_path)], cwd=repo, check=True)
 
 
 def main() -> None:

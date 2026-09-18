@@ -70,7 +70,7 @@ public class AppearanceManager {
             }
 
             byte[] storedBytes = normalizeAppearanceBytes(image, bytes);
-            String hash = sha1(storedBytes);
+            String hash = sha256(storedBytes);
             File target = getAppearanceFile(uuid);
             Files.write(target.toPath(), storedBytes);
 
@@ -227,7 +227,7 @@ public class AppearanceManager {
     /**
      * One-time repair of already-stored skins that the old converter left with blank left arms
      * and legs. For every appearance PNG matching {@link #isBrokenLegacySkin}, the original is
-     * backed up, the file is rewritten with the mirrored limbs, its SHA-1 recomputed, and the
+     * backed up, the file is rewritten with the mirrored limbs, its SHA-256 recomputed, and the
      * profile hash (plus the R2 object) updated so clients actually fetch the repaired skin.
      * Idempotent and guarded by a marker file. Returns the number of repaired skins.
      */
@@ -258,7 +258,7 @@ public class AppearanceManager {
                     continue;
                 }
                 byte[] fixedBytes = encodePng(toModernSkin(image));
-                String hash = sha1(fixedBytes);
+                String hash = sha256(fixedBytes);
                 if (!backupDir.exists() && !backupDir.mkdirs()) {
                     logger.warning("Legacy appearance migration could not create a backup folder.");
                     continue;
@@ -348,9 +348,13 @@ public class AppearanceManager {
         return Base64.getDecoder().decode(payload);
     }
 
-    private static String sha1(byte[] bytes) {
+    /**
+     * Content version of a stored appearance. SHA-256 rather than SHA-1: even a cache-busting
+     * version tag should not rely on a collision-broken hash, and nothing validates its length.
+     */
+    private static String sha256(byte[] bytes) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(bytes));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);

@@ -113,13 +113,8 @@ public final class R2AppearanceStorage {
         return publicBaseUrl;
     }
 
-    public String accessKeyId() {
-        return accessKeyId;
-    }
-
-    public String secretAccessKey() {
-        return secretAccessKey;
-    }
+    // The access key id and secret are deliberately not exposed: they are only ever used inside
+    // this class to sign requests, so no caller (or log) can leak them.
 
     public String region() {
         return region;

@@ -287,7 +287,7 @@ async function handleLoginSubmit(event) {
         password,
         rememberMe: document.getElementById("rememberMe").checked
     }, errorBox, (result) => {
-        persistSavedCredentials(loginName, password);
+        persistSavedCredentials(loginName);
         showSuccess("Вход подтвержден", `С возвращением, ${result.rpName || loginName}.`);
     });
 }
@@ -298,19 +298,21 @@ function restoreSavedCredentials(expectedLogin = "") {
         const rememberInput = document.getElementById("rememberMe");
         const loginInput = document.getElementById("loginName");
         const passwordInput = document.getElementById("loginPassword");
-        if (!rememberInput || !loginInput || !passwordInput || !saved.remember) {
+        if (passwordInput) {
+            // Never restore a stored secret; the field always starts empty.
+            passwordInput.value = "";
+        }
+        if (!rememberInput || !loginInput || !saved.remember) {
             return false;
         }
         if (saved.loginName && (!expectedLogin || saved.loginName.toLowerCase() === expectedLogin.toLowerCase())) {
             if (!loginInput.value) {
                 loginInput.value = saved.loginName;
             }
-            passwordInput.value = saved.password || "";
             rememberInput.checked = true;
-            return Boolean(saved.password);
+            return true;
         }
         if (expectedLogin) {
-            passwordInput.value = "";
             rememberInput.checked = false;
         }
     } catch (error) {
@@ -319,38 +321,60 @@ function restoreSavedCredentials(expectedLogin = "") {
     return false;
 }
 
+/**
+ * Reads the remembered login. Only the login name is ever stored; any password left by an older
+ * build is stripped from local storage on read so a leaked profile cannot expose credentials.
+ */
 function readSavedCredentials() {
+    let saved = {};
     const current = localStorage.getItem(savedCredentialsKey);
     if (current) {
-        return JSON.parse(current);
+        try {
+            saved = JSON.parse(current) || {};
+        } catch (error) {
+            saved = {};
+        }
+    } else {
+        const legacyKey = Object.keys(localStorage).find((key) =>
+            key !== savedCredentialsKey && key.endsWith("Auth.savedCredentials.v1")
+        );
+        if (legacyKey) {
+            const legacy = localStorage.getItem(legacyKey);
+            localStorage.removeItem(legacyKey);
+            if (legacy) {
+                try {
+                    saved = JSON.parse(legacy) || {};
+                } catch (error) {
+                    saved = {};
+                }
+            }
+        }
     }
-
-    const legacyKey = Object.keys(localStorage).find((key) =>
-        key !== savedCredentialsKey && key.endsWith("Auth.savedCredentials.v1")
-    );
-    if (!legacyKey) {
-        return {};
+    if (saved && typeof saved === "object" && "password" in saved) {
+        delete saved.password;
+        if (saved.remember && saved.loginName) {
+            localStorage.setItem(savedCredentialsKey, JSON.stringify({
+                remember: true,
+                loginName: saved.loginName
+            }));
+        } else {
+            localStorage.removeItem(savedCredentialsKey);
+        }
     }
-
-    const legacy = localStorage.getItem(legacyKey);
-    if (!legacy) {
-        return {};
-    }
-    localStorage.setItem(savedCredentialsKey, legacy);
-    localStorage.removeItem(legacyKey);
-    return JSON.parse(legacy);
+    return saved;
 }
 
-function persistSavedCredentials(loginName, password) {
+function persistSavedCredentials(loginName) {
     const rememberInput = document.getElementById("rememberMe");
     if (!rememberInput || !rememberInput.checked) {
         localStorage.removeItem(savedCredentialsKey);
         return;
     }
+    // Remembering the account stores only the login name. The "remember" flag also tells the
+    // server to bind this device; the password itself is never persisted anywhere client-side.
     localStorage.setItem(savedCredentialsKey, JSON.stringify({
         remember: true,
-        loginName,
-        password
+        loginName
     }));
 }
 
@@ -384,7 +408,7 @@ async function handleRegisterSubmit(event) {
         return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
         showError(errorBox, "Пароль должен содержать минимум 6 символов.");
         return;
     }
