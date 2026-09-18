@@ -67,9 +67,18 @@ for descriptor in mods:
         raise SystemExit(f"Unsafe or missing manifest file: {relative}")
     if candidate.stat().st_size != int(descriptor["size"]):
         raise SystemExit(f"Size mismatch: {relative}")
-    digest = hashlib.sha1(candidate.read_bytes()).hexdigest()
-    if digest != str(descriptor["sha1"]).lower():
-        raise SystemExit(f"SHA-1 mismatch: {relative}")
+    expected_sha256 = str(descriptor.get("sha256", "")).lower()
+    expected_sha1 = str(descriptor.get("sha1", "")).lower()
+    data = candidate.read_bytes()
+    # Prefer SHA-256; SHA-1 is only accepted as a fallback for legacy manifest entries.
+    if expected_sha256:
+        if hashlib.sha256(data).hexdigest() != expected_sha256:
+            raise SystemExit(f"SHA-256 mismatch: {relative}")
+    elif expected_sha1:
+        if hashlib.sha1(data).hexdigest() != expected_sha1:
+            raise SystemExit(f"SHA-1 mismatch: {relative}")
+    else:
+        raise SystemExit(f"Manifest entry has no checksum: {relative}")
 print(f"verified {len(mods)} managed mods")
 PY
 
