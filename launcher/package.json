@@ -1,6 +1,6 @@
 {
   "name": "eclipse-launcher",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Eclipse RolePlay Desktop Launcher",
   "author": "Eclipse RolePlay",
   "main": "main.js",
@@ -18,6 +18,8 @@
     },
     "files": [
       "main.js",
+      "preload.js",
+      "manifest-signing.js",
       "offline-auth.js",
       "optional-mods.js",
       "update-network.js",
