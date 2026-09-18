@@ -322,9 +322,11 @@ tasks.register("verifyMicrovoxelCrackOverlay") {
 			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelSectionModel.java")
 	def state = layout.projectDirectory.file(
 			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientState.java")
+	def cracks = layout.projectDirectory.file(
+			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelClientCracks.java")
 	def provider = layout.projectDirectory.file(
 			"src/client/java/ua/rp/chat/client/microvoxel/MicrovoxelGeometryProvider.java")
-	inputs.files(section, state, provider)
+	inputs.files(section, state, cracks, provider)
 	doLast {
 		def sectionText = section.asFile.getText("UTF-8")
 		assert sectionText.contains("emitCrackCube")
@@ -336,9 +338,10 @@ tasks.register("verifyMicrovoxelCrackOverlay") {
 		assert stateText.contains("applyMineStage")
 				&& stateText.contains("crackRevisionOf")
 				&& stateText.contains("pruneCracks")
-				&& stateText.contains("clearCracks")
-				&& stateText.contains("rpchat.microvoxel.crackOverlay"):
-				"Client crack state, clearing and the kill-switch flag must be present"
+				&& stateText.contains("clearCracks"):
+				"Client crack state and clearing must be present"
+		assert cracks.asFile.getText("UTF-8").contains("rpchat.microvoxel.crackOverlay"):
+				"The crack overlay kill-switch must live in the extracted crack state"
 		def providerText = provider.asFile.getText("UTF-8")
 		assert providerText.contains("int crackRevisionOf(BlockPos position)"):
 				"The geometry provider must expose the crack revision in its contract"
