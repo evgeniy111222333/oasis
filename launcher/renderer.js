@@ -1,5 +1,5 @@
 // The allow-listed bridge from preload.js; the renderer has no Node integration.
-const ipcRenderer = window.ipcRenderer;
+const ipcRenderer = window.eclipseIpc;
 
 const btnMinimize = document.getElementById('btnMinimize');
 const btnClose = document.getElementById('btnClose');

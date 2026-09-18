@@ -32,7 +32,10 @@ const RECEIVE_CHANNELS = new Set([
     'update-status'
 ]);
 
-contextBridge.exposeInMainWorld('ipcRenderer', {
+// Named "eclipseIpc" (not "ipcRenderer"): contextBridge defines the global as a non-configurable
+// property, so a top-level `const ipcRenderer = window.ipcRenderer` in the page would throw
+// "Identifier 'ipcRenderer' has already been declared" and abort the whole renderer script.
+contextBridge.exposeInMainWorld('eclipseIpc', {
     send: (channel, ...args) => {
         if (SEND_CHANNELS.has(channel)) {
             ipcRenderer.send(channel, ...args);
