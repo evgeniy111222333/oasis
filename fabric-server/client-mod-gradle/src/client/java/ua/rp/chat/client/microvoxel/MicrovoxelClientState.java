@@ -77,8 +77,6 @@ public final class MicrovoxelClientState {
     private static final long MESH_BUDGET_NANOS = 3_000_000L;
     private static final long CHUNK_BATCH_BUDGET_NANOS = 1_500_000L;
     private static final Set<BlockPos> MESH_QUEUE = new LinkedHashSet<>();
-    private static final java.util.LinkedHashMap<Long, PendingEdit> PENDING_EDITS =
-            new java.util.LinkedHashMap<>();
     private static final Map<BlockPos, MeshJob> MESHING_JOBS = new HashMap<>();
     private static final Set<BlockPos> MESH_DIRTY_DURING_BUILD = new HashSet<>();
     private static final Map<BlockPos, Integer> PENDING_PLACEMENTS = new HashMap<>();
@@ -156,6 +154,16 @@ public final class MicrovoxelClientState {
     private MicrovoxelClientState() {
     }
 
+    /** Current client tick, shared with the extracted collaborators (LOD review, prediction). */
+    static int tick() {
+        return clientTick;
+    }
+
+    /** Enqueues a volume for mesh rebuild; shared with the LOD review. */
+    static void enqueueMesh(BlockPos position) {
+        MESH_QUEUE.add(position);
+    }
+
     public static void clientTick(Minecraft minecraft) {
         clientTick++;
         if (minecraft.level != activeLevel) {
@@ -180,11 +188,10 @@ public final class MicrovoxelClientState {
         processMissingMarkers();
         processDelayedBoundaryRebuilds();
         processPendingPlacements();
-        expirePendingEdits();
+        MicrovoxelClientPrediction.expirePendingEdits();
         reconcileFluidPrediction(minecraft);
         drainLightChecks(minecraft);
-        if (clientTick % LOD_REVIEW_INTERVAL_TICKS == 0) reviewLod();
-        drainFarThrottledRebuilds();
+        MicrovoxelClientLod.tick();
         drainWorkFocusFailsafe();
         // One client metrics line per minute at 20 TPS, correlatable with the server line.
         // Queue depths ride along every time: sustained growth here means meshing or section
@@ -194,7 +201,7 @@ public final class MicrovoxelClientState {
                     + " meshQueue=" + MESH_QUEUE.size()
                     + " sectionQueue=" + SECTION_REBUILD_QUEUE.size()
                     + " volumes=" + MicrovoxelClientVolumeStore.VOLUMES.size()
-                    + " pending=" + PENDING_EDITS.size());
+                    + " pending=" + MicrovoxelClientPrediction.pendingCount());
             if (MESH_QUEUE.size() > 512 || SECTION_REBUILD_QUEUE.size() > 64) {
                 EclipseClientMod.LOGGER.warn(
                         "[MICROVOXEL] Rebuild backlog is growing: meshes={}, sections={}. "
@@ -325,7 +332,7 @@ public final class MicrovoxelClientState {
                 BlockPos position = readPosition(input).immutable();
                 MicrovoxelVolume volume = input.readBoolean() ? readRawVolume(input) : null;
                 if (input.available() != 0) throw new IOException("Trailing edit-result bytes");
-                reconcileEdit(transactionId, accepted, position, volume);
+                MicrovoxelClientPrediction.reconcileEdit(transactionId, accepted, position, volume);
                 return;
             }
             if (type == DELTA_UPSERT) {
@@ -412,7 +419,7 @@ public final class MicrovoxelClientState {
                     MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells,
                             readOptionalGeometry(input));
                     BlockPos immutable = position.immutable();
-                    if (!isFreshAuthoritative(immutable, revision)) continue;
+                    if (!MicrovoxelClientPrediction.isFreshAuthoritative(immutable, revision)) continue;
                     acceptAuthoritative(immutable, volume);
                 }
                 return;
@@ -460,7 +467,7 @@ public final class MicrovoxelClientState {
             if (input.available() != 0) throw new IOException("Trailing microvoxel payload bytes");
             MicrovoxelVolume volume = new MicrovoxelVolume(revision, palette, cells, geometry);
             BlockPos immutable = position.immutable();
-            if (!isFreshAuthoritative(immutable, revision)) return;
+            if (!MicrovoxelClientPrediction.isFreshAuthoritative(immutable, revision)) return;
             MicrovoxelCachedVolume oldCached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
             long tRebuildStart = System.nanoTime();
             acceptAuthoritative(immutable, volume);
@@ -496,66 +503,8 @@ public final class MicrovoxelClientState {
      * replayed on top, so a reject rolls back exactly one transaction and never wipes later
      * clicks. Brush results settle every volume the stroke touched.
      */
-    /** True while one transaction still awaits its authoritative edit result. */
     public static boolean isPending(long transactionId) {
-        return PENDING_EDITS.containsKey(transactionId);
-    }
-
-    private static void reconcileEdit(long transactionId, boolean accepted,
-                                      BlockPos position, MicrovoxelVolume authoritative) {
-        if (!accepted) MicrovoxelClientMetrics.inc("predict.rollback");
-        PendingEdit pending = PENDING_EDITS.remove(transactionId);
-        BlockPos target = pending == null ? position.immutable() : pending.position();
-        if (!target.equals(position)) {
-            EclipseClientMod.LOGGER.warn("[MICROVOXEL] Edit result {} targeted {} instead of {}",
-                    transactionId, position.toShortString(), target.toShortString());
-        }
-        if (!accepted && DEBUG) {
-            EclipseClientMod.LOGGER.info("[MICROVOXEL] Rolling back rejected edit {}", transactionId);
-        }
-        if (authoritative == null) {
-            MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(target);
-        } else if (isFreshAuthoritative(target, authoritative.revision())) {
-            MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.put(target, authoritative.copy());
-        } else {
-            // A duplicated/reordered EDIT_RESULT for an older revision must not clobber the newer
-            // state we already hold; keep the fresher stored volume and just settle the prediction.
-            MicrovoxelClientMetrics.inc("predict.stale_edit_result");
-        }
-
-        settlePredicted(target);
-        if (pending != null && pending.brushTargets() != null) {
-            java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
-            seen.add(target);
-            for (BrushOp op : pending.brushTargets()) {
-                if (seen.add(op.position())) settlePredicted(op.position());
-            }
-        }
-    }
-
-    /** Shows the replayed preview where predictions remain, else the authoritative state. */
-    private static void settlePredicted(BlockPos position) {
-        if (hasPendingAt(position)) {
-            rebuildPredicted(position);
-        } else {
-            MicrovoxelVolume authoritative = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(position);
-            replaceDisplayed(position, authoritative);
-        }
-    }
-
-    /**
-     * Guards full-state packets (upsert/batch/transaction). Deltas already check revisions;
-     * without this, a duplicated or reordered full volume would silently overwrite newer state
-     * with no resync trigger.
-     */
-    private static boolean isFreshAuthoritative(BlockPos position, int revision) {
-        MicrovoxelVolume base = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.get(position);
-        if (base == null) {
-            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
-            base = cached == null ? null : cached.volume;
-        }
-        if (base == null) return true;
-        return MicrovoxelRevision.isNewer(revision, base.revision());
+        return MicrovoxelClientPrediction.isPending(transactionId);
     }
 
     private static void acceptAuthoritative(BlockPos position, MicrovoxelVolume authoritative) {
@@ -566,49 +515,14 @@ public final class MicrovoxelClientState {
         else pruneCracks(immutable, authoritative);
         if (authoritative != null) MISSING_MARKERS.remove(immutable);
         PENDING_PLACEMENTS.remove(immutable);
-        if (hasPendingAt(immutable)) {
+        if (MicrovoxelClientPrediction.hasPendingAt(immutable)) {
             if (authoritative == null) MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.remove(immutable);
             else MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.put(immutable, authoritative.copy());
-            rebuildPredicted(immutable);
+            MicrovoxelClientPrediction.rebuildPredicted(immutable);
         } else {
             replaceDisplayed(immutable, authoritative);
         }
     }
-
-    private static boolean hasPendingAt(BlockPos position) {
-        for (PendingEdit pending : PENDING_EDITS.values()) {
-            if (pending.covers(position)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Replays every still-unacknowledged operation for one volume in transaction order.
-     * Add, remove and brush predictions share this path, so a late ACK for an early click
-     * never discards the preview of later clicks from the same rapid editing stream.
-     */
-    private static void rebuildPredicted(BlockPos position) {
-        MicrovoxelVolume authoritative = MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.get(position);
-        List<MicrovoxelPrediction.PredictedOp> ops = new java.util.ArrayList<>();
-        for (PendingEdit pending : PENDING_EDITS.values()) {
-            pending.collectOps(position, ops);
-        }
-        MicrovoxelVolume predicted = MicrovoxelPrediction.replayEdits(authoritative, ops);
-        replaceDisplayed(position, predicted);
-    }
-
-    /** Rebuilds every volume touched by one pending transaction (brushes span volumes). */
-    private static void rebuildPredictedFor(PendingEdit pending) {
-        rebuildPredicted(pending.position());
-        if (pending.brushTargets() != null) {
-            java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
-            seen.add(pending.position());
-            for (BrushOp op : pending.brushTargets()) {
-                if (seen.add(op.position())) rebuildPredicted(op.position());
-            }
-        }
-    }
-
     /**
      * Live geometry provider behind the section model seam. LOD and render-pass flags are
      * resolved here so compilation workers never branch on state internals.
@@ -852,7 +766,7 @@ public final class MicrovoxelClientState {
         }
     }
 
-    private static void replaceDisplayed(BlockPos position, MicrovoxelVolume volume) {
+    static void replaceDisplayed(BlockPos position, MicrovoxelVolume volume) {
         MicrovoxelCachedVolume oldCached = MicrovoxelClientVolumeStore.VOLUMES.get(position);
         MicrovoxelVolume oldVolume = oldCached == null ? null : oldCached.volume;
         // Seal status before the swap; missing volumes count as unsealed.
@@ -891,7 +805,7 @@ public final class MicrovoxelClientState {
         // (and the volume/block packet order can race), so queue an explicit engine recheck.
         // Unchanged seals cost one boolean compare and nothing else.
         if (wasSealed != nowSealed) PENDING_LIGHT_CHECKS.add(position.immutable());
-        requestRebuild(position);
+        MicrovoxelClientLod.requestRebuild(position);
         if (oldVolume == null || changesTouchBoundary(oldVolume, volume)) {
             queueNeighborsRebuild(position);
             scheduleBoundaryRebuild(position);
@@ -913,7 +827,7 @@ public final class MicrovoxelClientState {
         sendControlAction(ACTION_READY, nextTransactionId++, 0, 0, 0);
     }
 
-    private static void requestVolumeResync(BlockPos position, String reason) {
+    static void requestVolumeResync(BlockPos position, String reason) {
         MicrovoxelClientMetrics.inc("resync.volume.requested");
         if (!canRequestResync()) return;
         lastResyncRequestTick = clientTick;
@@ -954,35 +868,6 @@ public final class MicrovoxelClientState {
                 new MicrovoxelActionPayload(
                         PROTOCOL_VERSION, MicrovoxelSessionToken.NONE, transactionId, action, x, y, z,
                         0, 0, 0, 0, 0, 0, 0, 0));
-    }
-
-    /**
-    /**
-     * Fails pending predicted edits closed. A lost edit-result packet must not pin the
-     * authoritative copy and predicted mesh forever; expired edits roll back to the last
-     * authoritative state and request a targeted volume resync.
-     */
-    private static void expirePendingEdits() {
-        if (PENDING_EDITS.isEmpty()) return;
-        var expired = new java.util.ArrayList<Long>();
-        for (var entry : PENDING_EDITS.entrySet()) {
-            if (clientTick - entry.getValue().createdTick() >= PENDING_EDIT_TIMEOUT_TICKS) {
-                expired.add(entry.getKey());
-            }
-        }
-        for (Long txId : expired) {
-            PendingEdit pending = PENDING_EDITS.remove(txId);
-            if (pending == null) continue;
-            settlePredicted(pending.position());
-            if (pending.brushTargets() != null) {
-                java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
-                seen.add(pending.position());
-                for (BrushOp op : pending.brushTargets()) {
-                    if (seen.add(op.position())) settlePredicted(op.position());
-                }
-            }
-            requestVolumeResync(pending.position(), "pending edit timed out");
-        }
     }
 
     public static void noteMissingVolume(BlockPos position) {
@@ -1307,85 +1192,17 @@ public final class MicrovoxelClientState {
         return sessionNonce != MicrovoxelSessionToken.NONE;
     }
 
-    /** Maximum unacknowledged predictions; older ones are rebased by authoritative state. */
-    private static final int MAX_PENDING_EDITS = 32;
-
-    /**
-     * Applies a remove locally before the network round-trip. The authoritative base is retained
-     * and every still-pending operation is replayed after each ACK/reject, so rollback never
-     * discards later clicks from the same rapid editing stream.
-     */
     public static boolean predictRemove(BlockPos position, int cell, long transactionId) {
-        BlockPos immutable = position.immutable();
-        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
-        if (cached == null || !cached.volume.occupied(cell)) return false;
-        MicrovoxelClientMetrics.inc("predict.remove");
-        if (!reservePendingSlot()) return false;
-        MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
-        PENDING_EDITS.put(transactionId,
-                new PendingEdit(transactionId, immutable, cell, "", null, clientTick));
-        rebuildPredicted(immutable);
-        return true;
+        return MicrovoxelClientPrediction.predictRemove(position, cell, transactionId);
     }
 
-    /**
-     * Applies a single-cell placement locally before the network round-trip. The material is a
-     * preview hint derived from the held block; the authoritative server state (exact blockstate
-     * string, palette compaction) replaces it as soon as the edit result arrives.
-     */
     public static boolean predictAdd(BlockPos position, int cell, String material, long transactionId) {
-        BlockPos immutable = position.immutable();
-        if (material == null || material.isEmpty()) return false;
-        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(immutable);
-        if (cached != null && cached.volume.occupied(cell)) return false;
-        MicrovoxelClientMetrics.inc("predict.add");
-        if (!reservePendingSlot()) return false;
-        if (cached != null) MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(immutable, cached.volume.copy());
-        PENDING_EDITS.put(transactionId,
-                new PendingEdit(transactionId, immutable, cell, material, null, clientTick));
-        rebuildPredicted(immutable);
-        return true;
+        return MicrovoxelClientPrediction.predictAdd(position, cell, material, transactionId);
     }
 
-    /**
-     * Applies a whole brush stroke locally before the network round-trip. Every affected cell
-     * across all touched volumes is predicted at once; each touched volume keeps its own
-     * authoritative base so later ACKs replay the remaining stroke correctly.
-     */
     public static boolean predictBrush(long transactionId, List<BrushOp> targets) {
-        if (targets == null || targets.isEmpty()) return false;
-        MicrovoxelClientMetrics.inc("predict.brush");
-        if (!reservePendingSlot()) return false;
-        java.util.HashSet<BlockPos> bases = new java.util.HashSet<>();
-        for (BrushOp op : targets) {
-            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(op.position());
-            if (cached == null) continue;
-            if (op.material().isEmpty() && !cached.volume.occupied(op.cell())) continue;
-            if (!op.material().isEmpty() && cached.volume.occupied(op.cell())) continue;
-            if (bases.add(op.position())) {
-                MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.putIfAbsent(op.position(), cached.volume.copy());
-            }
-        }
-        if (bases.isEmpty()) return false;
-        BlockPos anchor = targets.get(0).position();
-        PENDING_EDITS.put(transactionId,
-                new PendingEdit(transactionId, anchor, -1, "", List.copyOf(targets), clientTick));
-        for (BlockPos base : bases) rebuildPredicted(base);
-        return true;
+        return MicrovoxelClientPrediction.predictBrush(transactionId, targets);
     }
-
-    /** Bounds the pending set so a stalled connection cannot accumulate unbounded previews. */
-    private static boolean reservePendingSlot() {
-        if (PENDING_EDITS.size() < MAX_PENDING_EDITS) return true;
-        Long oldest = PENDING_EDITS.keySet().iterator().next();
-        PendingEdit dropped = PENDING_EDITS.remove(oldest);
-        if (dropped != null) {
-            rebuildPredictedFor(dropped);
-            requestVolumeResync(dropped.position(), "pending prediction budget exceeded");
-        }
-        return PENDING_EDITS.size() < MAX_PENDING_EDITS;
-    }
-
     public static VoxelShape collisionShape(BlockPos position) {
         MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
         return cached == null ? null : cached.getShape();
@@ -1507,137 +1324,7 @@ public final class MicrovoxelClientState {
         return result;
     }
 
-    /**
-     * Three-tier distance LOD (see {@link ua.rp.chat.microvoxel.MicrovoxelLodTiers}):
-     * stride-1 inside 24 m, stride-2 out to 72 m, stride-4 silhouette past that, each
-     * boundary with a 15% hysteresis dead band. Reviewed every 40 client ticks.
-     */
-    private static final int LOD_REVIEW_INTERVAL_TICKS = 40;
-    /** Far-tier background builds per review: teleports converge over seconds, not one spike. */
-    private static final int LOD_FAR_BUILDS_PER_REVIEW = 8;
-    /** Crosshair hero radius squared: aimed-at volumes within 8 m always render full. */
-    private static final double LOD_HERO_DISTANCE_SQUARED = 8.0 * 8.0;
-    /** Far content edits batch to this cadence instead of rebuilding instantly. */
-    private static final int LOD_FAR_THROTTLE_TICKS = 20;
-    private static final java.util.Map<BlockPos, Long> FAR_THROTTLED_REBUILDS =
-            new java.util.LinkedHashMap<>();
-
-    private static double cameraDistanceSquared(BlockPos position) {
-        try {
-            net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
-            if (minecraft == null || minecraft.player == null) return 0.0;
-            net.minecraft.world.phys.Vec3 camera =
-                    minecraft.gameRenderer.getMainCamera().position();
-            double dx = position.getX() + 0.5 - camera.x;
-            double dy = position.getY() + 0.5 - camera.y;
-            double dz = position.getZ() + 0.5 - camera.z;
-            return dx * dx + dy * dy + dz * dz;
-        } catch (RuntimeException unavailable) {
-            return 0.0;
-        }
-    }
-
-    /**
-     * Reconciles mesh resolution with camera distance across three tiers. Runs every 40
-     * client ticks: a full volume-map scan at that rate is negligible, while per-frame
-     * checks would not be. Only flips flags and requeues stale sides; MeshJob coalescing
-     * dedups spam. Far-tier builds are budgeted per review so teleports converge over
-     * seconds instead of one frame spike.
-     */
-    private static void reviewLod() {
-        BlockPos hero = heroPosition();
-        int near = 0;
-        int mid = 0;
-        int far = 0;
-        int farBuilds = 0;
-        for (MicrovoxelCachedVolume cached : MicrovoxelClientVolumeStore.VOLUMES.values()) {
-            double distanceSquared = cameraDistanceSquared(cached.position);
-            ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier want =
-                    ua.rp.chat.microvoxel.MicrovoxelLodTiers.wantTier(
-                            distanceSquared, cached.lodTier);
-            if (cached.volume.hasGeometry() || (hero != null && hero.equals(cached.position))) {
-                want = ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.NEAR;
-            }
-            if (want != cached.lodTier) {
-                cached.lodTier = want;
-                MicrovoxelClientMetrics.inc("lod.flips");
-            }
-            int revision = cached.volume.revision();
-            boolean stale = switch (want) {
-                case NEAR -> cached.meshRevision != revision;
-                case MID -> cached.midMesh == null || cached.midMeshRevision != revision;
-                case FAR -> cached.farMesh == null || cached.farMeshRevision != revision;
-            };
-            if (stale) {
-                if (want == ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.FAR
-                        && farBuilds >= LOD_FAR_BUILDS_PER_REVIEW) {
-                    continue;
-                }
-                if (want == ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.FAR) farBuilds++;
-                MESH_QUEUE.add(cached.position);
-            }
-            switch (want) {
-                case NEAR -> near++;
-                case MID -> mid++;
-                case FAR -> far++;
-            }
-        }
-        MicrovoxelClientMetrics.add("lod.volumes.near", near - MicrovoxelClientMetrics.get("lod.volumes.near"));
-        MicrovoxelClientMetrics.add("lod.volumes.mid", mid - MicrovoxelClientMetrics.get("lod.volumes.mid"));
-        MicrovoxelClientMetrics.add("lod.volumes.far", far - MicrovoxelClientMetrics.get("lod.volumes.far"));
-        MicrovoxelClientMetrics.add("lod.farbuilds", farBuilds);
-    }
-
-    /**
-     * Crosshair hero: the aimed-at volume inside 8 m always renders full detail, which
-     * covers the carving focus block during design without a carver dependency.
-     */
-    private static BlockPos heroPosition() {
-        try {
-            net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
-            if (minecraft == null || minecraft.player == null) return null;
-            if (!(minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)) {
-                return null;
-            }
-            BlockPos pos = hit.getBlockPos();
-            if (cameraDistanceSquared(pos) > LOD_HERO_DISTANCE_SQUARED) return null;
-            MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(pos.immutable());
-            return cached == null ? null : pos.immutable();
-        } catch (RuntimeException unavailable) {
-            return null;
-        }
-    }
-
-    /**
-     * Far content edits batch to one rebuild per second instead of rebuilding instantly:
-     * at 72 m+ nobody reads a single carved cell the tick it lands. Near and mid volumes
-     * rebuild immediately; the queue drain moves throttled ones when due.
-     */
-    private static void requestRebuild(BlockPos position) {
-        MicrovoxelCachedVolume cached = MicrovoxelClientVolumeStore.VOLUMES.get(position.immutable());
-        if (cached != null
-                && cached.lodTier == ua.rp.chat.microvoxel.MicrovoxelLodTiers.Tier.FAR) {
-            FAR_THROTTLED_REBUILDS.put(position.immutable(), (long) clientTick + LOD_FAR_THROTTLE_TICKS);
-            MicrovoxelClientMetrics.inc("lod.throttled");
-            return;
-        }
-        rebuild(position);
-    }
-
-    private static void drainFarThrottledRebuilds() {
-        if (FAR_THROTTLED_REBUILDS.isEmpty()) return;
-        java.util.Iterator<java.util.Map.Entry<BlockPos, Long>> iterator =
-                FAR_THROTTLED_REBUILDS.entrySet().iterator();
-        while (iterator.hasNext()) {
-            java.util.Map.Entry<BlockPos, Long> entry = iterator.next();
-            if (entry.getValue() <= (long) clientTick) {
-                iterator.remove();
-                MESH_QUEUE.add(entry.getKey());
-            }
-        }
-    }
-
-    private static void rebuild(BlockPos position) {
+    static void rebuild(BlockPos position) {
         BlockPos immutablePos = position.immutable();
         MicrovoxelCachedVolume center = MicrovoxelClientVolumeStore.VOLUMES.get(immutablePos);
         if (center == null) return;
@@ -1978,7 +1665,7 @@ public final class MicrovoxelClientState {
         MicrovoxelClientVolumeStore.VOLUMES.clear();
         MicrovoxelClientVolumeStore.CHUNKS.clear();
         MESH_QUEUE.clear();
-        FAR_THROTTLED_REBUILDS.clear();
+        MicrovoxelClientLod.clear();
         HELD_WORK_SECTIONS.clear();
         PENDING_WORK_MESH.clear();
         workFocus = null;
@@ -1988,7 +1675,7 @@ public final class MicrovoxelClientState {
         SECTION_REBUILD_QUEUE.clear();
         PROBE_EMITTED.clear();
         MicrovoxelClientVolumeStore.AUTHORITATIVE_VOLUMES.clear();
-        PENDING_EDITS.clear();
+        MicrovoxelClientPrediction.clear();
         PENDING_PLACEMENTS.clear();
         PENDING_LIGHT_CHECKS.clear();
         MicrovoxelClientVolumeStore.CLIENT_FLUIDS.clear();
@@ -2019,42 +1706,9 @@ public final class MicrovoxelClientState {
                 }
                 queueRebuild(pos);
             }
-            // Drop predictions touching the cleared chunk (brush strokes span chunks, so any
-            // covered volume counts) and rebase survivors onto the post-clear state.
-            java.util.ArrayList<Long> droppedTx = new java.util.ArrayList<>();
-            for (var entry : PENDING_EDITS.entrySet()) {
-                if (coversChunk(entry.getValue(), chunkX, chunkZ)) droppedTx.add(entry.getKey());
-            }
-            for (Long txId : droppedTx) {
-                PendingEdit dropped = PENDING_EDITS.remove(txId);
-                if (dropped == null) continue;
-                settlePredicted(dropped.position());
-                if (dropped.brushTargets() != null) {
-                    java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
-                    seen.add(dropped.position());
-                    for (BrushOp op : dropped.brushTargets()) {
-                        if (seen.add(op.position()) && MicrovoxelClientVolumeStore.VOLUMES.containsKey(op.position())) {
-                            settlePredicted(op.position());
-                        }
-                    }
-                }
-            }
+            MicrovoxelClientPrediction.dropChunkPredictions(chunkX, chunkZ);
             CHUNK_BATCH_QUEUE.add(key);
         }
-    }
-
-    /** True when any volume covered by a prediction sits in the given chunk. */
-    private static boolean coversChunk(PendingEdit pending, int chunkX, int chunkZ) {
-        if ((pending.position().getX() >> 4) == chunkX && (pending.position().getZ() >> 4) == chunkZ) {
-            return true;
-        }
-        if (pending.brushTargets() == null) return false;
-        for (BrushOp op : pending.brushTargets()) {
-            if ((op.position().getX() >> 4) == chunkX && (op.position().getZ() >> 4) == chunkZ) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static void addToChunk(BlockPos position) {
@@ -2096,7 +1750,7 @@ public final class MicrovoxelClientState {
 
     private static void applyTransactionChange(TransactionChange change) {
         MicrovoxelVolume volume = change.volume();
-        if (volume != null && !isFreshAuthoritative(change.position(), volume.revision())) return;
+        if (volume != null && !MicrovoxelClientPrediction.isFreshAuthoritative(change.position(), volume.revision())) return;
         acceptAuthoritative(change.position(), volume);
     }
 
@@ -2234,42 +1888,6 @@ public final class MicrovoxelClientState {
         }
     }
 
-    /**
-     * One unacknowledged client prediction. Single-cell edits carry their operation inline;
-     * brush edits additionally carry every affected cell across all touched volumes.
-     * Entries expire via {@link #expirePendingEdits()} so a lost edit-result packet can never
-     * pin a stale preview forever.
-     */
-    private record PendingEdit(long transactionId, BlockPos position, int cell, String material,
-                               List<BrushOp> brushTargets, int createdTick) {
-        PendingEdit {
-            position = position.immutable();
-            if (material == null) material = "";
-        }
-
-        boolean covers(BlockPos volume) {
-            if (position.equals(volume)) return true;
-            if (brushTargets == null) return false;
-            for (BrushOp op : brushTargets) {
-                if (op.position().equals(volume)) return true;
-            }
-            return false;
-        }
-
-        void collectOps(BlockPos volume, List<MicrovoxelPrediction.PredictedOp> out) {
-            if (brushTargets != null) {
-                for (BrushOp op : brushTargets) {
-                    if (op.position().equals(volume)) {
-                        out.add(new MicrovoxelPrediction.PredictedOp(op.cell(), op.material()));
-                    }
-                }
-            } else if (position.equals(volume)) {
-                out.add(new MicrovoxelPrediction.PredictedOp(cell, material));
-            }
-        }
-    }
-
-    private static final int PENDING_EDIT_TIMEOUT_TICKS = 200;
     private static final int MAX_MISSING_MARKERS = 256;
     private static final int MISSING_MARKER_MAX_ATTEMPTS = 4;
 }
