@@ -1,4 +1,4 @@
 @echo off
-title Minecraft Server (v26.1.2) - Dev
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
+title Eclipse Roleplay - Fabric Server (26.1.2)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1"
 pause

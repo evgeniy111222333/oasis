@@ -120,6 +120,32 @@ final class CombatLineService {
                             "вкладывает всю массу в критический удар булавой по {zone} {target}."
                     )
             ),
+            "hammer", Map.of(
+                    CombatOutcome.CRITICAL_MISS, List.of(
+                            "заносит молот слишком далеко и теряет равновесие.",
+                            "срывает тяжёлый замах молотом перед {target}."
+                    ),
+                    CombatOutcome.MISS, List.of(
+                            "бьёт молотом в сторону {target}, но удар проходит мимо.",
+                            "обрушивает молот рядом с {target}, не доставая цель."
+                    ),
+                    CombatOutcome.GRAZE, List.of(
+                            "задевает {zone} {target} краем железной головки молота.",
+                            "проводит скользящий удар молотом по {zone} {target}."
+                    ),
+                    CombatOutcome.HIT, List.of(
+                            "попадает молотом по {zone} {target}.",
+                            "вкладывает короткий удар молотом в {zone} {target}."
+                    ),
+                    CombatOutcome.STRONG_HIT, List.of(
+                            "сильно обрушивает молот на {zone} {target}.",
+                            "вкладывает вес корпуса в удар молотом по {zone} {target}."
+                    ),
+                    CombatOutcome.CRITICAL_HIT, List.of(
+                            "наносит сокрушительный удар молотом в {zone} {target}.",
+                            "ловит {target} на движении и тяжело бьёт молотом по {zone}."
+                    )
+            ),
             "unarmed", Map.of(
                     CombatOutcome.CRITICAL_MISS, List.of(
                             "неудачно рвется вперед и теряет равновесие.",

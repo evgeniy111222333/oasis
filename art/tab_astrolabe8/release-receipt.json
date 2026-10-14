@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-10-14T17:03:25.226Z",
+  "releaseId": "20261014-165807",
+  "clientVersion": "1.5.60",
+  "clientSha256": "4952e99fa97608717f135ec3fea47150527757bc5fb1f26d3d9f3cbb5a1329d7",
+  "size": 4847239,
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1791997404147",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.60.jar?sha256=4952e99fa97608717f135ec3fea47150527757bc5fb1f26d3d9f3cbb5a1329d7",
+      "releaseId": "20261014-165807",
+      "signed": true,
+      "size": 4847239,
+      "sha256": "4952e99fa97608717f135ec3fea47150527757bc5fb1f26d3d9f3cbb5a1329d7"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1791997404197",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.60.jar?sha256=4952e99fa97608717f135ec3fea47150527757bc5fb1f26d3d9f3cbb5a1329d7",
+      "releaseId": "20261014-165807",
+      "signed": true,
+      "size": 4847239,
+      "sha256": "4952e99fa97608717f135ec3fea47150527757bc5fb1f26d3d9f3cbb5a1329d7"
+    }
+  ],
+  "verification": {
+    "nativeClientGameTests": "client-smooth-centered-final.log",
+    "fullClientChecksAndBuild": "publish_update.log",
+    "screenshots": "native-final/",
+    "text": "Native Palatino, 4x antialiased raster, GPU linear filtering, visible-ink header centering",
+    "viewports": [
+      "1280x720",
+      "1920x1080",
+      "3840x2160"
+    ],
+    "maxTestRoster": 1000
+  },
+  "serverProtocolChanged": false
+}

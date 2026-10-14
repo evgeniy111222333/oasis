@@ -27,6 +27,7 @@ python deployment\publish_update.py `
 | `--summary` | Короткий опис (обов'язковий) | — |
 | `--note` | Пункт списку змін; можна повторювати багато разів | порожньо |
 | `--id` | Ідентифікатор релізу | час `YYYYMMDD-HHMMSS` |
+| `--client-only` | Перевірити й опублікувати лише клієнтський дистрибутив; не збирати й не деплоїти серверний мод | вимкнено |
 | `--button-label` | Напис кнопки в лаунчері | `ЗАГРУЗИТЬ ОБНОВЛЕНИЕ` |
 | `--success-message` | Повідомлення після встановлення | `Обновление загружено и установлено.` |
 
@@ -37,10 +38,10 @@ python deployment\publish_update.py `
 ## 1. Що робить `publish_update.py` (крок за кроком)
 
 1. Запускає `fabric-server\build.ps1` — Gradle `clean`/`check`/`build` для `:server` і `:client`
-   (компіляція + всі перевірки/тести обох сторін).
+   (компіляція + всі перевірки/тести обох сторін). З `--client-only` запускає `:client:check :client:build`.
 2. Записує `deployment/release.json` з переданих `--title/--summary/--note`.
 3. Запускає `build_distribution.py` → збирає `distribution-build/`.
-4. `deploy_vps_server_mod.py` — атомарний деплой серверного мода на VPS (*best-effort*).
+4. `deploy_vps_server_mod.py` — атомарний деплой серверного мода на VPS (*best-effort*); з `--client-only` пропускається.
 5. Google Drive: заливає реліз, перебудовує маніфест, оновлює лише маніфест (*best-effort*).
 6. `upload_r2_distribution.py` — заливає дистрибутив на Cloudflare R2 (**обов'язковий**).
 7. `upload_vps_distribution.py` — копіює дистрибутив на VPS-файлосервер (*best-effort*).

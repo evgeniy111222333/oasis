@@ -1,0 +1,48 @@
+{
+  "verifiedAt": "2026-10-14T12:14:30.666Z",
+  "releaseId": "20261014-121008",
+  "serverVersion": "1.5.30",
+  "clientVersion": "1.5.58",
+  "clientSha256": "b3355a0ab291d4276010c4f3ad0de5019afbe3f2149c1137809de5c39cba595c",
+  "serverSha256": "5939dc18b864625fc6524677706b5e6c91b7b4b2dda369e171e5db7d1341a122",
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1791980069446",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.58.jar?sha256=b3355a0ab291d4276010c4f3ad0de5019afbe3f2149c1137809de5c39cba595c",
+      "releaseId": "20261014-121008",
+      "signed": true,
+      "size": 4235771,
+      "sha256": "b3355a0ab291d4276010c4f3ad0de5019afbe3f2149c1137809de5c39cba595c"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1791980069503",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.58.jar?sha256=b3355a0ab291d4276010c4f3ad0de5019afbe3f2149c1137809de5c39cba595c",
+      "releaseId": "20261014-121008",
+      "signed": true,
+      "size": 4235771,
+      "sha256": "b3355a0ab291d4276010c4f3ad0de5019afbe3f2149c1137809de5c39cba595c"
+    }
+  ],
+  "localServer": {
+    "HostPid": 29944,
+    "Stdout": "D:\\23\\fabric-server\\logs\\start-fabric-model-editor-ea50100f416f494b99c2ee2c69b59bed.stdout.log",
+    "Stderr": "D:\\23\\fabric-server\\logs\\start-fabric-model-editor-ea50100f416f494b99c2ee2c69b59bed.stderr.log",
+    "version": "1.5.30",
+    "startupComplete": true,
+    "success": true,
+    "status": "online",
+    "onlinePlayers": 0,
+    "maxPlayers": 20
+  },
+  "verification": {
+    "fullChecksBuild": "publish_update.log: BUILD SUCCESSFUL, 75 tasks",
+    "nativeClientGameTests": "client-gametest-release.log: BUILD SUCCESSFUL, all 3 suites",
+    "consoleCommand": "/modeleditor [reload]"
+  },
+  "vps": {
+    "deployed": false,
+    "reason": "SSH connection to 13.51.232.191 timed out; local Fabric server is online."
+  }
+}

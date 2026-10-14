@@ -1,0 +1,23 @@
+{
+  "source": "C:\\Users\\HP\\Downloads\\ancient_peasant_hammer (4).bbmodel",
+  "format": "free",
+  "counts": {
+    "cubes": 163,
+    "groups": 10,
+    "textures": 1
+  },
+  "sourceHasDisplay": false,
+  "brokenTextureReferences": [],
+  "geometryPreservedInDisplayPreview": true,
+  "inspection": "Native Blockbench display preview using identity transforms, not an in-game verification",
+  "screenshots": [
+    "model_angle_a",
+    "model_angle_b",
+    "model_front",
+    "model_back",
+    "model_side_a",
+    "model_side_b",
+    "model_top",
+    "model_bottom"
+  ]
+}

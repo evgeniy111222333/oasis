@@ -233,7 +233,7 @@ public final class CarverClientState {
     public static boolean isPaintable(BlockPos at, int cell) {
         if (at == null) return false;
         try {
-            ua.rp.chat.client.microvoxel.MicrovoxelClientState.CachedVolume cached =
+            ua.rp.chat.client.microvoxel.MicrovoxelCachedVolume cached =
                     ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(at);
             if (cached == null || cached.volume == null) return true;
             if (cell < 0 || cell >= ua.rp.chat.microvoxel.MicrovoxelVolume.CELL_COUNT) {

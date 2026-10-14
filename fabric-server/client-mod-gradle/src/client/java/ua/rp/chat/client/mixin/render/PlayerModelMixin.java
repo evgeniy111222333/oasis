@@ -194,7 +194,12 @@ public class PlayerModelMixin {
         double smooth;
         boolean local = player == client.player;
         try {
-            if (local) {
+            if (ua.rp.chat.client.modeleditor.ModelEditorClient.isPreviewPlayer(player)) {
+                if (!ua.rp.chat.client.modeleditor.ModelEditorClient.previewAnimation().equals("carve")) return;
+                focus = player.blockPosition().relative(player.getDirection()).above();
+                totalTicks = 1200;
+                smooth = 32 + ua.rp.chat.client.modeleditor.ModelEditorClient.previewTicks() % 1000;
+            } else if (local) {
                 if (!ua.rp.chat.client.carver.CarverClientState.working()) {
                     if (ua.rp.chat.client.carver.CarverClientState.finishing()) {
                         eclipse$poseFinish(model, player);
@@ -780,7 +785,7 @@ public class PlayerModelMixin {
 
         ItemStack main = state.getMainHandItemStack();
         String item = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
-        boolean melee = item.contains("sword") || item.contains("axe") || item.contains("mace") || item.contains("trident") || item.contains("spear");
+        boolean melee = item.contains("sword") || item.contains("axe") || item.contains("mace") || item.contains("hammer") || item.contains("trident") || item.contains("spear");
         boolean heavy = item.contains("axe") || item.contains("mace") || item.contains("hammer") || item.contains("great") || item.contains("halberd");
         boolean ranged = item.contains("bow") || item.contains("crossbow");
 
@@ -1259,6 +1264,10 @@ public class PlayerModelMixin {
     @Unique
     private Player eclipse$getRenderedPlayer(AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
+        if (state != null) {
+            var preview = ua.rp.chat.client.modeleditor.ModelEditorClient.previewPlayer(state.id);
+            if (preview != null) return preview;
+        }
         if (client == null || client.level == null || state == null) {
             return null;
         }
@@ -1297,7 +1306,7 @@ public class PlayerModelMixin {
     private void eclipse$applyWeaponStance(PlayerModel model, AvatarRenderState state, float moving) {
         ItemStack main = state.getMainHandItemStack();
         String item = main == null || main.isEmpty() ? "" : main.getItem().toString().toLowerCase();
-        boolean melee = item.contains("sword") || item.contains("axe") || item.contains("mace") || item.contains("trident") || item.contains("spear");
+        boolean melee = item.contains("sword") || item.contains("axe") || item.contains("mace") || item.contains("hammer") || item.contains("trident") || item.contains("spear");
         boolean heavy = item.contains("axe") || item.contains("mace") || item.contains("hammer") || item.contains("great") || item.contains("halberd");
         boolean ranged = item.contains("bow") || item.contains("crossbow");
 

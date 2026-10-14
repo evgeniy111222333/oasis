@@ -29,11 +29,6 @@ import net.minecraft.world.item.ItemStack;
  *      while both loops on the backpack remain empty until work completes.
  */
 public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, PlayerModel> {
-    /** Scale fitting the bag onto the torso. */
-    private static final float BAG_SCALE = 0.72f;
-    /** Anchor on the mid-upper back in body-bone space (Y down from neck, Z back from spine). */
-    private static final float ANCHOR_Y = 6.0f / 16.0f;
-    private static final float ANCHOR_Z = 2.80f / 16.0f;
     /** Work tick the point chisel leaves the bag and appears in the left hand. */
     private static final double POINT_DRAW_TICK = 4.0;
     /** Work tick the flat chisel leaves the bag and appears in the right hand. */
@@ -60,6 +55,10 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
     /** Work clock in smooth client ticks, or -1.0 when idle. */
     public static double getWorkTicks(Player player, Minecraft client) {
         if (player == null || client == null) return -1.0;
+        if (ua.rp.chat.client.modeleditor.ModelEditorClient.isPreviewPlayer(player)) {
+            return ua.rp.chat.client.modeleditor.ModelEditorClient.previewAnimation().equals("carve")
+                    ? 32 + ua.rp.chat.client.modeleditor.ModelEditorClient.previewTicks() % 1000 : -1;
+        }
         try {
             if (player == client.player) {
                 if (CarverClientState.working()) {
@@ -80,7 +79,9 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
     private static double strikeCycle(Player player, Minecraft client, double workTicks) {
         try {
             int total;
-            if (player == client.player) {
+            if (ua.rp.chat.client.modeleditor.ModelEditorClient.isPreviewPlayer(player)) {
+                total = 1200;
+            } else if (player == client.player) {
                 total = Math.max(1, CarverClientState.workTotalTicks());
             } else {
                 CarverClientState.ObservedWork observed =
@@ -116,21 +117,27 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
     public void submit(PoseStack stack, SubmitNodeCollector collector, int light,
                        AvatarRenderState state, float yRot, float xRot) {
         Minecraft client = Minecraft.getInstance();
-        if (client.level == null || !(client.level.getEntity(state.id) instanceof Player player)) {
-            return;
-        }
+        Player player = ua.rp.chat.client.modeleditor.ModelEditorClient.previewPlayer(state.id);
+        if (player == null && client.level != null && client.level.getEntity(state.id) instanceof Player actual) player = actual;
+        if (player == null) return;
         ItemStack bag;
         try {
             bag = player.getItemBySlot(EquipmentSlot.CHEST);
-            if (bag == null || bag.isEmpty()
-                    || !bag.is(ua.rp.chat.carver.CarverItems.BAG)) {
-                return;
-            }
+            if (bag == null || bag.isEmpty()) return;
+            String itemId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(bag.getItem()).toString();
+            if (!itemId.startsWith("eclipseserver:carver_bag")
+                    && !ua.rp.chat.client.modeleditor.ModelEditorClient.isPreviewPlayer(player)
+                    && !ua.rp.chat.client.modeleditor.ModelEditorClient.hasPlacement(itemId, ua.rp.chat.modeleditor.ModelPose.WORN)) return;
         } catch (RuntimeException unreadable) {
             return;
         }
 
-        double workTicks = getWorkTicks(player, client);
+        String wornItemId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(bag.getItem()).toString();
+        double workTicks = wornItemId.startsWith("eclipseserver:carver_bag") ? getWorkTicks(player, client) : -1;
+        boolean preview = ua.rp.chat.client.modeleditor.ModelEditorClient.isPreviewPlayer(player);
+        var placement = preview
+                ? ua.rp.chat.client.modeleditor.ModelEditorClient.placement(wornItemId, ua.rp.chat.modeleditor.ModelPose.WORN)
+                : ua.rp.chat.client.modeleditor.ModelEditorClient.authoritativePlacement(wornItemId, ua.rp.chat.modeleditor.ModelPose.WORN);
 
         // 1. Render backpack on the spine (with dynamic tool disappearance)
         ItemStack displayBag;
@@ -144,17 +151,16 @@ public final class CarverBagRenderLayer extends RenderLayer<AvatarRenderState, P
 
         ItemStackRenderState bagRender = new ItemStackRenderState();
         try {
-            resolver.updateForLiving(bagRender, displayBag, ItemDisplayContext.NONE, player);
+            resolver.updateForLiving(bagRender,
+                    placement.model().equals(wornItemId) ? displayBag
+                            : ua.rp.chat.client.modeleditor.ModelPlacementRendering.modelStack(displayBag, placement), ItemDisplayContext.NONE, player);
         } catch (RuntimeException unreadable) {
             return;
         }
         if (!bagRender.isEmpty()) {
             stack.pushPose();
             try {
-                getParentModel().body.translateAndRotate(stack);
-                stack.translate(0.0, ANCHOR_Y, ANCHOR_Z);
-                stack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(180.0f));
-                stack.scale(BAG_SCALE, BAG_SCALE, BAG_SCALE);
+                ua.rp.chat.client.modeleditor.ModelPlacementRendering.applyWorn(stack, getParentModel(), state, placement);
                 bagRender.submit(stack, collector, light, 0, state.outlineColor);
             } catch (RuntimeException unreadable) {
             } finally {

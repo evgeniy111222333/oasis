@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 860" width="768" height="768">
+  <defs>
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f3d88c" stop-opacity="0.16" />
+      <stop offset="65%" stop-color="#d8b467" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <filter id="layerShadow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feFlood flood-color="#d8b467" flood-opacity="0.18" result="gold" />
+      <feComposite in="gold" in2="SourceAlpha" operator="in" result="mask" />
+      <feGaussianBlur in="mask" stdDeviation="12" result="soft" />
+      <feMerge>
+        <feMergeNode in="soft" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#layerShadow)">
+    <g id="ring-middle-orbit" class="ring-layer">
+      <g class="spin-ccw-slow">
+        <circle cx="430" cy="430" r="212" fill="none" stroke="#d8b467" stroke-width="0.85" stroke-opacity="0.58" />
+        <path d="M 218 430 A 212 182 0 0 1 642 430" fill="none" stroke="#f3d88c" stroke-width="1.0" stroke-opacity="0.52" />
+        <path d="M 218 430 A 212 182 0 0 0 642 430" fill="none" stroke="#d8b467" stroke-width="0.7" stroke-dasharray="4 6" stroke-opacity="0.4" />
+        <circle cx="430" cy="218" r="3" fill="#f3d88c" />
+        <circle cx="430" cy="642" r="3" fill="#d8b467" />
+        <circle cx="218" cy="430" r="3" fill="#f3d88c" />
+        <circle cx="642" cy="430" r="3" fill="#f3d88c" />
+      </g>
+    </g>
+  </g>
+</svg>

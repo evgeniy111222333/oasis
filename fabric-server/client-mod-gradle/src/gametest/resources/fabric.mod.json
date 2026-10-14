@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "eclipse-tab-tests",
+  "version": "1.0.0",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["ua.rp.chat.CompactTabClientGameTest", "ua.rp.chat.MedievalItemsClientGameTest", "ua.rp.chat.ModelEditorClientGameTest"]
+  }
+}

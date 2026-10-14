@@ -61,6 +61,7 @@ public class RPChat implements DedicatedServerModInitializer {
     private AcquaintanceManager acquaintanceManager;
     private MicrovoxelManager microvoxelManager;
     private ua.rp.chat.carver.CarverManager carverManager;
+    private ua.rp.chat.modeleditor.ModelEditorManager modelEditorManager;
     private ItemPickupManager itemPickupManager;
     private SimpleConfig config;
     private Logger logger = Logger.getLogger("RPChat");
@@ -137,12 +138,15 @@ public class RPChat implements DedicatedServerModInitializer {
         acquaintanceManager.start();
         microvoxelManager = new MicrovoxelManager(this);
         ua.rp.chat.carver.CarverItems.register();
+        ua.rp.chat.item.MedievalItems.register();
         carverManager = new ua.rp.chat.carver.CarverManager(
                 this, microvoxelManager, staminaManager);
         carverManager.reloadTuning();
         itemPickupManager = new ItemPickupManager(this);
         itemPickupManager.start();
         ua.rp.chat.crawling.CrawlingServerManager.init(this::isPendingAuth);
+        modelEditorManager = new ua.rp.chat.modeleditor.ModelEditorManager(this);
+        modelEditorManager.register();
 
         // Extract web resources for customizability
         extractWebAssets();
@@ -207,6 +211,7 @@ public class RPChat implements DedicatedServerModInitializer {
             staminaManager.syncBloodFxTo(player);
             bloodFootprintService.onJoin(player);
             bloodSurfaceFilmService.onJoin(player);
+            modelEditorManager.onJoin(player);
         });
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, srv) -> {

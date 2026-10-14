@@ -12,5 +12,6 @@ public final class EclipseClientCore implements ModInitializer {
         MicrovoxelBlocks.register();
         BloodParticleTypes.register();
         CarverItems.register();
+        ua.rp.chat.item.MedievalItems.register();
     }
 }

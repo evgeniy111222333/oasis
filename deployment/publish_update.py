@@ -30,23 +30,30 @@ def main() -> None:
     parser.add_argument("--summary", required=True)
     parser.add_argument("--note", action="append", default=[])
     parser.add_argument("--id")
+    parser.add_argument("--client-only", action="store_true", help="Publish the client and launcher distribution without building or deploying the server mod")
     parser.add_argument("--button-label", default="ЗАГРУЗИТЬ ОБНОВЛЕНИЕ")
     parser.add_argument("--success-message", default="Обновление загружено и установлено.")
     args = parser.parse_args()
 
     deployment_dir = Path(__file__).resolve().parent
     repo = deployment_dir.parent
-    fabric_build = repo / "fabric-server" / "build.ps1"
-    if not fabric_build.is_file():
-        raise FileNotFoundError(f"Authoritative Fabric build script is missing: {fabric_build}")
-    # Always compile and verify both Fabric sides from the authoritative source tree.
-    # This also refreshes the exact client/server JARs consumed by the release stages.
-    subprocess.run([
-        "powershell.exe",
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", str(fabric_build),
-    ], cwd=repo, check=True)
+    fabric_root = repo / "fabric-server"
+    if args.client_only:
+        gradle = fabric_root / "gradlew.bat"
+        if not gradle.is_file():
+            raise FileNotFoundError(f"Fabric Gradle wrapper is missing: {gradle}")
+        subprocess.run([str(gradle), ":client:check", ":client:build", "--console=plain"], cwd=fabric_root, check=True)
+    else:
+        fabric_build = fabric_root / "build.ps1"
+        if not fabric_build.is_file():
+            raise FileNotFoundError(f"Authoritative Fabric build script is missing: {fabric_build}")
+        # Verify both Fabric sides and refresh the exact JARs consumed by the release stages.
+        subprocess.run([
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", str(fabric_build),
+        ], cwd=repo, check=True)
     now = datetime.now(timezone.utc)
     release = {
         "id": args.id or now.strftime("%Y%m%d-%H%M%S"),
@@ -67,10 +74,11 @@ def main() -> None:
     # the matching release. The deployer skips restarts when the production checksum is current
     # and performs an automatic rollback if startup/readiness verification fails.
     # VPS steps are best-effort: a powered-off host must not block the live mirrors.
-    try:
-        subprocess.run([sys.executable, str(deployment_dir / "deploy_vps_server_mod.py")], cwd=repo, check=True)
-    except subprocess.CalledProcessError as error:
-        print(f"WARNING: VPS server mod was not deployed: {error}", file=sys.stderr)
+    if not args.client_only:
+        try:
+            subprocess.run([sys.executable, str(deployment_dir / "deploy_vps_server_mod.py")], cwd=repo, check=True)
+        except subprocess.CalledProcessError as error:
+            print(f"WARNING: VPS server mod was not deployed: {error}", file=sys.stderr)
     drive_config = deployment_dir / "google_drive.local.json"
     if drive_config.exists():
         try:

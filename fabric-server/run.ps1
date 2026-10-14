@@ -1,6 +1,9 @@
 # Modern Minecraft Server Launch Script with Aikar's GC Flags
 # Requires Java 25
 
+Push-Location -LiteralPath $PSScriptRoot
+try {
+
 $RAM = "4G"
 
 # One-time, non-destructive compatibility bridge for worlds first created by
@@ -35,3 +38,6 @@ java --enable-native-access=ALL-UNNAMED "-Xms$RAM" "-Xmx$RAM" -XX:+UseG1GC -XX:+
 
 Write-Host "Server stopped." -ForegroundColor Yellow
 Pause
+} finally {
+    Pop-Location
+}

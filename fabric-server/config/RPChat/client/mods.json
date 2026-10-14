@@ -1,10 +1,10 @@
 [
     {
-        "name": "eclipse-client-1.5.55.jar",
-        "path": "mods/eclipse-client-1.5.55.jar",
-        "url": "https://api.eclipse-roleplay.online/dist/client/mods/eclipse-client-1.5.55.jar",
-        "sha1": "834b483a4ea9d653ead8dbb6f6f9f670da15137c",
-        "size": 3096261
+        "name": "eclipse-client-1.5.62.jar",
+        "path": "mods/eclipse-client-1.5.62.jar",
+        "url": "https://api.eclipse-roleplay.online/dist/client/mods/eclipse-client-1.5.62.jar",
+        "sha1": "d36144080368acf49edd533b6ea218ee315d56f3",
+        "size": 4334348
     },
     {
         "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",

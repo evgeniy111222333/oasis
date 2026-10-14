@@ -49,7 +49,7 @@ public class EclipseClientMod implements ClientModInitializer {
 
     // Unique client identifier used by payload channels and asset namespaces.
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "blood-fx-4-persistent-footprints-20260728-1";
+    public static final String DIAGNOSTIC_BUILD = "astrolabe-readable-prefilter-20261014-5";
     // Shared client logger; auth, microvoxel and vitals subsystems all report through it.
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     // Guards the periodic web-session poll so slow HTTP responses never stack up.
@@ -71,6 +71,9 @@ public class EclipseClientMod implements ClientModInitializer {
                 + ", iris=" + net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("iris")
                 + ", legacyRenderer=" + Boolean.getBoolean("rpchat.microvoxel.legacyRenderer"));
         EclipseHudOverlay.register();
+        ua.rp.chat.client.tab.EclipseTabRenderer.register();
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
+                (handler, client) -> AcquaintanceClientState.reset());
         PickupClientState.register();
         MicrovoxelClientRenderer.register();
         // Unconditional world-space hooks: the hologram copy and its chalk must
@@ -91,6 +94,7 @@ public class EclipseClientMod implements ClientModInitializer {
         MicrovoxelInteractionController.register();
         ua.rp.chat.client.carver.CarverKeybinds.register();
         ua.rp.chat.client.carver.CarverBagRenderLayer.register();
+        ua.rp.chat.client.modeleditor.ModelEditorClient.register();
         BloodFxClientState.register();
         if (BloodFxClientState.EMBEDDED_PROJECTILE_VISUALS_ENABLED) {
             EmbeddedArrowRenderLayer.register();

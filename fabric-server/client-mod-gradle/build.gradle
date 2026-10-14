@@ -46,7 +46,31 @@ dependencies {
 	implementation files('libs/mcef_fabric_2.2.0_MC_26.1.1.jar')
 }
 
+// Opt-in real-client TAB regression tests. Isolated world and run directory; never packaged.
+// ./gradlew :client:runClientGameTest -PtabGameTest
+if (providers.gradleProperty("tabGameTest").isPresent()) {
+	dependencies {
+		runtimeOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	}
+	fabricApi {
+		configureTests {
+			createSourceSet = true
+			modId = "eclipse-tab-tests"
+			enableGameTests = false
+			enableClientGameTests = true
+			eula = true
+		}
+	}
+	sourceSets.gametest.compileClasspath += sourceSets.client.output
+	sourceSets.gametest.runtimeClasspath += sourceSets.client.output
+}
+
 processResources {
+	// Superseded TAB concept stays in the workspace, but is not part of the shipped client.
+	exclude "assets/eclipseclient/textures/gui/rp_tab_eclipse_observatory.png"
+	exclude "assets/eclipseclient/textures/gui/rp_hud_eclipse_navigator.png"
+	// TAB uses its own antialiased text cache; retain the OFL font file without allocating a second glyph atlas.
+	exclude "assets/eclipseclient/font/tab_serif.json"
 	def version = project.version
 	inputs.property "version", version
 
@@ -54,6 +78,10 @@ processResources {
 		expand "version": version
 	}
 }
+
+// Item names and client UI translations now share the canonical main resource pack.
+// Retain the legacy sources, but package each language path only once.
+sourceSets.client.resources.exclude "assets/eclipseclient/lang/**"
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
@@ -264,6 +292,27 @@ tasks.register("verifyCarverChiselAssets", JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "ua.rp.chat.CarverChiselAssetsTest"
 }
+
+tasks.register("verifyBlockbenchItemGeometry", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks the exact authored item meshes and rejects invalid atlas UVs."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.BlockbenchItemGeometryTest"
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyBlockbenchItemGeometry")
+}
+
+tasks.register("verifyModelEditorDraft", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks editor draft isolation, history, server conflicts and disconnect reset."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.ModelEditorDraftTest"
+}
+tasks.named("check") { dependsOn tasks.named("verifyModelEditorDraft") }
 
 tasks.register("verifyCarverDustScreen", JavaExec) {
 	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
@@ -504,7 +553,16 @@ tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
+tasks.register("verifyCompactTab", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks adaptive TAB pagination, roster cache, identity labels, Unicode and frame-rate-independent transitions."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.CompactTabTest"
+}
+
 tasks.named("check") {
+	dependsOn tasks.named("verifyCompactTab")
 	dependsOn tasks.named("verifyArticulatedLimbGeometry")
 	dependsOn tasks.named("verifyStuckProjectileSafety")
 	dependsOn tasks.named("verifyElbowBridgeRenderer")

@@ -840,7 +840,25 @@ tasks.register("verifyCarverParity") {
     }
 }
 
+tasks.register("verifyModelEditor", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks model editor validation, revisions, authority, atomic persistence and recovery."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.modeleditor.ModelEditorTest"
+}
+
+tasks.register("verifyModelEditorWire", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks actual bounded UTF-8 model editor request and sync packet codecs."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.modeleditor.ModelEditorWireTest"
+}
+
 tasks.named("check") {
+    dependsOn tasks.named("verifyModelEditor")
+    dependsOn tasks.named("verifyModelEditorWire")
     dependsOn tasks.named("verifyCarverParity")
     dependsOn tasks.named("verifyServerCore")
     dependsOn tasks.named("verifyFluidStoreHardening")

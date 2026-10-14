@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-10-14T17:40:14.377Z",
+  "releaseId": "20261014-173615",
+  "clientVersion": "1.5.62",
+  "clientSha256": "67501c855bd78d9641d19f0409a4678bc3e2417a33bee3979f76d090c3806759",
+  "size": 4334348,
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1791999610245",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.62.jar?sha256=67501c855bd78d9641d19f0409a4678bc3e2417a33bee3979f76d090c3806759",
+      "releaseId": "20261014-173615",
+      "signed": true,
+      "size": 4334348,
+      "sha256": "67501c855bd78d9641d19f0409a4678bc3e2417a33bee3979f76d090c3806759"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1791999610295",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.62.jar?sha256=67501c855bd78d9641d19f0409a4678bc3e2417a33bee3979f76d090c3806759",
+      "releaseId": "20261014-173615",
+      "signed": true,
+      "size": 4334348,
+      "sha256": "67501c855bd78d9641d19f0409a4678bc3e2417a33bee3979f76d090c3806759"
+    }
+  ],
+  "verification": {
+    "nativeClientGameTests": "client-native.log",
+    "fullClientChecksAndBuild": "publish_update.log",
+    "screenshots": "native-final/",
+    "text": "Bundled Source Serif 4 Regular/Semibold; names 22px, header 16px; 4x glyph raster area-prefiltered to 2x native textures",
+    "viewports": [
+      "1280x720",
+      "1920x1080",
+      "3840x2160"
+    ],
+    "maxTestRoster": 1000
+  },
+  "serverProtocolChanged": false
+}

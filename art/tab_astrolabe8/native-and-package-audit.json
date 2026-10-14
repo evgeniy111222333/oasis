@@ -1,0 +1,13 @@
+{
+  "nativeHeaderGlyphInteriorBounds": [
+    912,
+    227,
+    1006,
+    236
+  ],
+  "nativeHeaderGlyphCenterY": 231.5,
+  "expectedPillCenterY": 232,
+  "shippedClient": "1.5.60",
+  "linearFilteredAstrolabeAssets": 10,
+  "testFixturesPackaged": false
+}

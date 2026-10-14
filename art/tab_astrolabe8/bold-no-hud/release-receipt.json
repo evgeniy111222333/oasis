@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-10-14T17:14:33.157Z",
+  "releaseId": "20261014-171115",
+  "clientVersion": "1.5.61",
+  "clientSha256": "982576f87e5a3fe2522d33fe33170225a57d28fe4f0cf11bdb25e0abb1aaf441",
+  "size": 4216865,
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1791998071737",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.61.jar?sha256=982576f87e5a3fe2522d33fe33170225a57d28fe4f0cf11bdb25e0abb1aaf441",
+      "releaseId": "20261014-171115",
+      "signed": true,
+      "size": 4216865,
+      "sha256": "982576f87e5a3fe2522d33fe33170225a57d28fe4f0cf11bdb25e0abb1aaf441"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1791998071783",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.61.jar?sha256=982576f87e5a3fe2522d33fe33170225a57d28fe4f0cf11bdb25e0abb1aaf441",
+      "releaseId": "20261014-171115",
+      "signed": true,
+      "size": 4216865,
+      "sha256": "982576f87e5a3fe2522d33fe33170225a57d28fe4f0cf11bdb25e0abb1aaf441"
+    }
+  ],
+  "verification": {
+    "nativeClientGameTests": "client-native.log",
+    "fullClientChecksAndBuild": "publish_update.log",
+    "screenshots": "native-final/",
+    "text": "Bold Palatino names/header, 4x antialiased raster, GPU linear filtering, centered header; custom bottom HUD and stamina gauge removed",
+    "viewports": [
+      "1280x720",
+      "1920x1080",
+      "3840x2160"
+    ],
+    "maxTestRoster": 1000
+  },
+  "serverProtocolChanged": false
+}

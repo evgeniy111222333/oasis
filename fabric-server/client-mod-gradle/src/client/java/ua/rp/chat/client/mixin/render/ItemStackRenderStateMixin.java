@@ -14,7 +14,8 @@ import ua.rp.chat.client.render.MicrovoxelItemRenderState;
 import ua.rp.chat.microvoxel.MicrovoxelItemScale;
 
 @Mixin(ItemStackRenderState.class)
-public abstract class ItemStackRenderStateMixin implements MicrovoxelItemRenderState {
+public abstract class ItemStackRenderStateMixin implements MicrovoxelItemRenderState,
+        ua.rp.chat.client.modeleditor.ModelPlacementRenderState {
     @Shadow ItemDisplayContext displayContext;
     @Shadow private int activeLayerCount;
     @Shadow private ItemStackRenderState.LayerRenderState[] layers;
@@ -23,10 +24,29 @@ public abstract class ItemStackRenderStateMixin implements MicrovoxelItemRenderS
     @Shadow public abstract void appendModelIdentityElement(Object identity);
 
     @Override
+    public void eclipse$applyPlacement(ua.rp.chat.modeleditor.ModelPlacement placement) {
+        appendModelIdentityElement(placement);
+        if (placement.transform().equals(ua.rp.chat.modeleditor.ModelTransform.identity())) return;
+        for (int i = 0; i < activeLayerCount; i++) {
+            var layer = layers[i];
+            if (layer == null) continue;
+            var inherited = ((ItemLayerRenderStateAccessor) (Object) layer).eclipse$getLocalTransform();
+            layer.setLocalTransform(ua.rp.chat.client.modeleditor.ModelPlacementRendering.adjustment(placement.transform()).mul(inherited));
+        }
+        // Placement values participate in the native GUI atlas key; previews cannot reuse stale images.
+    }
+
+    @Override
     public void eclipse$replaceWithMicrovoxelItem(ItemStack stack,
                                                   ItemDisplayContext requestedContext) {
         MicrovoxelItemData.Parsed parsed = MicrovoxelItemData.parse(stack);
-        if (parsed == null) return;
+        if (parsed == null) {
+            if (activeLayerCount > 0 && layers[0] != null) {
+                Object authored = ua.rp.chat.client.render.BlockbenchItemGeometry.apply(stack, layers[0]);
+                if (authored != null) appendModelIdentityElement(authored);
+            }
+            return;
+        }
 
         ItemTransform transform = ItemTransform.NO_TRANSFORM;
         if (activeLayerCount > 0 && layers[0] != null) {

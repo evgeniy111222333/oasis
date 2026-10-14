@@ -1,0 +1,62 @@
+{
+  "fps": 30,
+  "clips": [
+    {
+      "name": "00_Showcase",
+      "length": 7.3999999999999995,
+      "loop": "loop"
+    },
+    {
+      "name": "01_Start_First_Cut",
+      "length": 3.2,
+      "loop": "hold"
+    },
+    {
+      "name": "02_Work_Double_Strike",
+      "length": 2.4,
+      "loop": "loop"
+    },
+    {
+      "name": "03_Finish_Inspect",
+      "length": 1.8,
+      "loop": "hold"
+    }
+  ],
+  "impact_checks": [
+    {
+      "clip": "00_Showcase",
+      "time": 2.14,
+      "contact_error_model_units": 0.0
+    },
+    {
+      "clip": "00_Showcase",
+      "time": 3.94,
+      "contact_error_model_units": 0.0
+    },
+    {
+      "clip": "00_Showcase",
+      "time": 4.99,
+      "contact_error_model_units": 0.0
+    },
+    {
+      "clip": "01_Start_First_Cut",
+      "time": 2.14,
+      "contact_error_model_units": 0.0
+    },
+    {
+      "clip": "02_Work_Double_Strike",
+      "time": 0.74,
+      "contact_error_model_units": 0.0
+    },
+    {
+      "clip": "02_Work_Double_Strike",
+      "time": 1.79,
+      "contact_error_model_units": 0.0
+    }
+  ],
+  "notes": "Preview asset only. No Minecraft runtime integration.",
+  "source_tools": [
+    "model/chisel.bbmodel",
+    "art/carver_tools_reveal_128/carver_mallet.bbmodel"
+  ]
+}

@@ -9,4 +9,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface ItemLayerRenderStateAccessor {
     @Accessor("itemTransform")
     ItemTransform eclipse$getItemTransform();
+
+    @Accessor("localTransform")
+    org.joml.Matrix4f eclipse$getLocalTransform();
 }

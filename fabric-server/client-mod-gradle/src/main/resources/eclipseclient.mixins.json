@@ -19,6 +19,7 @@
     "microvoxel.LevelRendererMixin",
     "fluid.LightEngineMicrovoxelMixin",
     "chat.PlayerTabOverlayMixin",
+    "chat.TabMouseScrollMixin",
     "render.PlayerRendererMixin",
     "render.PlayerModelMixin",
     "ModelPartAccessor",

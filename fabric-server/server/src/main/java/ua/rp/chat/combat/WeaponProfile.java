@@ -76,6 +76,10 @@ public final class WeaponProfile {
             return new WeaponProfile("unarmed", "кулаком", CombatDamageProfile.BLUNT, 1.2, 0.65, 0, 20, 950, 2.75, false);
         }
         String name = item.getItem().toString().toLowerCase(Locale.ROOT);
+        if (item.is(ua.rp.chat.item.MedievalItems.HAMMER)) {
+            return new WeaponProfile("hammer", "молотом", CombatDamageProfile.BLUNT,
+                    4.5, 1.0, -1, 20, 2250, 2.95, true);
+        }
         if (name.contains("sword")) {
             return new WeaponProfile("sword", "мечом", CombatDamageProfile.SHARP, tierDamage(name, 3.7, 4.2, 4.8, 5.3, 5.8), 1.0, 2, 20, 1550, 3.15, false);
         }

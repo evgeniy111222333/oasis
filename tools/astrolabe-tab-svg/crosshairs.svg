@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 860" width="768" height="768">
+  <defs>
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f3d88c" stop-opacity="0.16" />
+      <stop offset="65%" stop-color="#d8b467" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <filter id="layerShadow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feFlood flood-color="#d8b467" flood-opacity="0.18" result="gold" />
+      <feComposite in="gold" in2="SourceAlpha" operator="in" result="mask" />
+      <feGaussianBlur in="mask" stdDeviation="12" result="soft" />
+      <feMerge>
+        <feMergeNode in="soft" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#layerShadow)">
+    <g id="ring-crosshairs" class="ring-layer">
+      <line x1="150" y1="430" x2="332" y2="430" stroke="#d8b467" stroke-width="0.9" stroke-opacity="0.65" />
+      <line x1="528" y1="430" x2="710" y2="430" stroke="#d8b467" stroke-width="0.9" stroke-opacity="0.65" />
+      <line x1="430" y1="138" x2="430" y2="332" stroke="#d8b467" stroke-width="0.9" stroke-opacity="0.65" />
+      <line x1="430" y1="528" x2="430" y2="710" stroke="#d8b467" stroke-width="0.9" stroke-opacity="0.65" />
+      <g stroke="#d8b467" stroke-width="0.65" stroke-opacity="0.34">
+        <line x1="430" y1="165" x2="430" y2="695" transform="rotate(30 430 430)" />
+        <line x1="430" y1="165" x2="430" y2="695" transform="rotate(60 430 430)" />
+        <line x1="430" y1="165" x2="430" y2="695" transform="rotate(120 430 430)" />
+        <line x1="430" y1="165" x2="430" y2="695" transform="rotate(150 430 430)" />
+      </g>
+      <polygon points="430,136 425,182 430,174 435,182" fill="#f3d88c" opacity="0.9" />
+      <polygon points="430,724 426,684 430,690 434,684" fill="#d8b467" opacity="0.6" />
+    </g>
+  </g>
+</svg>
