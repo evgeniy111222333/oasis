@@ -85,9 +85,6 @@ __pycache__/
 /fabric-server/config/RPChat/carver/
 /plugins/RPChat/*.db.bak-*
 
-# External reference codebase (LittleTiles), not part of this project
-/LittleTiles/
-
 # Runtime dumps and local scratch (not for publication)
 /fabric-server/debug/chunk-world-*
 /fabric-server/config/RPChat/*.json.bak
