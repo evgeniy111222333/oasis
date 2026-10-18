@@ -1,4 +1,0 @@
-api.eclipse-roleplay.online {
-    encode zstd gzip
-    reverse_proxy 127.0.0.1:25580
-}
