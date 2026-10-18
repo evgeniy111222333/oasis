@@ -1,6 +1,6 @@
-# 🌾 Aether Minimalist — Desert Oasis Style Palette
+# 🌾 Aether Minimalist — Desert Eclipse Style Palette
 
-This document registers the color codes and formatting details for the **Aether Minimalist** style, utilizing the **Desert Oasis** palette.
+This document registers the color codes and formatting details for the **Aether Minimalist** style, utilizing the **Desert Eclipse** palette.
 
 ---
 

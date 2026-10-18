@@ -1,0 +1,37 @@
+{
+  "verifiedAt": "2026-10-15T10:57:33.146Z",
+  "releaseId": "20261015-105353",
+  "clientVersion": "1.5.63",
+  "clientSha256": "2c181226aaa80929906ea5aad82ed7615f1aa12a0ac6a9c57390ed7be3656df3",
+  "size": 4395711,
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1792061846344",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.63.jar?sha256=2c181226aaa80929906ea5aad82ed7615f1aa12a0ac6a9c57390ed7be3656df3",
+      "releaseId": "20261015-105353",
+      "signed": true,
+      "size": 4395711,
+      "sha256": "2c181226aaa80929906ea5aad82ed7615f1aa12a0ac6a9c57390ed7be3656df3"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1792061846391",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.63.jar?sha256=2c181226aaa80929906ea5aad82ed7615f1aa12a0ac6a9c57390ed7be3656df3",
+      "releaseId": "20261015-105353",
+      "signed": true,
+      "size": 4395711,
+      "sha256": "2c181226aaa80929906ea5aad82ed7615f1aa12a0ac6a9c57390ed7be3656df3"
+    }
+  ],
+  "verification": {
+    "nativeClientGameTests": "client-native.log",
+    "fullClientChecksAndBuild": "publish_update.log",
+    "screenshots": "native-final/",
+    "animation": "22 authored clips and bones; immutable per-avatar frames, shared skin/armor skeleton, floor contacts, both held-item chains",
+    "wideAndSlim": true,
+    "distantEditorPreview": true,
+    "allClipAndBoneProbes": true
+  },
+  "serverProtocolChanged": false
+}

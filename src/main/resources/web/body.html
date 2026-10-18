@@ -1,62 +1,13 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oasis Body Status</title>
-    <link rel="stylesheet" href="body.css">
-</head>
-<body>
-<main class="shell">
-    <section class="panel">
-        <header>
-            <div>
-                <span>Oasis Roleplay</span>
-                <h1>Стан персонажа</h1>
-            </div>
-            <button id="refreshBtn" type="button">Оновити</button>
-        </header>
-
-        <div class="layout">
-            <div class="avatar">
-                <div class="breath-ring"></div>
-                <img id="skinImage" alt="Скін персонажа" draggable="false">
-                <div class="pulse-line"></div>
-            </div>
-
-            <div class="body-map" id="bodyMap">
-                <button data-part="head">Голова</button>
-                <button data-part="chest">Груди</button>
-                <button data-part="leftArm">Ліва рука</button>
-                <button data-part="rightArm">Права рука</button>
-                <button data-part="leftLeg">Ліва нога</button>
-                <button data-part="rightLeg">Права нога</button>
-            </div>
-
-            <aside class="readout">
-                <div class="metric">
-                    <span>Витривалість</span>
-                    <strong id="staminaValue">100%</strong>
-                    <div class="bar"><i id="staminaBar"></i></div>
-                    <small id="staminaBand">Стабільно</small>
-                </div>
-                <div class="metric compact">
-                    <span>Дихальний борг</span>
-                    <strong id="breathDebt">0%</strong>
-                </div>
-                <div class="metric compact">
-                    <span>Втома</span>
-                    <strong id="fatigue">0%</strong>
-                </div>
-                <div class="part-card" id="partCard">
-                    <span>Обрана зона</span>
-                    <h2>Груди</h2>
-                    <p>Стабільно</p>
-                </div>
-            </aside>
-        </div>
-    </section>
-</main>
-<script src="body.js"></script>
-</body>
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Статус персонажа</title>
+    <script type="module" crossorigin src="./assets/body-ui.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/body-ui.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

@@ -1,0 +1,3517 @@
+{
+  "summary": {
+    "status": "ALL_180_FRAMES_VERIFIED_OK",
+    "fps": 30,
+    "frame_range": [
+      1,
+      180
+    ],
+    "total_frames_verified": 180,
+    "max_foot_penetration_m": 2e-07,
+    "max_planted_foot_slip_m": 2e-07,
+    "max_arm_reach_ratio": 0.96868,
+    "max_leg_reach_ratio": 0.99204,
+    "min_head_tool_clearance_m": 0.3357,
+    "max_strike_contact_err_m": 1e-07,
+    "max_chisel_tip_err_m": 1e-07,
+    "max_grab_handoff_err_m": 6e-07,
+    "max_angular_step_deg": 138.284,
+    "loop_seam_pos_err_m": 0.0,
+    "strike_impacts_verified": [
+      {
+        "strike_number": 1,
+        "frame": 52,
+        "stage": "ROUGH_1",
+        "tool": "POINT",
+        "chisel_tip_error_m": 0.0,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.5422
+      },
+      {
+        "strike_number": 2,
+        "frame": 68,
+        "stage": "ROUGH_2",
+        "tool": "POINT",
+        "chisel_tip_error_m": 1e-07,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.5538
+      },
+      {
+        "strike_number": 3,
+        "frame": 84,
+        "stage": "ROUGH_3",
+        "tool": "POINT",
+        "chisel_tip_error_m": 0.0,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.5542
+      },
+      {
+        "strike_number": 4,
+        "frame": 122,
+        "stage": "MAIN_1",
+        "tool": "FLAT",
+        "chisel_tip_error_m": 0.0,
+        "mallet_to_cap_error_m": 1e-07,
+        "head_clearance_m": 0.6682
+      },
+      {
+        "strike_number": 5,
+        "frame": 136,
+        "stage": "MAIN_2",
+        "tool": "FLAT",
+        "chisel_tip_error_m": 0.0,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.6429
+      },
+      {
+        "strike_number": 6,
+        "frame": 146,
+        "stage": "FINE_1",
+        "tool": "FLAT",
+        "chisel_tip_error_m": 1e-07,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.5535
+      },
+      {
+        "strike_number": 7,
+        "frame": 151,
+        "stage": "FINE_2",
+        "tool": "FLAT",
+        "chisel_tip_error_m": 0.0,
+        "mallet_to_cap_error_m": 1e-07,
+        "head_clearance_m": 0.5224
+      },
+      {
+        "strike_number": 8,
+        "frame": 156,
+        "stage": "FINE_3",
+        "tool": "FLAT",
+        "chisel_tip_error_m": 1e-07,
+        "mallet_to_cap_error_m": 0.0,
+        "head_clearance_m": 0.5424
+      }
+    ]
+  },
+  "frames": [
+    {
+      "frame": 1,
+      "time_s": 0.0,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9672,
+      "leg_reach_max": 0.9911,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 0.0,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 2,
+      "time_s": 0.0333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9674,
+      "leg_reach_max": 0.9916,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 0.386,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 3,
+      "time_s": 0.0667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9675,
+      "leg_reach_max": 0.992,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 2.225,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 4,
+      "time_s": 0.1,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9677,
+      "leg_reach_max": 0.9919,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 4.762,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 5,
+      "time_s": 0.1333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9679,
+      "leg_reach_max": 0.991,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 4.802,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 6,
+      "time_s": 0.1667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9682,
+      "leg_reach_max": 0.9892,
+      "head_mallet_clearance_m": 0.4287,
+      "max_bone_step_deg": 4.401,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 7,
+      "time_s": 0.2,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9685,
+      "leg_reach_max": 0.9865,
+      "head_mallet_clearance_m": 0.4296,
+      "max_bone_step_deg": 5.859,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 8,
+      "time_s": 0.2333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9687,
+      "leg_reach_max": 0.9832,
+      "head_mallet_clearance_m": 0.4315,
+      "max_bone_step_deg": 7.925,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 9,
+      "time_s": 0.2667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9686,
+      "leg_reach_max": 0.9745,
+      "head_mallet_clearance_m": 0.4353,
+      "max_bone_step_deg": 5.859,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 10,
+      "time_s": 0.3,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9682,
+      "leg_reach_max": 0.9573,
+      "head_mallet_clearance_m": 0.4414,
+      "max_bone_step_deg": 5.515,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 11,
+      "time_s": 0.3333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9674,
+      "leg_reach_max": 0.9501,
+      "head_mallet_clearance_m": 0.4499,
+      "max_bone_step_deg": 6.926,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 12,
+      "time_s": 0.3667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9663,
+      "leg_reach_max": 0.9578,
+      "head_mallet_clearance_m": 0.46,
+      "max_bone_step_deg": 7.994,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 13,
+      "time_s": 0.4,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9651,
+      "leg_reach_max": 0.9563,
+      "head_mallet_clearance_m": 0.4704,
+      "max_bone_step_deg": 8.397,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 14,
+      "time_s": 0.4333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9638,
+      "leg_reach_max": 0.9505,
+      "head_mallet_clearance_m": 0.4793,
+      "max_bone_step_deg": 7.887,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 15,
+      "time_s": 0.4667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9627,
+      "leg_reach_max": 0.9463,
+      "head_mallet_clearance_m": 0.4856,
+      "max_bone_step_deg": 6.414,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 16,
+      "time_s": 0.5,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9618,
+      "leg_reach_max": 0.9437,
+      "head_mallet_clearance_m": 0.4891,
+      "max_bone_step_deg": 4.256,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 17,
+      "time_s": 0.5333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9611,
+      "leg_reach_max": 0.9505,
+      "head_mallet_clearance_m": 0.4905,
+      "max_bone_step_deg": 3.806,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 18,
+      "time_s": 0.5667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9606,
+      "leg_reach_max": 0.955,
+      "head_mallet_clearance_m": 0.4907,
+      "max_bone_step_deg": 1.818,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 19,
+      "time_s": 0.6,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9601,
+      "leg_reach_max": 0.9545,
+      "head_mallet_clearance_m": 0.4906,
+      "max_bone_step_deg": 0.386,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 20,
+      "time_s": 0.6333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9596,
+      "leg_reach_max": 0.954,
+      "head_mallet_clearance_m": 0.4905,
+      "max_bone_step_deg": 0.384,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 21,
+      "time_s": 0.6667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9591,
+      "leg_reach_max": 0.9535,
+      "head_mallet_clearance_m": 0.4905,
+      "max_bone_step_deg": 2.646,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 22,
+      "time_s": 0.7,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9586,
+      "leg_reach_max": 0.953,
+      "head_mallet_clearance_m": 0.4904,
+      "max_bone_step_deg": 12.999,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 23,
+      "time_s": 0.7333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9576,
+      "leg_reach_max": 0.9527,
+      "head_mallet_clearance_m": 0.49,
+      "max_bone_step_deg": 28.048,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 24,
+      "time_s": 0.7667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9559,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.4886,
+      "max_bone_step_deg": 45.681,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 25,
+      "time_s": 0.8,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9549,
+      "leg_reach_max": 0.9526,
+      "head_mallet_clearance_m": 0.4856,
+      "max_bone_step_deg": 31.925,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 26,
+      "time_s": 0.8333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9454,
+      "leg_reach_max": 0.9527,
+      "head_mallet_clearance_m": 0.4812,
+      "max_bone_step_deg": 55.975,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 27,
+      "time_s": 0.8667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8867,
+      "leg_reach_max": 0.9527,
+      "head_mallet_clearance_m": 0.4788,
+      "max_bone_step_deg": 21.885,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 28,
+      "time_s": 0.9,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7445,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.4815,
+      "max_bone_step_deg": 18.666,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 29,
+      "time_s": 0.9333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.5451,
+      "leg_reach_max": 0.9521,
+      "head_mallet_clearance_m": 0.4869,
+      "max_bone_step_deg": 27.582,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 30,
+      "time_s": 0.9667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3672,
+      "leg_reach_max": 0.9517,
+      "head_mallet_clearance_m": 0.4904,
+      "max_bone_step_deg": 22.047,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 31,
+      "time_s": 1.0,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3243,
+      "leg_reach_max": 0.9514,
+      "head_mallet_clearance_m": 0.4895,
+      "max_bone_step_deg": 50.747,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 32,
+      "time_s": 1.0333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3753,
+      "leg_reach_max": 0.9514,
+      "head_mallet_clearance_m": 0.4861,
+      "max_bone_step_deg": 58.529,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 33,
+      "time_s": 1.0667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3944,
+      "leg_reach_max": 0.9516,
+      "head_mallet_clearance_m": 0.484,
+      "max_bone_step_deg": 44.497,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 34,
+      "time_s": 1.1,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5483,
+      "leg_reach_max": 0.9521,
+      "head_mallet_clearance_m": 0.4853,
+      "max_bone_step_deg": 31.544,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 35,
+      "time_s": 1.1333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 2e-07,
+      "arm_reach_max": 0.6426,
+      "leg_reach_max": 0.9528,
+      "head_mallet_clearance_m": 0.4835,
+      "max_bone_step_deg": 43.968,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 36,
+      "time_s": 1.1667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6787,
+      "leg_reach_max": 0.9535,
+      "head_mallet_clearance_m": 0.4665,
+      "max_bone_step_deg": 38.908,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 37,
+      "time_s": 1.2,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7039,
+      "leg_reach_max": 0.9543,
+      "head_mallet_clearance_m": 0.4737,
+      "max_bone_step_deg": 33.1,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 38,
+      "time_s": 1.2333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7243,
+      "leg_reach_max": 0.9551,
+      "head_mallet_clearance_m": 0.499,
+      "max_bone_step_deg": 88.944,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 39,
+      "time_s": 1.2667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7346,
+      "leg_reach_max": 0.9556,
+      "head_mallet_clearance_m": 0.463,
+      "max_bone_step_deg": 50.405,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 40,
+      "time_s": 1.3,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7383,
+      "leg_reach_max": 0.9561,
+      "head_mallet_clearance_m": 0.4872,
+      "max_bone_step_deg": 22.751,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 41,
+      "time_s": 1.3333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7408,
+      "leg_reach_max": 0.9565,
+      "head_mallet_clearance_m": 0.5102,
+      "max_bone_step_deg": 12.374,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 42,
+      "time_s": 1.3667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.742,
+      "leg_reach_max": 0.9569,
+      "head_mallet_clearance_m": 0.5141,
+      "max_bone_step_deg": 3.014,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 43,
+      "time_s": 1.4,
+      "lift": 0.3577,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.742,
+      "leg_reach_max": 0.9571,
+      "head_mallet_clearance_m": 0.5084,
+      "max_bone_step_deg": 3.527,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 44,
+      "time_s": 1.4333,
+      "lift": 0.4548,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7402,
+      "leg_reach_max": 0.9573,
+      "head_mallet_clearance_m": 0.4933,
+      "max_bone_step_deg": 9.287,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 45,
+      "time_s": 1.4667,
+      "lift": 0.5876,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7374,
+      "leg_reach_max": 0.9575,
+      "head_mallet_clearance_m": 0.4729,
+      "max_bone_step_deg": 11.938,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 46,
+      "time_s": 1.5,
+      "lift": 0.7324,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7339,
+      "leg_reach_max": 0.9575,
+      "head_mallet_clearance_m": 0.4516,
+      "max_bone_step_deg": 11.687,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 47,
+      "time_s": 1.5333,
+      "lift": 0.8652,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7306,
+      "leg_reach_max": 0.9574,
+      "head_mallet_clearance_m": 0.4329,
+      "max_bone_step_deg": 9.605,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 48,
+      "time_s": 1.5667,
+      "lift": 0.9623,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7278,
+      "leg_reach_max": 0.9573,
+      "head_mallet_clearance_m": 0.4199,
+      "max_bone_step_deg": 6.521,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 49,
+      "time_s": 1.6,
+      "lift": 1.0,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7262,
+      "leg_reach_max": 0.957,
+      "head_mallet_clearance_m": 0.4149,
+      "max_bone_step_deg": 2.512,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 50,
+      "time_s": 1.6333,
+      "lift": 0.8889,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7249,
+      "leg_reach_max": 0.9541,
+      "head_mallet_clearance_m": 0.428,
+      "max_bone_step_deg": 13.962,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 51,
+      "time_s": 1.6667,
+      "lift": 0.5556,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7297,
+      "leg_reach_max": 0.9488,
+      "head_mallet_clearance_m": 0.4687,
+      "max_bone_step_deg": 33.086,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 52,
+      "time_s": 1.7,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7478,
+      "leg_reach_max": 0.9458,
+      "head_mallet_clearance_m": 0.5422,
+      "max_bone_step_deg": 44.948,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 53,
+      "time_s": 1.7333,
+      "lift": 0.1626,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.472,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7394,
+      "leg_reach_max": 0.9489,
+      "head_mallet_clearance_m": 0.5247,
+      "max_bone_step_deg": 17.468,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 54,
+      "time_s": 1.7667,
+      "lift": 0.3219,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.168,
+        0.472,
+        1.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6725,
+      "leg_reach_max": 0.9314,
+      "head_mallet_clearance_m": 0.4788,
+      "max_bone_step_deg": 34.835,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 55,
+      "time_s": 1.8,
+      "lift": 0.4166,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.038,
+        0.168,
+        0.472,
+        1.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7038,
+      "leg_reach_max": 0.9446,
+      "head_mallet_clearance_m": 0.4656,
+      "max_bone_step_deg": 11.776,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 56,
+      "time_s": 1.8333,
+      "lift": 0.416,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.002,
+        0.038,
+        0.168,
+        0.472
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7204,
+      "leg_reach_max": 0.9504,
+      "head_mallet_clearance_m": 0.4819,
+      "max_bone_step_deg": 5.407,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 57,
+      "time_s": 1.8667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.002,
+        0.038,
+        0.168
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7288,
+      "leg_reach_max": 0.9526,
+      "head_mallet_clearance_m": 0.5048,
+      "max_bone_step_deg": 11.366,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 58,
+      "time_s": 1.9,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.002,
+        0.038
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7324,
+      "leg_reach_max": 0.9529,
+      "head_mallet_clearance_m": 0.5077,
+      "max_bone_step_deg": 1.839,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 59,
+      "time_s": 1.9333,
+      "lift": 0.3632,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.002
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7309,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.4962,
+      "max_bone_step_deg": 6.766,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 60,
+      "time_s": 1.9667,
+      "lift": 0.4746,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7584,
+      "leg_reach_max": 0.9522,
+      "head_mallet_clearance_m": 0.4857,
+      "max_bone_step_deg": 11.691,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 61,
+      "time_s": 2.0,
+      "lift": 0.627,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7954,
+      "leg_reach_max": 0.9519,
+      "head_mallet_clearance_m": 0.4772,
+      "max_bone_step_deg": 13.71,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 62,
+      "time_s": 2.0333,
+      "lift": 0.793,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7971,
+      "leg_reach_max": 0.9517,
+      "head_mallet_clearance_m": 0.4591,
+      "max_bone_step_deg": 6.162,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 63,
+      "time_s": 2.0667,
+      "lift": 0.9454,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7929,
+      "leg_reach_max": 0.9516,
+      "head_mallet_clearance_m": 0.4431,
+      "max_bone_step_deg": 5.143,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 64,
+      "time_s": 2.1,
+      "lift": 1.0568,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7901,
+      "leg_reach_max": 0.9516,
+      "head_mallet_clearance_m": 0.4328,
+      "max_bone_step_deg": 4.116,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 65,
+      "time_s": 2.1333,
+      "lift": 1.1,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7892,
+      "leg_reach_max": 0.9517,
+      "head_mallet_clearance_m": 0.4291,
+      "max_bone_step_deg": 1.695,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 66,
+      "time_s": 2.1667,
+      "lift": 0.9778,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7907,
+      "leg_reach_max": 0.9492,
+      "head_mallet_clearance_m": 0.4401,
+      "max_bone_step_deg": 11.763,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 67,
+      "time_s": 2.2,
+      "lift": 0.6111,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7997,
+      "leg_reach_max": 0.9446,
+      "head_mallet_clearance_m": 0.4781,
+      "max_bone_step_deg": 21.081,
+      "intact_voxel_clusters": 7,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 68,
+      "time_s": 2.2333,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8213,
+      "leg_reach_max": 0.9423,
+      "head_mallet_clearance_m": 0.5538,
+      "max_bone_step_deg": 25.412,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 69,
+      "time_s": 2.2667,
+      "lift": 0.1755,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.472,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8154,
+      "leg_reach_max": 0.9463,
+      "head_mallet_clearance_m": 0.5332,
+      "max_bone_step_deg": 13.876,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 70,
+      "time_s": 2.3,
+      "lift": 0.3428,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.168,
+        0.472,
+        1.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.753,
+      "leg_reach_max": 0.9298,
+      "head_mallet_clearance_m": 0.4982,
+      "max_bone_step_deg": 16.46,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 71,
+      "time_s": 2.3333,
+      "lift": 0.4375,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.038,
+        0.168,
+        0.472,
+        1.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.785,
+      "leg_reach_max": 0.944,
+      "head_mallet_clearance_m": 0.4787,
+      "max_bone_step_deg": 12.077,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 72,
+      "time_s": 2.3667,
+      "lift": 0.429,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.002,
+        0.038,
+        0.168,
+        0.472
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8046,
+      "leg_reach_max": 0.9508,
+      "head_mallet_clearance_m": 0.4949,
+      "max_bone_step_deg": 6.118,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 73,
+      "time_s": 2.4,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.002,
+        0.038,
+        0.168
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8165,
+      "leg_reach_max": 0.954,
+      "head_mallet_clearance_m": 0.5186,
+      "max_bone_step_deg": 4.89,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 74,
+      "time_s": 2.4333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.002,
+        0.038
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8238,
+      "leg_reach_max": 0.9552,
+      "head_mallet_clearance_m": 0.5227,
+      "max_bone_step_deg": 2.136,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 75,
+      "time_s": 2.4667,
+      "lift": 0.3665,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.002
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.83,
+      "leg_reach_max": 0.9557,
+      "head_mallet_clearance_m": 0.5124,
+      "max_bone_step_deg": 8.103,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 76,
+      "time_s": 2.5,
+      "lift": 0.4865,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8634,
+      "leg_reach_max": 0.9562,
+      "head_mallet_clearance_m": 0.5034,
+      "max_bone_step_deg": 11.154,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 77,
+      "time_s": 2.5333,
+      "lift": 0.6506,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9013,
+      "leg_reach_max": 0.9566,
+      "head_mallet_clearance_m": 0.5012,
+      "max_bone_step_deg": 8.798,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 78,
+      "time_s": 2.5667,
+      "lift": 0.8294,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9046,
+      "leg_reach_max": 0.9569,
+      "head_mallet_clearance_m": 0.488,
+      "max_bone_step_deg": 5.521,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 79,
+      "time_s": 2.6,
+      "lift": 0.9935,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9013,
+      "leg_reach_max": 0.9572,
+      "head_mallet_clearance_m": 0.4764,
+      "max_bone_step_deg": 4.896,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 80,
+      "time_s": 2.6333,
+      "lift": 1.1135,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8988,
+      "leg_reach_max": 0.9574,
+      "head_mallet_clearance_m": 0.4695,
+      "max_bone_step_deg": 3.813,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 81,
+      "time_s": 2.6667,
+      "lift": 1.16,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8979,
+      "leg_reach_max": 0.9575,
+      "head_mallet_clearance_m": 0.4673,
+      "max_bone_step_deg": 1.541,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 82,
+      "time_s": 2.7,
+      "lift": 1.0311,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9,
+      "leg_reach_max": 0.9548,
+      "head_mallet_clearance_m": 0.4685,
+      "max_bone_step_deg": 17.99,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 83,
+      "time_s": 2.7333,
+      "lift": 0.6444,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9088,
+      "leg_reach_max": 0.9499,
+      "head_mallet_clearance_m": 0.4868,
+      "max_bone_step_deg": 26.948,
+      "intact_voxel_clusters": 6,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 84,
+      "time_s": 2.7667,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9272,
+      "leg_reach_max": 0.9471,
+      "head_mallet_clearance_m": 0.5542,
+      "max_bone_step_deg": 21.962,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 85,
+      "time_s": 2.8,
+      "lift": 0.1513,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.472,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9206,
+      "leg_reach_max": 0.9499,
+      "head_mallet_clearance_m": 0.5424,
+      "max_bone_step_deg": 12.29,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 86,
+      "time_s": 2.8333,
+      "lift": 0.304,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.168,
+        0.472,
+        1.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8634,
+      "leg_reach_max": 0.932,
+      "head_mallet_clearance_m": 0.4971,
+      "max_bone_step_deg": 13.245,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 87,
+      "time_s": 2.8667,
+      "lift": 0.4152,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.038,
+        0.168,
+        0.472,
+        1.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8879,
+      "leg_reach_max": 0.9455,
+      "head_mallet_clearance_m": 0.4907,
+      "max_bone_step_deg": 16.1,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 88,
+      "time_s": 2.9,
+      "lift": 0.458,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.002,
+        0.038,
+        0.168,
+        0.472
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9019,
+      "leg_reach_max": 0.9523,
+      "head_mallet_clearance_m": 0.5074,
+      "max_bone_step_deg": 7.246,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 89,
+      "time_s": 2.9333,
+      "lift": 0.4239,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.002,
+        0.038,
+        0.168
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9081,
+      "leg_reach_max": 0.9545,
+      "head_mallet_clearance_m": 0.5204,
+      "max_bone_step_deg": 2.356,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 90,
+      "time_s": 2.9667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.002,
+        0.038
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.911,
+      "leg_reach_max": 0.9547,
+      "head_mallet_clearance_m": 0.5354,
+      "max_bone_step_deg": 2.787,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 91,
+      "time_s": 3.0,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.002
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9097,
+      "leg_reach_max": 0.9543,
+      "head_mallet_clearance_m": 0.5374,
+      "max_bone_step_deg": 0.728,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 92,
+      "time_s": 3.0333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8908,
+      "leg_reach_max": 0.954,
+      "head_mallet_clearance_m": 0.5355,
+      "max_bone_step_deg": 3.034,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 93,
+      "time_s": 3.0667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8426,
+      "leg_reach_max": 0.9542,
+      "head_mallet_clearance_m": 0.5262,
+      "max_bone_step_deg": 6.955,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 94,
+      "time_s": 3.1,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7802,
+      "leg_reach_max": 0.9547,
+      "head_mallet_clearance_m": 0.516,
+      "max_bone_step_deg": 8.065,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 95,
+      "time_s": 3.1333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7231,
+      "leg_reach_max": 0.9553,
+      "head_mallet_clearance_m": 0.5111,
+      "max_bone_step_deg": 9.313,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 96,
+      "time_s": 3.1667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6861,
+      "leg_reach_max": 0.9555,
+      "head_mallet_clearance_m": 0.5072,
+      "max_bone_step_deg": 9.215,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 97,
+      "time_s": 3.2,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6806,
+      "leg_reach_max": 0.9553,
+      "head_mallet_clearance_m": 0.5079,
+      "max_bone_step_deg": 5.59,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 98,
+      "time_s": 3.2333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7132,
+      "leg_reach_max": 0.9545,
+      "head_mallet_clearance_m": 0.5334,
+      "max_bone_step_deg": 6.925,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 99,
+      "time_s": 3.2667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7738,
+      "leg_reach_max": 0.9535,
+      "head_mallet_clearance_m": 0.5811,
+      "max_bone_step_deg": 9.735,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 100,
+      "time_s": 3.3,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8378,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.6228,
+      "max_bone_step_deg": 8.175,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 101,
+      "time_s": 3.3333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8849,
+      "leg_reach_max": 0.9519,
+      "head_mallet_clearance_m": 0.646,
+      "max_bone_step_deg": 6.728,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 102,
+      "time_s": 3.3667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7987,
+      "leg_reach_max": 0.952,
+      "head_mallet_clearance_m": 0.585,
+      "max_bone_step_deg": 14.351,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 103,
+      "time_s": 3.4,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3052,
+      "leg_reach_max": 0.9526,
+      "head_mallet_clearance_m": 0.385,
+      "max_bone_step_deg": 118.912,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 104,
+      "time_s": 3.4333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.4613,
+      "leg_reach_max": 0.9533,
+      "head_mallet_clearance_m": 0.4564,
+      "max_bone_step_deg": 62.287,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 105,
+      "time_s": 3.4667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5693,
+      "leg_reach_max": 0.954,
+      "head_mallet_clearance_m": 0.4868,
+      "max_bone_step_deg": 35.993,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 106,
+      "time_s": 3.5,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5322,
+      "leg_reach_max": 0.9546,
+      "head_mallet_clearance_m": 0.4602,
+      "max_bone_step_deg": 16.872,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 107,
+      "time_s": 3.5333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.54,
+      "leg_reach_max": 0.955,
+      "head_mallet_clearance_m": 0.5049,
+      "max_bone_step_deg": 51.01,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 108,
+      "time_s": 3.5667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.4933,
+      "leg_reach_max": 0.9551,
+      "head_mallet_clearance_m": 0.4744,
+      "max_bone_step_deg": 29.848,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 109,
+      "time_s": 3.6,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.4494,
+      "leg_reach_max": 0.9553,
+      "head_mallet_clearance_m": 0.401,
+      "max_bone_step_deg": 35.662,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 110,
+      "time_s": 3.6333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5872,
+      "leg_reach_max": 0.9555,
+      "head_mallet_clearance_m": 0.4123,
+      "max_bone_step_deg": 44.399,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 111,
+      "time_s": 3.6667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6101,
+      "leg_reach_max": 0.9558,
+      "head_mallet_clearance_m": 0.5085,
+      "max_bone_step_deg": 43.408,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 112,
+      "time_s": 3.7,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8152,
+      "leg_reach_max": 0.9563,
+      "head_mallet_clearance_m": 0.6167,
+      "max_bone_step_deg": 115.324,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 113,
+      "time_s": 3.7333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8472,
+      "leg_reach_max": 0.9567,
+      "head_mallet_clearance_m": 0.6357,
+      "max_bone_step_deg": 4.429,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 114,
+      "time_s": 3.7667,
+      "lift": 0.357,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8473,
+      "leg_reach_max": 0.957,
+      "head_mallet_clearance_m": 0.6303,
+      "max_bone_step_deg": 1.331,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 115,
+      "time_s": 3.8,
+      "lift": 0.4496,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8462,
+      "leg_reach_max": 0.9572,
+      "head_mallet_clearance_m": 0.6165,
+      "max_bone_step_deg": 3.227,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 116,
+      "time_s": 3.8333,
+      "lift": 0.57,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8443,
+      "leg_reach_max": 0.9574,
+      "head_mallet_clearance_m": 0.5988,
+      "max_bone_step_deg": 4.21,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 117,
+      "time_s": 3.8667,
+      "lift": 0.6904,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8422,
+      "leg_reach_max": 0.9575,
+      "head_mallet_clearance_m": 0.5816,
+      "max_bone_step_deg": 4.258,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 118,
+      "time_s": 3.9,
+      "lift": 0.783,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8405,
+      "leg_reach_max": 0.9575,
+      "head_mallet_clearance_m": 0.5688,
+      "max_bone_step_deg": 3.304,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 119,
+      "time_s": 3.9333,
+      "lift": 0.82,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8395,
+      "leg_reach_max": 0.9574,
+      "head_mallet_clearance_m": 0.5638,
+      "max_bone_step_deg": 1.301,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 120,
+      "time_s": 3.9667,
+      "lift": 0.7289,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.838,
+      "leg_reach_max": 0.9545,
+      "head_mallet_clearance_m": 0.5763,
+      "max_bone_step_deg": 8.533,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 121,
+      "time_s": 4.0,
+      "lift": 0.4556,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8405,
+      "leg_reach_max": 0.9494,
+      "head_mallet_clearance_m": 0.6111,
+      "max_bone_step_deg": 19.562,
+      "intact_voxel_clusters": 5,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 122,
+      "time_s": 4.0333,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        0.78,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8528,
+      "leg_reach_max": 0.9465,
+      "head_mallet_clearance_m": 0.6682,
+      "max_bone_step_deg": 20.262,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": 1e-07
+    },
+    {
+      "frame": 123,
+      "time_s": 4.0667,
+      "lift": 0.1776,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.368,
+        0.78,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.847,
+      "leg_reach_max": 0.9506,
+      "head_mallet_clearance_m": 0.6507,
+      "max_bone_step_deg": 15.929,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 124,
+      "time_s": 4.1,
+      "lift": 0.3404,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.131,
+        0.368,
+        0.78,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8027,
+      "leg_reach_max": 0.9386,
+      "head_mallet_clearance_m": 0.6146,
+      "max_bone_step_deg": 15.682,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 125,
+      "time_s": 4.1333,
+      "lift": 0.3976,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.03,
+        0.131,
+        0.368,
+        0.78
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8228,
+      "leg_reach_max": 0.9476,
+      "head_mallet_clearance_m": 0.6016,
+      "max_bone_step_deg": 8.745,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 126,
+      "time_s": 4.1667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.002,
+        0.03,
+        0.131,
+        0.368
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8394,
+      "leg_reach_max": 0.952,
+      "head_mallet_clearance_m": 0.6252,
+      "max_bone_step_deg": 5.619,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 127,
+      "time_s": 4.2,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.002,
+        0.03,
+        0.131
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.856,
+      "leg_reach_max": 0.9536,
+      "head_mallet_clearance_m": 0.6305,
+      "max_bone_step_deg": 13.073,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 128,
+      "time_s": 4.2333,
+      "lift": 0.36,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.002,
+        0.03
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9013,
+      "leg_reach_max": 0.9536,
+      "head_mallet_clearance_m": 0.6278,
+      "max_bone_step_deg": 21.067,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 129,
+      "time_s": 4.2667,
+      "lift": 0.46,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.002
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9471,
+      "leg_reach_max": 0.9532,
+      "head_mallet_clearance_m": 0.6201,
+      "max_bone_step_deg": 11.983,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 130,
+      "time_s": 4.3,
+      "lift": 0.59,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9527,
+      "leg_reach_max": 0.9528,
+      "head_mallet_clearance_m": 0.6048,
+      "max_bone_step_deg": 5.061,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 131,
+      "time_s": 4.3333,
+      "lift": 0.72,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9491,
+      "leg_reach_max": 0.9524,
+      "head_mallet_clearance_m": 0.5899,
+      "max_bone_step_deg": 3.978,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 132,
+      "time_s": 4.3667,
+      "lift": 0.82,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9462,
+      "leg_reach_max": 0.9521,
+      "head_mallet_clearance_m": 0.5792,
+      "max_bone_step_deg": 3.098,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 133,
+      "time_s": 4.4,
+      "lift": 0.86,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9448,
+      "leg_reach_max": 0.9518,
+      "head_mallet_clearance_m": 0.5751,
+      "max_bone_step_deg": 1.27,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 134,
+      "time_s": 4.4333,
+      "lift": 0.7644,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9447,
+      "leg_reach_max": 0.949,
+      "head_mallet_clearance_m": 0.5794,
+      "max_bone_step_deg": 10.701,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 135,
+      "time_s": 4.4667,
+      "lift": 0.4778,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9494,
+      "leg_reach_max": 0.9441,
+      "head_mallet_clearance_m": 0.5951,
+      "max_bone_step_deg": 21.889,
+      "intact_voxel_clusters": 4,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 136,
+      "time_s": 4.5,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        0.78,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9619,
+      "leg_reach_max": 0.9416,
+      "head_mallet_clearance_m": 0.6429,
+      "max_bone_step_deg": 17.647,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 137,
+      "time_s": 4.5333,
+      "lift": 0.1445,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.368,
+        0.78,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9579,
+      "leg_reach_max": 0.9452,
+      "head_mallet_clearance_m": 0.6406,
+      "max_bone_step_deg": 14.96,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 138,
+      "time_s": 4.5667,
+      "lift": 0.2926,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.131,
+        0.368,
+        0.78,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9171,
+      "leg_reach_max": 0.933,
+      "head_mallet_clearance_m": 0.6073,
+      "max_bone_step_deg": 11.736,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 139,
+      "time_s": 4.6,
+      "lift": 0.3873,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.03,
+        0.131,
+        0.368,
+        0.78
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.9375,
+      "leg_reach_max": 0.9446,
+      "head_mallet_clearance_m": 0.6038,
+      "max_bone_step_deg": 13.335,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 140,
+      "time_s": 4.6333,
+      "lift": 0.3979,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.002,
+        0.03,
+        0.131,
+        0.368
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9394,
+      "leg_reach_max": 0.9499,
+      "head_mallet_clearance_m": 0.6171,
+      "max_bone_step_deg": 6.305,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 141,
+      "time_s": 4.6667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.002,
+        0.03,
+        0.131
+      ],
+      "foot_pen_m": 2e-07,
+      "arm_reach_max": 0.8943,
+      "leg_reach_max": 0.9502,
+      "head_mallet_clearance_m": 0.6304,
+      "max_bone_step_deg": 16.873,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 142,
+      "time_s": 4.7,
+      "lift": 0.18,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.002,
+        0.03
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8521,
+      "leg_reach_max": 0.943,
+      "head_mallet_clearance_m": 0.6491,
+      "max_bone_step_deg": 31.913,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 143,
+      "time_s": 4.7333,
+      "lift": 0.2645,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.002
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.812,
+      "leg_reach_max": 0.9355,
+      "head_mallet_clearance_m": 0.6153,
+      "max_bone_step_deg": 29.499,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 144,
+      "time_s": 4.7667,
+      "lift": 0.395,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8017,
+      "leg_reach_max": 0.934,
+      "head_mallet_clearance_m": 0.5953,
+      "max_bone_step_deg": 5.37,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 145,
+      "time_s": 4.8,
+      "lift": 0.3733,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8032,
+      "leg_reach_max": 0.9321,
+      "head_mallet_clearance_m": 0.5876,
+      "max_bone_step_deg": 11.397,
+      "intact_voxel_clusters": 3,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 146,
+      "time_s": 4.8333,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        0.45,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8091,
+      "leg_reach_max": 0.9258,
+      "head_mallet_clearance_m": 0.5535,
+      "max_bone_step_deg": 55.366,
+      "intact_voxel_clusters": 2,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 147,
+      "time_s": 4.8667,
+      "lift": 0.1824,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.213,
+        0.45,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8119,
+      "leg_reach_max": 0.9346,
+      "head_mallet_clearance_m": 0.6172,
+      "max_bone_step_deg": 61.996,
+      "intact_voxel_clusters": 2,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 148,
+      "time_s": 4.9,
+      "lift": 0.18,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.075,
+        0.213,
+        0.45,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7831,
+      "leg_reach_max": 0.9267,
+      "head_mallet_clearance_m": 0.5944,
+      "max_bone_step_deg": 11.554,
+      "intact_voxel_clusters": 2,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 149,
+      "time_s": 4.9333,
+      "lift": 0.2966,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.017,
+        0.075,
+        0.213,
+        0.45
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8073,
+      "leg_reach_max": 0.932,
+      "head_mallet_clearance_m": 0.614,
+      "max_bone_step_deg": 34.375,
+      "intact_voxel_clusters": 2,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 150,
+      "time_s": 4.9667,
+      "lift": 0.3694,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.001,
+        0.017,
+        0.075,
+        0.213
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8159,
+      "leg_reach_max": 0.9344,
+      "head_mallet_clearance_m": 0.6152,
+      "max_bone_step_deg": 5.559,
+      "intact_voxel_clusters": 2,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 151,
+      "time_s": 5.0,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        0.45,
+        0.001,
+        0.017,
+        0.075
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.824,
+      "leg_reach_max": 0.9272,
+      "head_mallet_clearance_m": 0.5224,
+      "max_bone_step_deg": 129.756,
+      "intact_voxel_clusters": 1,
+      "strike_contact_err_m": 1e-07
+    },
+    {
+      "frame": 152,
+      "time_s": 5.0333,
+      "lift": 0.1736,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.213,
+        0.45,
+        0.001,
+        0.017
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.825,
+      "leg_reach_max": 0.936,
+      "head_mallet_clearance_m": 0.6395,
+      "max_bone_step_deg": 130.776,
+      "intact_voxel_clusters": 1,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 153,
+      "time_s": 5.0667,
+      "lift": 0.18,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.075,
+        0.213,
+        0.45,
+        0.001
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8142,
+      "leg_reach_max": 0.9278,
+      "head_mallet_clearance_m": 0.6404,
+      "max_bone_step_deg": 9.619,
+      "intact_voxel_clusters": 1,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 154,
+      "time_s": 5.1,
+      "lift": 0.3316,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.017,
+        0.075,
+        0.213,
+        0.45
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8724,
+      "leg_reach_max": 0.9327,
+      "head_mallet_clearance_m": 0.6262,
+      "max_bone_step_deg": 61.868,
+      "intact_voxel_clusters": 1,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 155,
+      "time_s": 5.1333,
+      "lift": 0.4278,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.001,
+        0.017,
+        0.075,
+        0.213
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8794,
+      "leg_reach_max": 0.9347,
+      "head_mallet_clearance_m": 0.6201,
+      "max_bone_step_deg": 2.704,
+      "intact_voxel_clusters": 1,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 156,
+      "time_s": 5.1667,
+      "lift": 0.0,
+      "contact_pulse": 1.0,
+      "shock_wave": [
+        0.45,
+        0.001,
+        0.017,
+        0.075
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.8882,
+      "leg_reach_max": 0.9271,
+      "head_mallet_clearance_m": 0.5424,
+      "max_bone_step_deg": 119.326,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": 0.0
+    },
+    {
+      "frame": 157,
+      "time_s": 5.2,
+      "lift": 0.1554,
+      "contact_pulse": 0.4132,
+      "shock_wave": [
+        0.213,
+        0.45,
+        0.001,
+        0.017
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8884,
+      "leg_reach_max": 0.9342,
+      "head_mallet_clearance_m": 0.637,
+      "max_bone_step_deg": 96.242,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 158,
+      "time_s": 5.2333,
+      "lift": 0.2182,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.075,
+        0.213,
+        0.45,
+        0.001
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8518,
+      "leg_reach_max": 0.9343,
+      "head_mallet_clearance_m": 0.605,
+      "max_bone_step_deg": 13.934,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 159,
+      "time_s": 5.2667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.017,
+        0.075,
+        0.213,
+        0.45
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5628,
+      "leg_reach_max": 0.9493,
+      "head_mallet_clearance_m": 0.4381,
+      "max_bone_step_deg": 124.864,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 160,
+      "time_s": 5.3,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.001,
+        0.017,
+        0.075,
+        0.213
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3777,
+      "leg_reach_max": 0.9549,
+      "head_mallet_clearance_m": 0.3357,
+      "max_bone_step_deg": 41.367,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 161,
+      "time_s": 5.3333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.001,
+        0.017,
+        0.075
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.4521,
+      "leg_reach_max": 0.9552,
+      "head_mallet_clearance_m": 0.3828,
+      "max_bone_step_deg": 88.349,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 162,
+      "time_s": 5.3667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.001,
+        0.017
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.4698,
+      "leg_reach_max": 0.9543,
+      "head_mallet_clearance_m": 0.423,
+      "max_bone_step_deg": 121.786,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 163,
+      "time_s": 5.4,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.001
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.4466,
+      "leg_reach_max": 0.9533,
+      "head_mallet_clearance_m": 0.4389,
+      "max_bone_step_deg": 114.174,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 164,
+      "time_s": 5.4333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.39,
+      "leg_reach_max": 0.9527,
+      "head_mallet_clearance_m": 0.4718,
+      "max_bone_step_deg": 32.788,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 165,
+      "time_s": 5.4667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.3859,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.4679,
+      "max_bone_step_deg": 76.385,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 166,
+      "time_s": 5.5,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.405,
+      "leg_reach_max": 0.9525,
+      "head_mallet_clearance_m": 0.4502,
+      "max_bone_step_deg": 73.04,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 167,
+      "time_s": 5.5333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.5333,
+      "leg_reach_max": 0.9524,
+      "head_mallet_clearance_m": 0.4421,
+      "max_bone_step_deg": 138.284,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 168,
+      "time_s": 5.5667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5526,
+      "leg_reach_max": 0.9447,
+      "head_mallet_clearance_m": 0.444,
+      "max_bone_step_deg": 125.279,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 169,
+      "time_s": 5.6,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.51,
+      "leg_reach_max": 0.9455,
+      "head_mallet_clearance_m": 0.4472,
+      "max_bone_step_deg": 38.516,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 170,
+      "time_s": 5.6333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.5461,
+      "leg_reach_max": 0.9531,
+      "head_mallet_clearance_m": 0.4503,
+      "max_bone_step_deg": 75.157,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 171,
+      "time_s": 5.6667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6395,
+      "leg_reach_max": 0.9548,
+      "head_mallet_clearance_m": 0.45,
+      "max_bone_step_deg": 64.887,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 172,
+      "time_s": 5.7,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6607,
+      "leg_reach_max": 0.944,
+      "head_mallet_clearance_m": 0.4445,
+      "max_bone_step_deg": 45.849,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 173,
+      "time_s": 5.7333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6681,
+      "leg_reach_max": 0.9667,
+      "head_mallet_clearance_m": 0.4363,
+      "max_bone_step_deg": 10.615,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 174,
+      "time_s": 5.7667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.6868,
+      "leg_reach_max": 0.9802,
+      "head_mallet_clearance_m": 0.4303,
+      "max_bone_step_deg": 6.776,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 175,
+      "time_s": 5.8,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.7264,
+      "leg_reach_max": 0.9846,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 11.991,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 176,
+      "time_s": 5.8333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.7897,
+      "leg_reach_max": 0.9877,
+      "head_mallet_clearance_m": 0.4283,
+      "max_bone_step_deg": 15.731,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 177,
+      "time_s": 5.8667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 1e-07,
+      "arm_reach_max": 0.8643,
+      "leg_reach_max": 0.9894,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 17.696,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 178,
+      "time_s": 5.9,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9272,
+      "leg_reach_max": 0.9901,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 15.471,
+      "intact_voxel_clusters": 0,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 179,
+      "time_s": 5.9333,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9608,
+      "leg_reach_max": 0.9906,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 10.124,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    },
+    {
+      "frame": 180,
+      "time_s": 5.9667,
+      "lift": 0.32,
+      "contact_pulse": 0.0,
+      "shock_wave": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "foot_pen_m": 0.0,
+      "arm_reach_max": 0.9672,
+      "leg_reach_max": 0.9911,
+      "head_mallet_clearance_m": 0.4284,
+      "max_bone_step_deg": 2.323,
+      "intact_voxel_clusters": 8,
+      "strike_contact_err_m": null
+    }
+  ]
+}

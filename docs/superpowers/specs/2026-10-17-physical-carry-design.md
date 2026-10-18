@@ -1,0 +1,33 @@
+# Physical carrying for player RP
+
+Approved scope: a small object in one palm, a large object carried at full size in two hands, concept 01 pickup feedback with animation, automated verification without launching a game client.
+
+## Behaviour
+
+- Take one loose item or a deliberately placed prop; a small item enters the empty selected hand and retains vanilla use. A nonempty hand is never silently replaced.
+- Lift a supported world furnishing/container or a single microvoxel sculpture without mining, drops or lost contents. Two free hands are required for large objects. Preserve exact block state, block entity data and portable voxel geometry. Reject unsafe multi-block machinery, connected double containers, protected/unloaded targets and fluids rather than partially removing them.
+- Large objects remain full size and visible to everyone in front of the carrier, with both arms posed around the object. Walking continues; mining, building, attacking and using unrelated items are blocked until the object is released. Small objects have an open palm pose, with a temporary showing gesture; their normal use still works.
+- Place on a visible nearby support with a preview and quarter-turn rotation; invalid placement leaves ownership unchanged. Restore world blocks as real blocks, including their contents. Ordinary objects become persistent stationary scene props, available to pick up again.
+- Offer a held object to a nearby visible player. Only the recipient can accept; acceptance rechecks distance, hands, item identity and capacity. Decline, expiry and disconnect retain the giver's ownership. Do not silently transfer an item on offer.
+- Drop safely, or stow an ordinary held item in the inventory only if capacity exists. Large world snapshots cannot be packed into ordinary inventory. On death, disconnect, dimension change and graceful shutdown, large held objects become persistent recoverable props; small objects remain ordinary inventory items. No despawn or automatic pickup for scene props.
+- Server validates authenticated living player, target/range/line of sight, limits and ownership for every action. All mutations run on the server thread. No trusted client item data or placement coordinates. State persistence is atomic; failed writes/placements must roll back. Visual display entities are derived mirrors, never independent item owners.
+
+## Controls and appearance
+
+RMB on loose/placed props takes them; Shift+RMB on an eligible world block lifts it. V opens a compact carry action menu (including hold selected item, place, rotate, drop, stow, show, offer, accept/decline). These controls must coexist with carving and normal block interaction. Show concise action hints and reasons for rejection.
+
+Use `art/pickup_highlight_concepts_2026-10-17/01_ivory_contour.png`, specifically its lower transparent mouse/ВЗЯТИ strip. Preserve the original image; render its UV region as a texture. Animate time-based fade, slight scale/vertical easing, gentle ivory/gold pulse and press feedback. Use a restrained ivory outline around the focused item/furnishing. Placement feedback distinguishes allowed/blocked and shows rotation.
+
+## Frozen client/server contract
+
+Common package `ua.rp.chat.carry`: `CarryActionPayload(String json)` with TYPE `rpchat:carry_action` (4096 UTF-8 bytes); `CarrySyncPayload(String json)` with TYPE `rpchat:carry_sync` (1 MiB UTF-8 bytes). Shared bounded wire codecs reject malformed UTF-8, oversized and null payloads. Native Minecraft registry-aware `ItemStack.CODEC` encodes visual `item` fields. Do not send private block entity snapshots to clients.
+
+Actions use JSON field `action`: `sync`, `take`, `hold`, `place`, `drop`, `stow`, `show`, `offer`, `accept`, `decline`. `take` optionally supplies `target` UUID (loose item or prop ID) or `block` [x,y,z] as a hint; the server independently raycasts. `place` includes `yaw` degrees (finite, snapped to 90 degrees); server determines support/destination. `offer` optionally supplies recipient UUID `target`; `accept`/`decline` supply `offer` UUID. Payloads never contain authoritative stacks.
+
+Sync is a bounded full replacement snapshot: `{type:"state", revision:long, liftable:[], players:[], props:[], offers:[]}`. Player records: `player` UUID, `mode` (`palm`/`two_hands`), `name`, optional registry-aware `item` JSON for the local preview only, `slot`, `object` optional prop UUID, `entity` optional native display integer ID, `shownUntil` epoch milliseconds, `kind`, `stowable`, `blockState` optional native codec JSON for the local preview only. Remote players and props need metadata only; vanilla tracked displays carry their visuals. Oversized local item visuals fall back to the native ItemDisplay or actual main-hand stack. Prop records: `id` UUID, `entity` native display entity integer ID, `world` dimension identifier, `x/y/z` base position, `yaw`, `mode`, `name`, `kind`, `stowable`; use a 1x1x1 target box for large props and .36x.36x.36 for small props. Offer records: `id/from/to` UUID, `name`, `expires` epoch milliseconds. Extra server fields are allowed; missing optional values have safe defaults. The server sends only nearby/relevant props and offers to their participants, prioritizes the local player then nearby records, and enforces exact UTF-8 budgets. Disconnect/world changes clear connection-scoped visual state.
+
+Native integration: all saved furnishing block states use BlockDisplay, including state-aware chest/shulker built-in models. Carry block writes use native silent flags 818, validate dependent neighbors, and defer notifications until ownership is durably committed. Fresh carried inventory/loose objects must have a validated recovery point before their source is changed; the visual hand anchor is never a persistence fallback. Atomic carry-file replacement and operation rollback cover graceful restart and caught failures; cross-store process/power-failure atomicity with vanilla saves is outside this scope.
+
+## Verification
+
+Headless tests must exercise real production transition/persistence logic: exclusive ownership, partial stacks and full hands, invalid placement rollback, container/voxel round trips, spoofed or stale requests, offer races/cancellation/expiry, death/logout/restart recovery, malformed/bounded codecs. Client tests cover UV bounds, fade/pulse/press timing at multiple frame rates, targeting obstruction/range, pose composition and preview rotation. Run both full Gradle `check` tasks and assemble both artifacts. Never launch Minecraft, native client game tests, or interrupt the currently running server. Do not publish the new mechanic automatically under the previous camera-fix publication request.

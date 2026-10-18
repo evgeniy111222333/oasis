@@ -44,9 +44,8 @@ public class AuthListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        if (authManager.isPendingAuth(player.getUniqueId())) {
-            event.quitMessage(null);
-        }
+        event.quitMessage(null);
+        authManager.broadcastRoleplayQuit(player);
         authManager.handleQuit(player);
     }
 

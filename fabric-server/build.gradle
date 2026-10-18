@@ -1,0 +1,8 @@
+// Root build.gradle for Eclipse project
+allprojects {
+    apply plugin: 'java'
+    
+    tasks.withType(JavaCompile).configureEach {
+        it.options.encoding = 'UTF-8'
+    }
+}

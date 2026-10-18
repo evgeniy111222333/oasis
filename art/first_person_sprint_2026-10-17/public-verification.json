@@ -1,0 +1,25 @@
+[
+  {
+    "mirror": "r2",
+    "ok": true,
+    "release": "20261017-201258",
+    "client": "eclipse-client-1.5.67.jar",
+    "signature": "valid",
+    "size": 4425648,
+    "sha256": "37720c049b585e7e4f8e827beb75586b9a82c2f4617bbe05ef6fdfaae3e1ed49"
+  },
+  {
+    "mirror": "github",
+    "ok": true,
+    "release": "20261017-201258",
+    "client": "eclipse-client-1.5.67.jar",
+    "signature": "valid",
+    "size": 4425648,
+    "sha256": "37720c049b585e7e4f8e827beb75586b9a82c2f4617bbe05ef6fdfaae3e1ed49"
+  },
+  {
+    "mirror": "vps",
+    "ok": false,
+    "error": "HTTP Error 522: <none>"
+  }
+]

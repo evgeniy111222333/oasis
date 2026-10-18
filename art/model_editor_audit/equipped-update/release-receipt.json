@@ -1,0 +1,105 @@
+{
+  "verifiedAt": "2026-10-14T12:55:50.007Z",
+  "releaseId": "20261014-125138",
+  "serverVersion": "1.5.31",
+  "clientVersion": "1.5.59",
+  "clientSha256": "cf38c8205c038bec2a88a1c2a83a3cf7b575b6d109fbecb187791d228a39136a",
+  "serverSha256": "e14540381414cf71081344c10a3597e2045a1ca071ea8ebb8d622e6f165e120a",
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1791982548700",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.59.jar?sha256=cf38c8205c038bec2a88a1c2a83a3cf7b575b6d109fbecb187791d228a39136a",
+      "releaseId": "20261014-125138",
+      "signed": true,
+      "size": 4236745,
+      "sha256": "cf38c8205c038bec2a88a1c2a83a3cf7b575b6d109fbecb187791d228a39136a"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1791982548771",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.59.jar?sha256=cf38c8205c038bec2a88a1c2a83a3cf7b575b6d109fbecb187791d228a39136a",
+      "releaseId": "20261014-125138",
+      "signed": true,
+      "size": 4236745,
+      "sha256": "cf38c8205c038bec2a88a1c2a83a3cf7b575b6d109fbecb187791d228a39136a"
+    }
+  ],
+  "localServer": {
+    "HostPid": 28256,
+    "Stdout": "D:\\23\\fabric-server\\logs\\start-fabric-equipped-2930051490f949a5a9fed441f95a6a83.stdout.log",
+    "Stderr": "D:\\23\\fabric-server\\logs\\start-fabric-equipped-2930051490f949a5a9fed441f95a6a83.stderr.log",
+    "version": "1.5.31",
+    "startupComplete": true,
+    "success": true,
+    "status": "online",
+    "onlinePlayers": 0,
+    "maxPlayers": 20
+  },
+  "verification": {
+    "fullChecksBuild": "publish_update.log: BUILD SUCCESSFUL, 75 tasks",
+    "nativeClientGameTests": "../client-gametest-equipped-green.log: BUILD SUCCESSFUL, all 3 suites with held-item regression",
+    "consoleCommand": "/modeleditor [reload]"
+  },
+  "vps": {
+    "deployed": false,
+    "reason": "SSH connection to 13.51.232.191 timed out; local Fabric server is online."
+  },
+  "bagPlacements": {
+    "version": 1,
+    "revision": 3,
+    "entries": [
+      {
+        "item": "eclipseserver:carver_bag_empty",
+        "context": "WORN",
+        "model": "",
+        "attachment": "BACK",
+        "transform": {
+          "x": 0,
+          "y": 5.25,
+          "z": 3,
+          "rx": 180,
+          "ry": 0,
+          "rz": 0,
+          "sx": 0.79,
+          "sy": 0.79,
+          "sz": 0.79
+        }
+      },
+      {
+        "item": "eclipseserver:carver_bag_no_point",
+        "context": "WORN",
+        "model": "",
+        "attachment": "BACK",
+        "transform": {
+          "x": 0,
+          "y": 5.25,
+          "z": 3,
+          "rx": 180,
+          "ry": 0,
+          "rz": 0,
+          "sx": 0.79,
+          "sy": 0.79,
+          "sz": 0.79
+        }
+      },
+      {
+        "item": "eclipseserver:carver_bag",
+        "context": "WORN",
+        "model": "",
+        "attachment": "BACK",
+        "transform": {
+          "x": 0,
+          "y": 5.25,
+          "z": 3,
+          "rx": 180,
+          "ry": 0,
+          "rz": 0,
+          "sx": 0.79,
+          "sy": 0.79,
+          "sz": 0.79
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "fps": 30,
+  "clips": [
+    {
+      "name": "00_Showcase_Human",
+      "length": 15.0,
+      "loop": "hold"
+    },
+    {
+      "name": "01_Start_Flow",
+      "length": 1.6,
+      "loop": "hold"
+    },
+    {
+      "name": "02_Work_Varied",
+      "length": 4.2,
+      "loop": "loop"
+    },
+    {
+      "name": "03_Reposition_Opposite",
+      "length": 4.6,
+      "loop": "hold"
+    },
+    {
+      "name": "04_Work_Opposite",
+      "length": 3.2,
+      "loop": "loop"
+    },
+    {
+      "name": "05_Finish_Inspect",
+      "length": 1.4,
+      "loop": "hold"
+    },
+    {
+      "name": "06_Work_Vertical_Face",
+      "length": 4.2,
+      "loop": "loop"
+    }
+  ],
+  "contact_checks": [
+    {
+      "clip": "00_Showcase_Human",
+      "time": 1.08,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 0.0
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 2.1,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 8.881784197001252e-16
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 3.06,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 0.0
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 4.23,
+      "tip": [
+        -0.65,
+        12.035,
+        -9.65
+      ],
+      "contact_error": 1.1102230246251565e-16
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 5.220000000000001,
+      "tip": [
+        -0.65,
+        12.035,
+        -9.65
+      ],
+      "contact_error": 1.1102230246251565e-16
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 10.96,
+      "tip": [
+        -1.0,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 5.551115123125783e-16
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 12.030000000000001,
+      "tip": [
+        0.4,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 5.551115123125783e-17
+    },
+    {
+      "clip": "00_Showcase_Human",
+      "time": 12.89,
+      "tip": [
+        0.4,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 9.43689570931383e-16
+    },
+    {
+      "clip": "01_Start_Flow",
+      "time": 1.08,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 0.0
+    },
+    {
+      "clip": "02_Work_Varied",
+      "time": 0.5,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 8.881784197001252e-16
+    },
+    {
+      "clip": "02_Work_Varied",
+      "time": 1.46,
+      "tip": [
+        1.0,
+        12.035,
+        -9.0
+      ],
+      "contact_error": 0.0
+    },
+    {
+      "clip": "02_Work_Varied",
+      "time": 2.63,
+      "tip": [
+        -0.65,
+        12.035,
+        -9.65
+      ],
+      "contact_error": 1.1102230246251565e-16
+    },
+    {
+      "clip": "02_Work_Varied",
+      "time": 3.62,
+      "tip": [
+        -0.65,
+        12.035,
+        -9.65
+      ],
+      "contact_error": 1.1102230246251565e-16
+    },
+    {
+      "clip": "04_Work_Opposite",
+      "time": 0.56,
+      "tip": [
+        -1.0,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 5.551115123125783e-16
+    },
+    {
+      "clip": "04_Work_Opposite",
+      "time": 1.63,
+      "tip": [
+        0.4,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 5.551115123125783e-17
+    },
+    {
+      "clip": "04_Work_Opposite",
+      "time": 2.49,
+      "tip": [
+        0.4,
+        12.535,
+        -13.8
+      ],
+      "contact_error": 9.43689570931383e-16
+    },
+    {
+      "clip": "06_Work_Vertical_Face",
+      "time": 0.5,
+      "tip": [
+        1.0,
+        10.2,
+        -6.02
+      ],
+      "contact_error": 4.440892098500626e-16
+    },
+    {
+      "clip": "06_Work_Vertical_Face",
+      "time": 1.46,
+      "tip": [
+        1.0,
+        10.2,
+        -6.02
+      ],
+      "contact_error": 1.88411095042053e-15
+    },
+    {
+      "clip": "06_Work_Vertical_Face",
+      "time": 2.63,
+      "tip": [
+        -0.65,
+        10.2,
+        -6.02
+      ],
+      "contact_error": 8.671119018262734e-16
+    },
+    {
+      "clip": "06_Work_Vertical_Face",
+      "time": 3.62,
+      "tip": [
+        -0.65,
+        10.2,
+        -6.02
+      ],
+      "contact_error": 4.002966042486721e-16
+    }
+  ],
+  "route_length": 55.739504664275216,
+  "near_target": [
+    1.0,
+    12.035,
+    -9.0
+  ],
+  "other_target": [
+    -0.65,
+    12.035,
+    -9.65
+  ],
+  "opposite_target": [
+    -1.0,
+    12.535,
+    -13.8
+  ],
+  "vertical_target": [
+    1,
+    10.2,
+    -6.02
+  ],
+  "source": "Based on carver_animation_first_cut; v1 files unchanged.",
+  "scope": "Editable Blockbench motion prototype, not Minecraft runtime integration."
+}

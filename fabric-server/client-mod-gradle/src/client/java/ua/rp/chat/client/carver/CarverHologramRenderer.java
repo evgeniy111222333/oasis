@@ -1,0 +1,427 @@
+package ua.rp.chat.client.carver;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.ARGB;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import ua.rp.chat.microvoxel.MicrovoxelGreedyMesher;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Draws the lifted hologram copy directly: exact socket-corner geometry, the real
+ * baked model quads of the material, biome tint resolved explicitly at the socket.
+ *
+ * <p>Two paths share one emission core. A fresh socket renders the full material
+ * cube; a re-entered carving renders its live microvoxel mesh (the same greedy
+ * faces the terrain section bakes), so the copy shows every previous cut instead
+ * of pretending the block is whole. The mesh path falls back to the full cube
+ * whenever the volume has not synced yet; the next frame picks the carving up
+ * automatically because the volume is read live.</p>
+ */
+public final class CarverHologramRenderer {
+    private CarverHologramRenderer() {
+    }
+
+    /**
+     * Display mesh cache: unculled faces of the source volume minus fully drafted
+     * cells, so painted strokes vanish live while the mouse is still down. Rebuilt
+     * only when the volume revision or the draft fingerprint moves.
+     */
+    record DisplayMesh(BlockPos focus, String sourceKey, long draftFp,
+                       List<MicrovoxelGreedyMesher.Face> faces,
+                       List<MicrovoxelGreedyMesher.Face> ghost,
+                       List<String> palette) {
+    }
+
+    private static volatile DisplayMesh displayCache;
+    private static volatile String virtualKey = "";
+    private static volatile ua.rp.chat.microvoxel.MicrovoxelVolume virtualVolume;
+
+    private static long framesLogged;
+    private static long facesLogged;
+    private static long filteredLogged;
+    /** Hologram diagnostics are opt-in: {@code -Drpchat.carver.debug=true}. */
+    private static final boolean DEBUG = Boolean.getBoolean("rpchat.carver.debug");
+
+    /** Resets the one-shot render diagnostics for the next session. */
+    static void resetDiag() {
+        framesLogged = 0L;
+        facesLogged = 0L;
+        filteredLogged = 0L;
+        displayCache = null;
+    }
+
+    /** World-space END_MAIN hook: emits the lifted copy, nothing when parked. */
+    public static void render(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {
+        if (!CarverHologram.active()) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.level == null) return;
+        BlockPos focus = CarverHologram.focus();
+        BlockState state = CarverHologram.displayState();
+        if (focus == null || state == null) return;
+        if (DEBUG && framesLogged < 3L) {
+            framesLogged++;
+            try {
+                var pose = context.poseStack().last().pose();
+                Vec3 camera = minecraft.gameRenderer.getMainCamera().position();
+                ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                        "[CARVER-HOLO] frame focus=" + focus.toShortString()
+                                + " key=" + CarverHologram.materialKey()
+                                + " lift=" + CarverHologram.visualLift()
+                                + " cam=" + camera
+                                + " poseT=" + pose.m30() + "," + pose.m31() + "," + pose.m32());
+            } catch (RuntimeException ignored) {
+            }
+        }
+        DisplayMesh display;
+        try {
+            display = displayMesh(focus, state);
+        } catch (RuntimeException unreadable) {
+            if (DEBUG && facesLogged < 1L) {
+                facesLogged++;
+                ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                        "[CARVER-HOLO] displayMesh threw " + unreadable);
+            }
+            return;
+        }
+        if (display.faces().isEmpty() && display.ghost().isEmpty()) {
+            if (DEBUG && facesLogged < 3L) {
+                facesLogged++;
+                ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                        "[CARVER-HOLO] empty faces for " + focus.toShortString());
+            }
+            return;
+        }
+        if (DEBUG && facesLogged < 1L) {
+            facesLogged++;
+            var first = display.faces().isEmpty() ? display.ghost().get(0) : display.faces().get(0);
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CARVER-HOLO] faces=" + display.faces().size()
+                            + " ghost=" + display.ghost().size()
+                            + " first=" + first.direction() + " mat=" + first.material()
+                            + " box=" + first.minX() + "," + first.minY() + "," + first.minZ()
+                            + "-" + first.maxX() + "," + first.maxY() + "," + first.maxZ());
+        }
+        if (DEBUG && !display.ghost().isEmpty() && filteredLogged < 1L) {
+            filteredLogged++;
+            ua.rp.chat.client.EclipseClientMod.LOGGER.info(
+                    "[CARVER-HOLO] draft hides " + display.ghost().size()
+                            + " of " + (display.faces().size() + display.ghost().size())
+                            + " faces for " + focus.toShortString());
+        }
+        Vec3 camera = minecraft.gameRenderer.getMainCamera().position();
+        double baseX = CarverHologram.originX() - camera.x;
+        double baseY = CarverHologram.originY() - camera.y;
+        double baseZ = CarverHologram.originZ() - camera.z;
+        int light = LevelRenderer.getLightCoords(minecraft.level, focus);
+        PoseStack.Pose pose = context.poseStack().last();
+        List<String> palette = display.palette();
+        Set<RenderType> usedTypes = new LinkedHashSet<>();
+        emitFaceList(minecraft, focus, display.faces(), palette, pose,
+                context.bufferSource(), baseX, baseY, baseZ, light, usedTypes);
+        // Hint outline for the cell the place mode would fill (uncommitted).
+        if (CarverClientState.placing()) {
+            int hover = CarverClientState.hoverPlaceCell();
+            if (hover >= 0) {
+                emitGhost(minecraft, pose, context.bufferSource(), baseX, baseY, baseZ,
+                        hover, light, usedTypes);
+            }
+        }
+        for (RenderType type : usedTypes) context.bufferSource().endBatch(type);
+    }
+
+    /** Translucent wireframe hint at the hovered placement cell; never committed geometry. */
+    private static void emitGhost(Minecraft minecraft, PoseStack.Pose pose,
+                                  MultiBufferSource.BufferSource bufferSource,
+                                  double baseX, double baseY, double baseZ,
+                                  int cell, int light, Set<RenderType> usedTypes) {
+        int x = ua.rp.chat.carver.DraftMask.x(cell);
+        int y = ua.rp.chat.carver.DraftMask.y(cell);
+        int z = ua.rp.chat.carver.DraftMask.z(cell);
+        float x0 = x, y0 = y, z0 = z, x1 = x + 1, y1 = y + 1, z1 = z + 1;
+        int color = 0xCCF0DC9A;
+        RenderType type = RenderTypes.linesTranslucent();
+        VertexConsumer consumer = bufferSource.getBuffer(type);
+        usedTypes.add(type);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x1, y0, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z1, x1, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z0, x1, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z1, x1, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x0, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z0, x1, y1, z0, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z1, x0, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z1, x1, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y0, z0, x0, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y0, z0, x1, y0, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x0, y1, z0, x0, y1, z1, color);
+        edge(consumer, pose, baseX, baseY, baseZ, x1, y1, z0, x1, y1, z1, color);
+    }
+
+    private static void edge(VertexConsumer consumer, PoseStack.Pose pose,
+                             double bx, double by, double bz,
+                             float ax, float ay, float az,
+                             float dx, float dy, float dz, int color) {
+        float nx = dx - ax;
+        float ny = dy - ay;
+        float nz = dz - az;
+        float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (length > 1.0E-6f) {
+            nx /= length;
+            ny /= length;
+            nz /= length;
+        }
+        consumer.addVertex(pose, (float) (bx + ax), (float) (by + ay), (float) (bz + az))
+                .setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(2.0f);
+        consumer.addVertex(pose, (float) (bx + dx), (float) (by + dy), (float) (bz + dz))
+                .setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(2.0f);
+    }
+
+    private static void emitFaceList(Minecraft minecraft, BlockPos focus,
+                                     List<MicrovoxelGreedyMesher.Face> faces,
+                                     List<String> palette, PoseStack.Pose pose,
+                                     MultiBufferSource.BufferSource bufferSource,
+                                     double baseX, double baseY, double baseZ,
+                                     int light, Set<RenderType> usedTypes) {
+        for (MicrovoxelGreedyMesher.Face face : faces) {
+            int materialIndex = face.material();
+            if (materialIndex <= 0 || materialIndex >= palette.size()) continue;
+            String materialName = palette.get(materialIndex);
+            var materialFaces = materialFaces(minecraft, materialName);
+            if (materialFaces.faces().isEmpty()) continue;
+            Direction direction;
+            try {
+                direction = Direction.valueOf(face.direction().name());
+            } catch (RuntimeException unknown) {
+                continue;
+            }
+            List<BakedQuad> quads = materialFaces.faces().get(direction);
+            if (quads == null || quads.isEmpty()) continue;
+            BlockState materialState = materialFaces.state();
+            for (BakedQuad quad : quads) {
+                RenderType type = solidRenderType(quad);
+                VertexConsumer consumer = bufferSource.getBuffer(type);
+                usedTypes.add(type);
+                var patch = ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.UvPatch.from(quad);
+                int color = tinted(minecraft, materialState, quad, focus);
+                color = shade(color, direction);
+                int faceLight = light;
+                float[] corners = CORNER_SCRATCH;
+                faceCornersInto(face, corners);
+                for (int cornerIndex = 0; cornerIndex < 4; cornerIndex++) {
+                    float cornerX = corners[cornerIndex * 3];
+                    float cornerY = corners[cornerIndex * 3 + 1];
+                    float cornerZ = corners[cornerIndex * 3 + 2];
+                    var sample = patch.sample(face.direction(), cornerX, cornerY, cornerZ);
+                    consumer.addVertex(pose,
+                                    (float) (baseX + cornerX),
+                                    (float) (baseY + cornerY),
+                                    (float) (baseZ + cornerZ))
+                            .setColor(color)
+                            .setUv(sample.u(), sample.v())
+                            .setOverlay(OverlayTexture.NO_OVERLAY)
+                            .setLight(faceLight)
+                            .setNormal(pose, direction.getStepX(), direction.getStepY(),
+                                    direction.getStepZ());
+                }
+            }
+        }
+    }
+
+    private static RenderType solidRenderType(BakedQuad quad) {
+        BakedQuad.MaterialInfo info = quad.materialInfo();
+        if ((info.flags() & BakedQuad.FLAG_TRANSLUCENT) != 0) {
+            return RenderTypes.translucentMovingBlock();
+        }
+        try {
+            return info.itemRenderType();
+        } catch (RuntimeException fallback) {
+            return Sheets.cutoutBlockSheet();
+        }
+    }
+
+    /**
+     * Live source for the hologram copy and the design picker: the synced carving when one
+     * exists, otherwise a virtual full cube of the display material. Never null, so both the
+     * renderer and the picker can share one authoritative geometry (plus the draft mask).
+     */
+    static ua.rp.chat.microvoxel.MicrovoxelVolume sourceVolume(BlockPos focus) {
+        try {
+            var cached = ua.rp.chat.client.microvoxel.MicrovoxelClientState.get(focus);
+            if (cached != null && cached.volume != null
+                    && ua.rp.chat.microvoxel.MicrovoxelVolume.dominantMaterial(
+                            cached.volume) != null) {
+                return cached.volume;
+            }
+        } catch (RuntimeException unreadable) {
+            // Fall through to the virtual full cube, exactly like the original renderer.
+        }
+        return virtualFull();
+    }
+
+    static DisplayMesh displayMesh(BlockPos focus, BlockState state) {
+        ua.rp.chat.microvoxel.MicrovoxelVolume volume = sourceVolume(focus);
+        // Identity against the cached virtual cube labels the source without a second
+        // dominant-material scan; a real carving keys on its revision.
+        String sourceKey = volume == virtualVolume
+                ? "m" + CarverHologram.materialKey()
+                : "v" + volume.revision();
+        ua.rp.chat.carver.DraftMask draft = CarverClientState.draft();
+        ua.rp.chat.carver.DraftMask place = CarverClientState.placeDraft();
+        long fingerprint = draftFingerprint(draft, place);
+        DisplayMesh current = displayCache;
+        if (current != null && current.focus().equals(focus)
+                && current.sourceKey().equals(sourceKey) && current.draftFp() == fingerprint) {
+            return current;
+        }
+        // Preview volume: drafted cells vanish, placed cells take their chosen material, so the
+        // hologram shows the finished sculpt (real material quads) before it is committed.
+        ua.rp.chat.microvoxel.MicrovoxelVolume preview = volume.copy();
+        for (int cell : draft.cells()) preview.remove(cell);
+        if (!place.isEmpty()) {
+            java.util.Map<Integer, String> materials = CarverClientState.placeMaterials();
+            for (int cell : place.cells()) {
+                String material = materials.get(cell);
+                if (material != null && !material.isEmpty()) preview.update(cell, material);
+            }
+        }
+        List<MicrovoxelGreedyMesher.Face> visible =
+                ua.rp.chat.microvoxel.MicrovoxelGreedyMesher.build(
+                        preview, preview::materialAt, null);
+        // No ghost / surface-wire pass: outlining removed faces on the copy only read as a stray
+        // glow around the cut, which is exactly what the artisan must not see.
+        List<MicrovoxelGreedyMesher.Face> ghost = List.of();
+        DisplayMesh built = new DisplayMesh(focus.immutable(), sourceKey, fingerprint,
+                visible, ghost, preview.palette());
+        displayCache = built;
+        return built;
+    }
+
+    /** Cache key over both masks and the placement materials, so any edit re-meshes once. */
+    private static long draftFingerprint(ua.rp.chat.carver.DraftMask draft,
+                                         ua.rp.chat.carver.DraftMask place) {
+        long fp = draft.isEmpty() ? 0L
+                : ua.rp.chat.carver.CarverChalkQuads.draftFingerprint(draft);
+        if (!place.isEmpty()) {
+            java.util.Map<Integer, String> materials = CarverClientState.placeMaterials();
+            for (int cell : place.cells()) {
+                String material = materials.get(cell);
+                fp = fp * 31 + cell;
+                fp = fp * 31 + (material == null ? 0 : material.hashCode());
+            }
+        }
+        return fp;
+    }
+
+    private static ua.rp.chat.microvoxel.MicrovoxelVolume virtualFull() {
+        String key = CarverHologram.materialKey();
+        if (!key.equals(virtualKey) || virtualVolume == null) {
+            String material = key.isEmpty() ? "minecraft:stone" : key;
+            int properties = material.indexOf('[');
+            if (properties >= 0) material = material.substring(0, properties);
+            virtualVolume = ua.rp.chat.microvoxel.MicrovoxelVolume.full(material);
+            virtualKey = key;
+        }
+        return virtualVolume;
+    }
+
+    /** Block-space corners of one greedy mesh face, wound like the terrain emitter. */
+    public static float[][] faceCorners(MicrovoxelGreedyMesher.Face face) {
+        float x0 = face.minX() / 16.0f;
+        float y0 = face.minY() / 16.0f;
+        float z0 = face.minZ() / 16.0f;
+        float x1 = face.maxX() / 16.0f;
+        float y1 = face.maxY() / 16.0f;
+        float z1 = face.maxZ() / 16.0f;
+        return switch (face.direction()) {
+            case NORTH -> new float[][]{{x1, y0, z0}, {x0, y0, z0}, {x0, y1, z0}, {x1, y1, z0}};
+            case SOUTH -> new float[][]{{x0, y0, z1}, {x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}};
+            case WEST -> new float[][]{{x0, y0, z0}, {x0, y0, z1}, {x0, y1, z1}, {x0, y1, z0}};
+            case EAST -> new float[][]{{x1, y0, z1}, {x1, y0, z0}, {x1, y1, z0}, {x1, y1, z1}};
+            case UP -> new float[][]{{x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}};
+            case DOWN -> new float[][]{{x0, y0, z0}, {x1, y0, z0}, {x1, y0, z1}, {x0, y0, z1}};
+        };
+    }
+
+    /** Render-thread scratch for {@link #faceCornersInto}: avoids a float[4][3] per quad. */
+    private static final float[] CORNER_SCRATCH = new float[12];
+
+    /**
+     * Allocation-free variant of {@link #faceCorners}: writes the four corners as 12 floats
+     * ({@code x,y,z} per corner, same winding). Used in the per-frame hologram loop so a dense
+     * mesh does not churn the GC.
+     */
+    public static void faceCornersInto(MicrovoxelGreedyMesher.Face face, float[] out) {
+        float x0 = face.minX() / 16.0f;
+        float y0 = face.minY() / 16.0f;
+        float z0 = face.minZ() / 16.0f;
+        float x1 = face.maxX() / 16.0f;
+        float y1 = face.maxY() / 16.0f;
+        float z1 = face.maxZ() / 16.0f;
+        switch (face.direction()) {
+            case NORTH -> corners(out, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);
+            case SOUTH -> corners(out, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+            case WEST -> corners(out, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+            case EAST -> corners(out, x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1);
+            case UP -> corners(out, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);
+            case DOWN -> corners(out, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+        }
+    }
+
+    private static void corners(float[] out, float a, float b, float c, float d, float e, float f,
+                                float g, float h, float i, float j, float k, float l) {
+        out[0] = a; out[1] = b; out[2] = c;
+        out[3] = d; out[4] = e; out[5] = f;
+        out[6] = g; out[7] = h; out[8] = i;
+        out[9] = j; out[10] = k; out[11] = l;
+    }
+
+    private static ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.MaterialFaces materialFaces(
+            Minecraft minecraft, String materialName) {
+        return ua.rp.chat.client.microvoxel.MicrovoxelSectionModel.materialFaces(materialName);
+    }
+
+    private static int tinted(Minecraft minecraft, BlockState state, BakedQuad quad, BlockPos tintPos) {
+        int color = 0xFFFFFFFF;
+        BakedQuad.MaterialInfo info = quad.materialInfo();
+        if (info.isTinted()) {
+            BlockTintSource tint = minecraft.getBlockColors()
+                    .getTintSource(state, info.tintIndex());
+            if (tint != null) {
+                color = 0xFF000000 | (tint.colorInWorld(state, minecraft.level, tintPos) & 0xFFFFFF);
+            }
+        }
+        return color;
+    }
+
+    /** Classic directional shade so the copy reads as a lit cube, not flat paper. */
+    public static int shade(int color, Direction direction) {
+        float factor = switch (direction) {
+            case DOWN -> 0.5f;
+            case UP -> 1.0f;
+            case NORTH, SOUTH -> 0.8f;
+            case WEST, EAST -> 0.6f;
+        };
+        return ARGB.multiply(color, shadeFactor(factor));
+    }
+
+    private static int shadeFactor(float factor) {
+        int component = Math.max(0, Math.min(255, Math.round(factor * 255.0f)));
+        return 0xFF000000 | (component << 16) | (component << 8) | component;
+    }
+}

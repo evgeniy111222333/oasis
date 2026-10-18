@@ -1,0 +1,32 @@
+{
+  "github_commit": "69da8248ff6acba168d73ba5804b53a3788f84c5",
+  "mirrors": [
+    {
+      "mirror": "r2",
+      "ok": true,
+      "release": "20261018-095907",
+      "client": "eclipse-client-1.5.68.jar",
+      "signature": "valid",
+      "size": 5494924,
+      "sha256": "eb7a09277c17abe309c7ec90d9608a6252b22eea49153656ebb17767c5227a6b",
+      "carry_and_camera_classes_present": true,
+      "concept_01_unchanged": true
+    },
+    {
+      "mirror": "github",
+      "ok": true,
+      "release": "20261018-095907",
+      "client": "eclipse-client-1.5.68.jar",
+      "signature": "valid",
+      "size": 5494924,
+      "sha256": "eb7a09277c17abe309c7ec90d9608a6252b22eea49153656ebb17767c5227a6b",
+      "carry_and_camera_classes_present": true,
+      "concept_01_unchanged": true
+    },
+    {
+      "mirror": "vps",
+      "ok": false,
+      "error": "The read operation timed out"
+    }
+  ]
+}

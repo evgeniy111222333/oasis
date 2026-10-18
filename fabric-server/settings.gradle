@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'eclipse-parent'
+
+include 'client'
+project(':client').projectDir = file('client-mod-gradle')
+
+include 'server'

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:leather",
+    "minecraft:string",
+    "minecraft:stick",
+    "minecraft:iron_ingot"
+  ],
+  "result": {
+    "id": "eclipseserver:carver_bag"
+  }
+}

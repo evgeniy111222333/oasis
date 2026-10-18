@@ -1,0 +1,10 @@
+{
+  "name": "eclipse-launcher",
+  "version": "1.0.20",
+  "description": "Eclipse RolePlay Desktop Launcher",
+  "author": "Eclipse RolePlay",
+  "main": "main.js",
+  "dependencies": {
+    "minecraft-launcher-core": "^3.18.2"
+  }
+}

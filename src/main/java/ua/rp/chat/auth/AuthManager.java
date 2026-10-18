@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class AuthManager {
 
-    // Desert Oasis palette
+    // Desert Eclipse palette
     private static final TextColor SAND_GOLD = TextColor.color(0xE3C099);
     private static final TextColor PEBBLE_GRAY = TextColor.color(0xB0A8A0);
     private static final TextColor SEAFOAM = TextColor.color(0xA5C3C4);
@@ -46,11 +46,16 @@ public class AuthManager {
     
     // Web Auth Tokens (Token -> Player UUID)
     private final Map<String, UUID> tokenToUuid = new ConcurrentHashMap<>();
+    // Short-lived tokens for an authenticated character changing only their appearance.
+    // These are deliberately separate from login tokens: opening the skin studio must
+    // never move an already authenticated player back into the auth flow.
+    private final Map<String, AppearanceEditSession> appearanceEditSessions = new ConcurrentHashMap<>();
     // Active Nametag Text Displays (Player UUID -> TextDisplay)
     private final Map<UUID, org.bukkit.entity.TextDisplay> activeNametags = new ConcurrentHashMap<>();
 
     // Auth timeout in seconds
     private static final int AUTH_TIMEOUT_SECONDS = 120;
+    private static final long APPEARANCE_EDIT_TTL_MS = Duration.ofMinutes(10).toMillis();
 
     public AuthManager(ua.rp.chat.RPChat plugin, AuthDatabase database, AppearanceManager appearanceManager) {
         this.plugin = plugin;
@@ -65,8 +70,8 @@ public class AuthManager {
     public void handleJoin(Player player) {
         UUID uuid = player.getUniqueId();
 
-        // Optional legacy IP-session auto-login. Disabled by default because
-        // "remember me" should prefill the auth form, not skip authentication.
+        // Explicit web authentication is the default. The optional IP shortcut stays
+        // behind configuration for private deployments and is disabled for Eclipse.
         String currentIp = getPlayerIp(player);
         if (plugin.getConfig().getBoolean("auth.auto-login-by-ip", false) && database.isRegistered(uuid)) {
             String lastIp = database.getLastIp(uuid);
@@ -89,21 +94,27 @@ public class AuthManager {
         // Store original location
         originalLocations.put(uuid, player.getLocation().clone());
 
+        // Publish the web token before any delayed camera/UI work. The client can
+        // query /api/client-session immediately after joining, so registering the
+        // token inside the delayed task created a reproducible "session not found" race.
+        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+        String token = UUID.randomUUID().toString().replace("-", "");
+        tokenToUuid.put(token, uuid);
+
         // Setup cinematic camera (delayed 5 ticks so player is fully loaded)
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (!player.isOnline()) return;
+                if (!player.isOnline()) {
+                    tokenToUuid.remove(token, uuid);
+                    return;
+                }
 
                 // Set spectator mode (CEF overlay works on spectator as well, or adventure)
                 player.setGameMode(GameMode.SPECTATOR);
 
                 // Setup camera
                 cameraManager.setupCinematicView(player);
-
-                // Generate one-time token for web login
-                String token = UUID.randomUUID().toString().substring(0, 8);
-                tokenToUuid.put(token, uuid);
 
                 // Open client-side visual auth overlay.
                 openAuthOverlay(player, token);
@@ -135,6 +146,16 @@ public class AuthManager {
             return false;
         }
 
+        if (database.isRpNameTaken(rpName)) {
+            plugin.getLogger().warning("RP name already taken: " + rpName);
+            return false;
+        }
+
+        if (appearanceDataUrl == null || appearanceDataUrl.isBlank()) {
+            plugin.getLogger().warning("Registration rejected for " + player.getName() + ": missing required appearance.");
+            return false;
+        }
+
         AppearanceManager.SaveResult validation = appearanceManager.validateAppearance(appearanceDataUrl);
         if (!validation.success()) {
             plugin.getLogger().warning("Appearance validation failed for " + player.getName() + ": " + validation.message());
@@ -146,6 +167,8 @@ public class AuthManager {
             AppearanceManager.SaveResult appearanceResult = appearanceManager.saveAppearance(uuid, appearanceModel, appearanceDataUrl);
             if (!appearanceResult.success()) {
                 plugin.getLogger().warning("Appearance upload failed for " + player.getName() + ": " + appearanceResult.message());
+                database.deleteAccount(uuid);
+                return false;
             }
             database.updateLogin(uuid, null);
             
@@ -173,23 +196,31 @@ public class AuthManager {
     public boolean webLogin(UUID uuid, String loginName, String password, boolean rememberDevice) {
         Player player = plugin.getServer().getPlayer(uuid);
         if (player == null || !pendingAuth.contains(uuid)) {
+            plugin.getLogger().warning("[AUTH-AUDIT] login rejected: player/session is no longer pending; login=" + loginName);
             return false;
         }
 
-        String storedLogin = database.getLoginName(uuid);
-        if (storedLogin == null || !storedLogin.equalsIgnoreCase(loginName)) {
+        AuthDatabase.PlayerAccount account = database.getAccountByLoginName(loginName);
+        if (account == null) {
+            plugin.getLogger().info("[AUTH-AUDIT] login rejected: account not found; player=" + player.getName() + ", login=" + loginName);
             return false;
         }
 
-        String storedHash = database.getPasswordHash(uuid);
+        String storedHash = account.passwordHash();
         if (storedHash == null) {
+            plugin.getLogger().warning("[AUTH-AUDIT] login rejected: account has no password hash; player=" + player.getName() + ", login=" + loginName);
             return false;
         }
 
         if (PasswordHasher.verify(password, storedHash)) {
+            if (!account.uuid().equals(uuid) && !database.rebindAccountUuid(account.loginName(), uuid)) {
+                plugin.getLogger().warning("Could not rebind account " + account.loginName() + " to current uuid " + uuid);
+                return false;
+            }
+            plugin.getLogger().info("[AUTH-AUDIT] credential verification succeeded; player=" + player.getName() + ", login=" + loginName);
             database.updateLogin(uuid, rememberDevice ? getPlayerIp(player) : null);
             
-            String rpName = database.getRpName(uuid);
+            String rpName = account.rpName();
             // Apply name tag and chat styles on main thread
             new BukkitRunnable() {
                 @Override
@@ -201,11 +232,12 @@ public class AuthManager {
             }.runTask(plugin);
             return true;
         }
+        plugin.getLogger().info("[AUTH-AUDIT] credential verification failed; player=" + player.getName() + ", login=" + loginName);
         return false;
     }
 
     /**
-     * Applies custom display names, tablist names, and spawns the 3D Text Display nametag.
+     * Applies custom display and tab names, while keeping world nametags hidden for full RP.
      */
     public void applyRpIdentity(Player player, String rpName) {
         if (player == null || rpName == null) return;
@@ -225,24 +257,6 @@ public class AuthManager {
         }
         team.setOption(org.bukkit.scoreboard.Team.Option.NAME_TAG_VISIBILITY, org.bukkit.scoreboard.Team.OptionStatus.NEVER);
         team.addEntry(player.getName());
-
-        // 3. Spawn floating TextDisplay passenger
-        org.bukkit.Location loc = player.getLocation().add(0, 2.2, 0);
-        org.bukkit.entity.TextDisplay textDisplay = player.getWorld().spawn(loc, org.bukkit.entity.TextDisplay.class, td -> {
-            td.text(Component.text(rpName, net.kyori.adventure.text.format.NamedTextColor.WHITE));
-            td.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
-            td.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0)); // transparent
-            td.setShadowed(true);
-            td.setGravity(false);
-            td.setPersistent(false);
-        });
-
-        player.addPassenger(textDisplay);
-        
-        // Hide entity from player himself so it doesn't block their first-person camera view
-        player.hideEntity(plugin, textDisplay);
-
-        activeNametags.put(player.getUniqueId(), textDisplay);
     }
 
     /**
@@ -312,6 +326,15 @@ public class AuthManager {
         plugin.getServer().broadcast(ua.rp.chat.ChatFormatter.formatJoin(name, style));
     }
 
+    public void broadcastRoleplayQuit(Player player) {
+        if (player == null || pendingAuth.contains(player.getUniqueId())) {
+            return;
+        }
+        String rpName = database.getRpName(player.getUniqueId());
+        String name = rpName != null && !rpName.isBlank() ? rpName : player.getName();
+        plugin.getServer().broadcast(ua.rp.chat.ChatFormatter.formatQuit(name, plugin.getActiveStyle()));
+    }
+
     public void openAuthOverlay(Player player, String token) {
         String finalLink = getAuthUrl(token, player.getName());
         sendAuthPayload(player, finalLink);
@@ -347,21 +370,111 @@ public class AuthManager {
             byteOut.write(len);
             byteOut.write(urlBytes);
             player.sendPluginMessage(plugin, "rpchat:auth_init", byteOut.toByteArray());
-            plugin.getLogger().info("Sent Oasis auth overlay trigger to " + player.getName() + ": " + finalLink);
+            plugin.getLogger().info("Sent Eclipse auth overlay trigger to " + player.getName() + ": " + finalLink);
         } catch (java.io.IOException e) {
             plugin.getLogger().warning("Failed to send client-mod auth packet: " + e.getMessage());
         }
     }
 
     public String getAuthUrl(String token) {
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
-        return webUrl + "/auth?token=" + token + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token;
     }
 
     public String getAuthUrl(String token, String username) {
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
         String encodedName = java.net.URLEncoder.encode(username == null ? "" : username, java.nio.charset.StandardCharsets.UTF_8);
-        return webUrl + "/auth?token=" + token + "&username=" + encodedName + "&ts=" + System.currentTimeMillis();
+        return advertisedWebUrl() + "/auth?token=" + token + "&username=" + encodedName;
+    }
+
+    /** Opens a one-time character appearance studio for an already authenticated player. */
+    public boolean requestAppearanceChange(Player player) {
+        if (player == null || !player.isOnline() || pendingAuth.contains(player.getUniqueId())) {
+            return false;
+        }
+        UUID uuid = player.getUniqueId();
+        if (!database.isRegistered(uuid)) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        appearanceEditSessions.entrySet().removeIf(entry -> entry.getValue().expiredAtMs() <= now
+                || entry.getValue().uuid().equals(uuid));
+        String token = UUID.randomUUID().toString().replace("-", "");
+        appearanceEditSessions.put(token, new AppearanceEditSession(uuid, now + APPEARANCE_EDIT_TTL_MS));
+        String url = advertisedWebUrl() + "/appearance?token=" + token + "&username="
+                + java.net.URLEncoder.encode(player.getName(), java.nio.charset.StandardCharsets.UTF_8);
+        sendAuthPayload(player, url);
+        player.sendMessage(Component.text("Открыта мастерская внешности. Сеанс действует 10 минут.", SEAFOAM));
+        return true;
+    }
+
+    /** Returns the owner only while the short-lived appearance editor session is valid. */
+    public UUID getAppearanceEditOwner(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        AppearanceEditSession session = appearanceEditSessions.get(token);
+        if (session == null || session.expiredAtMs() <= System.currentTimeMillis()) {
+            appearanceEditSessions.remove(token);
+            return null;
+        }
+        Player player = plugin.getServer().getPlayer(session.uuid());
+        if (player == null || !player.isOnline() || pendingAuth.contains(session.uuid()) || !database.isRegistered(session.uuid())) {
+            appearanceEditSessions.remove(token);
+            return null;
+        }
+        return session.uuid();
+    }
+
+    /** Saves the skin through the existing real persistence path and closes the session on success. */
+    public AppearanceManager.SaveResult saveAppearanceEdit(String token, String model, String dataUrl) {
+        UUID uuid = getAppearanceEditOwner(token);
+        if (uuid == null) {
+            return AppearanceManager.SaveResult.error("Сеанс изменения внешности истёк. Выполните /skin ещё раз.");
+        }
+        AppearanceManager.SaveResult result = appearanceManager.saveAppearance(uuid, model, dataUrl);
+        if (result.success()) {
+            appearanceEditSessions.remove(token);
+            plugin.getServer().getScheduler().runTask(plugin, () -> notifyAppearanceChanged(uuid));
+        }
+        return result;
+    }
+
+    private void notifyAppearanceChanged(UUID uuid) {
+        Player owner = plugin.getServer().getPlayer(uuid);
+        if (owner != null && owner.isOnline()) {
+            sendAppearanceRefreshPayload(owner, uuid);
+            owner.sendMessage(Component.text("Внешность персонажа сохранена и применена.", SOFT_GREEN));
+        }
+        for (Player viewer : plugin.getServer().getOnlinePlayers()) {
+            if (!viewer.getUniqueId().equals(uuid)) {
+                sendAppearanceRefreshPayload(viewer, uuid);
+            }
+        }
+    }
+
+    private void sendAppearanceRefreshPayload(Player player, UUID changedUuid) {
+        try {
+            byte[] uuidBytes = changedUuid.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream byteOut = new java.io.ByteArrayOutputStream();
+            int len = uuidBytes.length;
+            while ((len & ~0x7F) != 0) {
+                byteOut.write((len & 0x7F) | 0x80);
+                len >>>= 7;
+            }
+            byteOut.write(len);
+            byteOut.write(uuidBytes);
+            player.sendPluginMessage(plugin, "rpchat:appearance_refresh", byteOut.toByteArray());
+        } catch (java.io.IOException e) {
+            plugin.getLogger().warning("Failed to notify client about appearance refresh: " + e.getMessage());
+        }
+    }
+
+    private String advertisedWebUrl() {
+        String webUrl = plugin.getConfig().getString("web.url", "http://192.168.0.241:25580");
+        if (webUrl == null || webUrl.isBlank()) {
+            webUrl = "http://192.168.0.241:25580";
+        }
+        return webUrl.replaceAll("/+$", "");
     }
 
     public String getActiveToken(UUID uuid) {
@@ -390,8 +503,7 @@ public class AuthManager {
             player.sendMessage(Component.empty());
         }
 
-        String webUrl = plugin.getConfig().getString("web.url", "http://localhost:25580");
-        String finalLink = webUrl + "/auth?token=" + token;
+        String finalLink = advertisedWebUrl() + "/auth?token=" + token;
 
         // Broadcast to client-side Fabric Mod (automatically renders HTML screen)
         // Encode using VarInt + UTF-8 to match Fabric's PacketCodecs.STRING format
@@ -416,7 +528,7 @@ public class AuthManager {
         player.sendMessage(Component.text("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", DRY_EARTH));
         player.sendMessage(Component.empty());
         player.sendMessage(
-            Component.text("               OASIS ROLEPLAY", SAND_GOLD)
+            Component.text("               ECLIPSE ROLEPLAY", SAND_GOLD)
                 .decoration(TextDecoration.BOLD, true)
         );
         player.sendMessage(Component.empty());
@@ -484,7 +596,7 @@ public class AuthManager {
         );
         String rpName = database.getRpName(player.getUniqueId());
         Title title = Title.title(
-            Component.text("Ласкаво просимо", SAND_GOLD),
+            Component.text("Добро пожаловать", SAND_GOLD),
             Component.text(rpName != null ? rpName : player.getName(), PEBBLE_GRAY),
             times
         );
@@ -504,9 +616,9 @@ public class AuthManager {
                     cameraManager.cleanup(player);
                     player.kick(
                         Component.text()
-                            .append(Component.text("Час авторизації вичерпано", TERRACOTTA))
+                            .append(Component.text("Время авторизации истекло", TERRACOTTA))
                             .append(Component.newline())
-                            .append(Component.text("Підключіться повторно та пройдіть авторизацію.", PEBBLE_GRAY))
+                            .append(Component.text("Подключитесь повторно и пройдите авторизацию.", PEBBLE_GRAY))
                             .build()
                     );
                     pendingAuth.remove(uuid);
@@ -531,17 +643,29 @@ public class AuthManager {
      */
     public void handleQuit(Player player) {
         UUID uuid = player.getUniqueId();
-        pendingAuth.remove(uuid);
-        originalLocations.remove(uuid);
-        cameraManager.cleanup(player);
-        removeRpIdentity(player);
+        // Duplicate-login replacement fires quit and join for the same UUID almost
+        // together. Defer cleanup so the old connection cannot erase the new
+        // connection's token, timeout, camera location, or pending-auth state.
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Player current = plugin.getServer().getPlayer(uuid);
+            if (current != null && current != player && current.isOnline()) {
+                plugin.getLogger().info("Preserved replacement auth session for " + current.getName());
+                cameraManager.cleanup(player);
+                removeRpIdentity(player);
+                return;
+            }
 
-        tokenToUuid.values().removeIf(id -> id.equals(uuid));
+            pendingAuth.remove(uuid);
+            originalLocations.remove(uuid);
+            cameraManager.cleanup(player);
+            removeRpIdentity(player);
+            tokenToUuid.values().removeIf(id -> id.equals(uuid));
 
-        Integer taskId = timeoutTasks.remove(uuid);
-        if (taskId != null) {
-            plugin.getServer().getScheduler().cancelTask(taskId);
-        }
+            Integer taskId = timeoutTasks.remove(uuid);
+            if (taskId != null) {
+                plugin.getServer().getScheduler().cancelTask(taskId);
+            }
+        });
     }
 
     public String getRpName(UUID uuid) {
@@ -555,6 +679,8 @@ public class AuthManager {
     public Map<String, UUID> getTokenToUuid() {
         return tokenToUuid;
     }
+
+    private record AppearanceEditSession(UUID uuid, long expiredAtMs) {}
 
     public AuthDatabase getDatabase() {
         return database;

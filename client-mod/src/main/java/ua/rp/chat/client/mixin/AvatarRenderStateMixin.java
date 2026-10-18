@@ -8,15 +8,15 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 @Mixin(AvatarRenderState.class)
 public class AvatarRenderStateMixin implements LocalPlayerRenderState {
     @Unique
-    private boolean oasis$localPlayer = false;
+    private boolean eclipse$localPlayer = false;
 
     @Override
-    public boolean oasis$isLocalPlayer() {
-        return oasis$localPlayer;
+    public boolean eclipse$isLocalPlayer() {
+        return eclipse$localPlayer;
     }
 
     @Override
-    public void oasis$setLocalPlayer(boolean val) {
-        this.oasis$localPlayer = val;
+    public void eclipse$setLocalPlayer(boolean val) {
+        this.eclipse$localPlayer = val;
     }
 }

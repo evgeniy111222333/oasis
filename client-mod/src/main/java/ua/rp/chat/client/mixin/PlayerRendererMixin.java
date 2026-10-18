@@ -20,43 +20,58 @@ import ua.rp.chat.client.render.LocalPlayerRenderState;
 
 @Mixin(LivingEntityRenderer.class)
 public class PlayerRendererMixin {
-    @Unique private boolean oasis$snapshotActive;
-    @Unique private boolean oasis$headVisible;
-    @Unique private boolean oasis$hatVisible;
-    @Unique private boolean oasis$bodyVisible;
-    @Unique private boolean oasis$jacketVisible;
+    @Unique private boolean eclipse$snapshotActive;
+    @Unique private boolean eclipse$headVisible;
+    @Unique private boolean eclipse$hatVisible;
+    @Unique private boolean eclipse$headSkipDraw;
+    @Unique private boolean eclipse$hatSkipDraw;
+    @Unique private boolean eclipse$bodyVisible;
+    @Unique private boolean eclipse$jacketVisible;
+    @Unique private boolean eclipse$firstPersonSnapshot;
 
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V", at = @At("RETURN"))
-    private void oasis$onExtract(LivingEntity entity, LivingEntityRenderState state, float partialTick, CallbackInfo ci) {
+    private void eclipse$onExtract(LivingEntity entity, LivingEntityRenderState state, float partialTick, CallbackInfo ci) {
         if (state instanceof LocalPlayerRenderState lprs) {
-            lprs.oasis$setLocalPlayer(entity == Minecraft.getInstance().player);
+            lprs.eclipse$setLocalPlayer(entity == Minecraft.getInstance().player);
         }
     }
 
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At("HEAD"))
-    private void oasis$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
-        if (oasis$isLocalFirstPersonState(state) && SmartCameraManager.getInstance().shouldApplyFirstPersonBodyPose()) {
+    private void eclipse$beforeSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
+        SmartCameraManager cameraManager = SmartCameraManager.getInstance();
+        if (eclipse$isLocalFirstPersonState(state) && cameraManager.isWorldFirstPersonBodyRender()) {
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
             if (renderer.getModel() instanceof PlayerModel model) {
-                oasis$captureVisibility(model);
-                SmartCameraManager.getInstance().applyFirstPersonBodyPose(model);
+                eclipse$captureVisibility(model, true);
+                cameraManager.setSubmittingFirstPersonPlayer(true);
+                cameraManager.applyFirstPersonBodyPose(model);
+            }
+        } else if (eclipse$isLocalFirstPersonState(state)) {
+            LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
+            if (renderer.getModel() instanceof PlayerModel model) {
+                eclipse$restoreHeadForNormalLocalRender(model, state);
             }
         }
     }
 
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At("RETURN"))
-    private void oasis$afterSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
-        if (oasis$isLocalFirstPersonState(state)) {
+    private void eclipse$afterSubmit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraRenderState, CallbackInfo ci) {
+        if (eclipse$isLocalFirstPersonState(state)) {
+            SmartCameraManager cameraManager = SmartCameraManager.getInstance();
             LivingEntityRenderer<?, ?, ?> renderer = (LivingEntityRenderer<?, ?, ?>) (Object) this;
             if (renderer.getModel() instanceof PlayerModel model) {
-                oasis$restoreVisibility(model, state);
+                eclipse$restoreVisibility(model, state);
+            }
+            cameraManager.setSubmittingFirstPersonPlayer(false);
+            if (cameraManager.isRenderingFirstPersonPlayer()) {
+                cameraManager.setRenderingFirstPersonPlayer(false);
             }
         }
     }
 
     @Unique
-    private boolean oasis$isLocalFirstPersonState(EntityRenderState state) {
-        if (state instanceof LocalPlayerRenderState lprs && lprs.oasis$isLocalPlayer()) {
+    private boolean eclipse$isLocalFirstPersonState(EntityRenderState state) {
+        if (state instanceof LocalPlayerRenderState lprs && lprs.eclipse$isLocalPlayer()) {
             return true;
         }
         Minecraft client = Minecraft.getInstance();
@@ -67,35 +82,56 @@ public class PlayerRendererMixin {
     }
 
     @Unique
-    private void oasis$captureVisibility(PlayerModel model) {
-        oasis$snapshotActive = true;
-        oasis$headVisible = model.head.visible;
-        oasis$hatVisible = model.hat.visible;
-        oasis$bodyVisible = model.body.visible;
-        oasis$jacketVisible = model.jacket.visible;
+    private void eclipse$captureVisibility(PlayerModel model, boolean firstPerson) {
+        eclipse$snapshotActive = true;
+        eclipse$firstPersonSnapshot = firstPerson;
+        eclipse$headVisible = model.head.visible;
+        eclipse$hatVisible = model.hat.visible;
+        eclipse$headSkipDraw = model.head.skipDraw;
+        eclipse$hatSkipDraw = model.hat.skipDraw;
+        eclipse$bodyVisible = model.body.visible;
+        eclipse$jacketVisible = model.jacket.visible;
     }
 
     @Unique
-    private void oasis$restoreVisibility(PlayerModel model, EntityRenderState state) {
+    private void eclipse$restoreVisibility(PlayerModel model, EntityRenderState state) {
+        if (!eclipse$snapshotActive) {
+            return;
+        }
+
+        if (eclipse$firstPersonSnapshot) {
+            model.body.visible = eclipse$bodyVisible;
+            model.jacket.visible = eclipse$jacketVisible;
+            eclipse$snapshotActive = false;
+            eclipse$firstPersonSnapshot = false;
+            return;
+        }
+
         if (state instanceof AvatarRenderState avatar) {
             model.head.visible = true;
             model.hat.visible = avatar.showHat;
+            model.head.skipDraw = false;
+            model.hat.skipDraw = false;
             model.body.visible = true;
             model.jacket.visible = avatar.showJacket;
-            oasis$snapshotActive = false;
+            eclipse$snapshotActive = false;
             return;
         }
 
-        if (!oasis$snapshotActive) {
-            model.head.visible = true;
-            model.body.visible = true;
-            return;
-        }
+        model.head.visible = eclipse$headVisible;
+        model.hat.visible = eclipse$hatVisible;
+        model.head.skipDraw = eclipse$headSkipDraw;
+        model.hat.skipDraw = eclipse$hatSkipDraw;
+        model.body.visible = eclipse$bodyVisible;
+        model.jacket.visible = eclipse$jacketVisible;
+        eclipse$snapshotActive = false;
+    }
 
-        model.head.visible = oasis$headVisible;
-        model.hat.visible = oasis$hatVisible;
-        model.body.visible = oasis$bodyVisible;
-        model.jacket.visible = oasis$jacketVisible;
-        oasis$snapshotActive = false;
+    @Unique
+    private void eclipse$restoreHeadForNormalLocalRender(PlayerModel model, EntityRenderState state) {
+        model.head.visible = true;
+        model.head.skipDraw = false;
+        model.hat.skipDraw = false;
+        model.hat.visible = !(state instanceof AvatarRenderState avatar) || avatar.showHat;
     }
 }

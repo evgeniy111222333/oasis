@@ -1,0 +1,102 @@
+# ==========================================
+#               RPChat Config
+# ==========================================
+# Глобальний стиль чату (від 1 до 10)
+# Ви можете змінити цей параметр командою /rpdemo select [1-10] прямо в грі.
+# 
+# 1. Aether Minimalist (Чистий пастельний)
+# 2. Chamber Theatre (Художній літературний)
+# 3. Nordic Aurora (Контрастний синьо-зелений)
+# 4. Sakura Blossom (Ніжна сакура)
+# 5. Cyber Glow (Неоновий кіберпанк)
+# 6. Mono Noir (Чорно-білий темний)
+# 7. Sunset Boulevard (Оксамитовий вечірній)
+# 8. Earthy Forest (Лісові деревні тони)
+# 9. Vogue Elegant (Вишуканий висококонтрастний)
+# 10. Echo Whisper (Зоряний космічний)
+active-style: 1
+
+# Roleplay combat can be disabled at runtime with /rpreload.
+combat:
+  enabled: true
+
+# ==========================================
+#           Microvoxel Mining
+# ==========================================
+microvoxels:
+  mining:
+    # Time multiplier for per-cell mining (1.0 = vanilla formula).
+    multiplier: 1.0
+    # true = wrong tool stops mining entirely; false = honest vanilla (slow + no refund).
+    wrong-tool-blocks: false
+  fluid:
+    # Voxel fluid budgets, live-reloaded every minute (/rpreload applies immediately).
+    max-volumes-per-tick: 24
+    max-outflow-placements: 8
+    max-particles: 8
+    equalize-budget: 512
+    inflow-topup: 64
+    drain-per-cell: 4
+    seep-budget: 64
+    sync-throttle-ticks: 20
+    lateral-budget: 512
+
+
+# ==========================================
+#           Carver Drafting
+# ==========================================
+carver:
+  # Block reach for scroll targeting.
+  reach: 6.25
+  # Design session TTL in seconds before the draft dissolves.
+  design-timeout-seconds: 300
+  # Cells accepted in one stroke packet.
+  max-stroke-cells: 512
+  # Cells accepted in one box-select packet (the whole volume).
+  max-box-cells: 4096
+  # Moving farther cancels work; leaving the design radius cancels design.
+  work-leash-blocks: 1.5
+  design-leash-blocks: 6.0
+  # Dust/sound heartbeat during simulated work, in ticks.
+  work-fx-interval-ticks: 10
+  # Arm-swing animation heartbeat during work, in ticks.
+  work-swing-interval-ticks: 20
+  # Master loudness of work sounds (0.0-1.0).
+  work-sound-volume: 0.8
+  # Instrumental overlay layer (shears on wool, axe on wood).
+  work-sound-snip-layer: true
+
+
+# ==========================================
+#             Web Auth Settings
+# ==========================================
+web:
+  # Port for the embedded HTTP server (Must be open on firewall)
+  port: 25580
+  # Base URL sent to client auth overlay. Use the LAN/public address players can reach.
+  url: "https://api.eclipse-roleplay.online"
+
+# ==========================================
+#             Auth Session Settings
+# ==========================================
+auth:
+  # Every connection requires explicit confirmation in the auth window.
+  # Saved credentials may fill the fields, but never submit the form automatically.
+  auto-login-by-ip: false
+
+# ==========================================
+#             Appearance Storage
+# ==========================================
+appearance:
+  storage:
+    # local = keep skins only on the game server.
+    # r2 = upload immutable skin PNGs to Cloudflare R2 and serve them by public URL.
+    provider: "r2"
+    r2:
+      bucket: "${ECLIPSE_APPEARANCE_BUCKET}"
+      endpoint: "https://111db7aacae65b6828b4d6c332e1f7c3.r2.cloudflarestorage.com"
+      public-url: "${ECLIPSE_APPEARANCE_PUBLIC_URL}"
+      region: "auto"
+      required: false
+      access-key-id: "${ECLIPSE_R2_ACCESS_KEY_ID}"
+      secret-access-key: "${ECLIPSE_R2_SECRET_ACCESS_KEY}"

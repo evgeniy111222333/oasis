@@ -1,0 +1,1181 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eclipse · Радіальне меню мікровокселів</title>
+<style>
+  /* ============================================================
+     Eclipse radial menu — standalone design prototype.
+     Palette mirrors body-ui: dark glass + parchment #E8DCC4 + amber #E8A55B.
+     Everything is self-contained (no build, no network) so it can be
+     opened straight in a browser and later ported into the Vite/React
+     body-ui pipeline and embedded for the in-game MCEF overlay.
+     ============================================================ */
+
+  /* Animatable custom properties so the radial transition can interpolate
+     the whole layout (radius / lift / recede) instead of snapping. */
+  @property --pull   { syntax: '<length>'; inherits: false; initial-value: 52px; }
+  @property --s      { syntax: '<number>'; inherits: false; initial-value: 0.28; }
+  @property --lift   { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --recede { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+  :root {
+    --paper: #e8dcc4;
+    --paper-soft: rgba(232, 220, 196, 0.62);
+    --paper-faint: rgba(232, 220, 196, 0.22);
+    --amber: #e8a55b;
+    --gold-a: #f0dcae;
+    --gold-b: #c9a86a;
+    --ink: #0a0a0a;
+    --glass-a: rgba(22, 21, 18, 0.74);
+    --glass-b: rgba(9, 9, 8, 0.60);
+    --stroke: rgba(232, 220, 196, 0.22);
+    --shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+
+    --ring-outer-r: 200px;
+    /* sub-options expand OUTWARD, well clear of the parent ring — never into the hub */
+    --ring-sub-r: 344px;
+    --sector: 96px;
+    --sector-inner: 78px;
+    --ease-open: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    /* transparent so the game world shows through the MCEF overlay */
+    background: transparent;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: var(--paper);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .serif { font-family: Georgia, 'Times New Roman', serif; letter-spacing: 0.02em; }
+
+  /* ---------- demo backdrop (stands in for the game world) ---------- */
+  .stage {
+    position: fixed; inset: 0;
+    background: radial-gradient(1200px 800px at 50% 40%, #23252b 0%, #14151a 45%, #0b0c0f 100%);
+  }
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 40%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* ---------- overlay root ---------- */
+  .radial {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    visibility: hidden;
+  }
+  .radial[data-open="true"] { visibility: visible; }
+
+  /* one container for the whole wheel so it can scale to any screen size.
+     It keeps the hub centred exactly like the old grid root did. */
+  .wheel {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: center;
+  }
+
+  /* dim + blur the world while the wheel is open */
+  .radial__dim {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(closest-side at 50% 50%, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.55) 100%),
+      rgba(6, 6, 8, 0.28);
+    opacity: 0;
+    transition: opacity 0.24s var(--ease-soft);
+    pointer-events: none;
+  }
+  .radial[data-open="true"] .radial__dim { opacity: 1; }
+
+  /* decorative slowly-rotating ring behind the sectors */
+  .ornament {
+    position: absolute; left: 50%; top: 50%;
+    width: 520px; height: 520px; margin: -260px 0 0 -260px;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.3s var(--ease-soft);
+  }
+  .radial[data-open="true"] .ornament { opacity: 0.85; }
+  .ornament .spin { transform-origin: 260px 260px; animation: spin 90s linear infinite; }
+  .ornament .spin-rev { transform-origin: 260px 260px; animation: spin 140s linear infinite reverse; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* sunburst emblem slowly rotating behind the hub (medieval astrolabe vibe) */
+  .emblem {
+    position: absolute; left: 50%; top: 50%;
+    width: 380px; height: 380px; margin: -190px 0 0 -190px;
+    border-radius: 50%; pointer-events: none;
+    background: repeating-conic-gradient(from 0deg,
+      rgba(232, 164, 91, 0.22) 0 0.9deg, transparent 0.9deg 15deg);
+    -webkit-mask: radial-gradient(circle, #000 10%, rgba(0,0,0,0.8) 32%, transparent 70%);
+    mask: radial-gradient(circle, #000 10%, rgba(0,0,0,0.8) 32%, transparent 70%);
+    animation: spin 150s linear infinite;
+    opacity: 0; transition: opacity 0.5s ease;
+  }
+  .radial[data-open="true"] .emblem { opacity: 0.55; }
+
+  /* thin halo ring framing the whole wheel */
+  .halo {
+    position: absolute; left: 50%; top: 50%;
+    width: 430px; height: 430px; margin: -215px 0 0 -215px;
+    border-radius: 50%; pointer-events: none;
+    border: 1px solid rgba(232, 220, 196, 0.16);
+    box-shadow: 0 0 44px rgba(232, 164, 91, 0.10), inset 0 0 46px rgba(0, 0, 0, 0.38);
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  .radial[data-open="true"] .halo { opacity: 1; }
+
+  /* light ray sweeping behind the hovered sector (rotates via --ray-a) */
+  .ray {
+    position: absolute; left: 50%; top: 50%;
+    width: 780px; height: 780px; margin: -390px 0 0 -390px;
+    border-radius: 50%; pointer-events: none;
+    background: conic-gradient(from -9deg,
+      rgba(232, 164, 91, 0) 0deg,
+      rgba(240, 220, 174, 0.20) 9deg,
+      rgba(232, 164, 91, 0) 18deg);
+    -webkit-mask: radial-gradient(circle, transparent 120px, #000 170px, #000 355px, transparent 380px);
+    mask: radial-gradient(circle, transparent 120px, #000 170px, #000 355px, transparent 380px);
+    transform: rotate(var(--ray-a, 0deg));
+    transition: transform 0.26s var(--ease-open), opacity 0.2s ease;
+    opacity: 0; mix-blend-mode: screen;
+  }
+  .radial[data-open="true"] .ray { opacity: 0.9; }
+
+  /* subtle parchment grain over the whole overlay */
+  .grain {
+    position: absolute; inset: 0; pointer-events: none;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  .radial[data-open="true"] .grain { opacity: 0.08; }
+
+  /* ---------- centre hub ---------- */
+  .hub {
+    position: relative;
+    width: 168px; height: 168px; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    background: radial-gradient(120% 120% at 50% 30%, var(--glass-a), var(--glass-b));
+    border: 1px solid var(--stroke);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(232,220,196,0.10);
+    z-index: 5;
+    transform: scale(0.7);
+    opacity: 0;
+    transition: transform 0.34s var(--ease-open), opacity 0.24s var(--ease-soft);
+  }
+  .radial[data-open="true"] .hub { transform: scale(1); opacity: 1; }
+  .hub::after {
+    content: ""; position: absolute; inset: 9px; border-radius: 50%;
+    border: 1px solid rgba(232,220,196,0.14);
+  }
+  .hub__ring {
+    position: absolute; inset: -14px; border-radius: 50%;
+    border: 1px solid rgba(232,220,196,0.16);
+    box-shadow: 0 0 26px rgba(232,164,91,0.18), inset 0 0 18px rgba(0,0,0,0.5);
+    animation: hubPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes hubPulse {
+    0%,100% { box-shadow: 0 0 22px rgba(232,164,91,0.14), inset 0 0 18px rgba(0,0,0,0.5); }
+    50%     { box-shadow: 0 0 34px rgba(232,164,91,0.30), inset 0 0 18px rgba(0,0,0,0.5); }
+  }
+  .hub__icon { width: 46px; height: 46px; color: var(--paper); margin-bottom: 6px;
+    transition: color 0.18s ease, transform 0.24s var(--ease-open); }
+  .hub__icon svg { width: 100%; height: 100%; }
+  .hub__icon.is-swap { animation: iconSwap 0.26s var(--ease-open); }
+  @keyframes iconSwap {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .hub__label { font-size: 15px; line-height: 1.1; }
+  .hub__sub   { margin-top: 3px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--paper-soft); }
+
+  /* ---------- sectors ---------- */
+  .ring { position: absolute; inset: 0; pointer-events: none; }
+
+  .sector {
+    --lift: 0px;
+    --pull: 52px;
+    --s: 0.28;
+    position: absolute; left: 50%; top: 50%;
+    width: var(--size); height: var(--size);
+    /* centring is done by translate(-50%,-50%) below — no margin here, or the whole
+       ring would drift by half a card and look crooked against the hub/ornament */
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px;
+    border-radius: 22px;
+    pointer-events: auto; cursor: pointer;
+    color: var(--paper);
+    background: linear-gradient(150deg, var(--glass-a), var(--glass-b));
+    border: 1px solid var(--stroke);
+    box-shadow: 0 10px 26px rgba(0,0,0,0.42), inset 0 1px 0 rgba(232,220,196,0.07);
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--a))
+      translateY(calc((var(--radius) + var(--lift) - var(--recede, 0px) + var(--pull)) * -1))
+      rotate(calc(var(--a) * -1))
+      scale(var(--s));
+    transition:
+      transform 0.34s var(--ease-open),
+      opacity 0.24s var(--ease-soft),
+      background 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      color 0.18s ease;
+  }
+  .ring--outer .sector { --size: var(--sector); --radius: var(--ring-outer-r); }
+  .ring--inner .sector { --size: var(--sector-inner); --radius: var(--ring-sub-r); border-radius: 20px; }
+
+  /* sub-options enter from the parent, growing outward to their own ring */
+  .ring--inner .sector {
+    transition:
+      transform 0.36s var(--ease-open),
+      opacity 0.26s var(--ease-soft),
+      background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+  }
+
+  /* ---- medieval detailing: riveted parchment plaques ---- */
+  .sector::before {
+    content: ""; position: absolute; inset: 5px; border-radius: inherit;
+    border: 1px solid rgba(232, 220, 196, 0.14);
+    pointer-events: none;
+  }
+  .sector::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background:
+      radial-gradient(circle at 9px 9px, rgba(232,220,196,0.28) 0 1.4px, transparent 1.6px),
+      radial-gradient(circle at calc(100% - 9px) 9px, rgba(232,220,196,0.28) 0 1.4px, transparent 1.6px),
+      radial-gradient(circle at 9px calc(100% - 9px), rgba(232,220,196,0.28) 0 1.4px, transparent 1.6px),
+      radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), rgba(232,220,196,0.28) 0 1.4px, transparent 1.6px);
+  }
+  .sector.is-hot::after, .radial[data-open="true"] .sector.is-hot::after {
+    background:
+      radial-gradient(circle at 9px 9px, rgba(255,244,214,0.85) 0 1.6px, transparent 1.8px),
+      radial-gradient(circle at calc(100% - 9px) 9px, rgba(255,244,214,0.85) 0 1.6px, transparent 1.8px),
+      radial-gradient(circle at 9px calc(100% - 9px), rgba(255,244,214,0.85) 0 1.6px, transparent 1.8px),
+      radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), rgba(255,244,214,0.85) 0 1.6px, transparent 1.8px);
+  }
+
+  .radial[data-open="true"] .sector { --pull: 0px; --s: 1; opacity: 1; }
+  .radial.is-animating .sector { transition-delay: var(--d, 0ms); }
+
+  /* when something is hovered, the rest recede inward so the choice pops outward */
+  .radial.has-hot .sector:not(.is-hot) {
+    --recede: 12px;
+    --s: 0.94;
+    opacity: 0.9;
+  }
+
+  /* the expanded folder tucks inward so its options clearly sit OUTSIDE it */
+  .radial[data-open="true"] .ring--outer .sector.is-active {
+    --recede: 44px;
+    --s: 0.96;
+    opacity: 0.95;
+  }
+
+  /* hot (highlighted) sector — slides OUTWARD from the hub.
+     Prefixed with the open state so it wins over the base open rule's --s. */
+  .radial[data-open="true"] .sector.is-hot {
+    --lift: 30px;
+    --s: 1.09;
+    background: linear-gradient(150deg, rgba(232,164,91,0.22), rgba(232,164,91,0.06));
+    border-color: rgba(240,220,174,0.55);
+    box-shadow: 0 16px 34px rgba(0,0,0,0.5), 0 0 26px rgba(232,164,91,0.30),
+                inset 0 1px 0 rgba(255,244,214,0.16);
+    color: #fff6e4;
+  }
+  .sector.is-hot .sector__icon { transform: scale(1.08); }
+  .sector.is-active {
+    background: linear-gradient(150deg, rgba(232,164,91,0.34), rgba(201,168,106,0.14));
+    border-color: rgba(240,220,174,0.85);
+  }
+
+  .sector__icon { width: 28px; height: 28px; transition: transform 0.2s var(--ease-open); }
+  .ring--inner .sector__icon { width: 22px; height: 22px; }
+  .sector__label {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 11px; line-height: 1.05; letter-spacing: 0.01em;
+    text-align: center; padding: 0 5px; width: 100%;
+    overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .ring--inner .sector__label { font-size: 10.5px; }
+  .sector__badge {
+    position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px;
+    display: grid; place-items: center; border-radius: 10px; font-size: 11px;
+    background: linear-gradient(150deg, var(--gold-a), var(--gold-b));
+    color: #241b0c; font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* ---------- bottom palette (hotbar material strip) ---------- */
+  .palette {
+    position: absolute; left: 26px; bottom: 26px; transform: translateY(26px);
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px; border-radius: 16px;
+    background: linear-gradient(150deg, var(--glass-a), var(--glass-b));
+    border: 1px solid var(--stroke);
+    box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.24s var(--ease-soft), transform 0.3s var(--ease-open);
+  }
+  .radial[data-open="true"] .palette {
+    opacity: 1; transform: translateY(0);
+  }
+  .palette__title { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--paper-soft); }
+  .swatches { display: flex; gap: 8px; }
+  .swatch {
+    width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--stroke);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 10px rgba(0,0,0,0.35);
+    cursor: pointer; transition: transform 0.16s var(--ease-open), border-color 0.16s ease;
+  }
+  .swatch.is-hot { transform: translateY(-4px) scale(1.06); border-color: rgba(240,220,174,0.8);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.4), 0 0 16px rgba(232,164,91,0.35); }
+  .palette__meta { font-size: 11.5px; color: var(--paper-soft); }
+
+  /* ---------- dev toolbar (prototype only; hidden in-game) ---------- */
+  .devbar {
+    position: absolute; left: 24px; top: 22px; display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 14px;
+    background: linear-gradient(150deg, var(--glass-a), var(--glass-b));
+    border: 1px solid var(--stroke); box-shadow: var(--shadow);
+    font-size: 12px; color: var(--paper-soft);
+    z-index: 30;
+  }
+  .devbar b { color: var(--paper); font-weight: 600; }
+  .devbar button {
+    all: unset; cursor: pointer; padding: 7px 12px; border-radius: 9px;
+    background: linear-gradient(150deg, rgba(232,164,91,0.28), rgba(232,164,91,0.10));
+    border: 1px solid rgba(240,220,174,0.45); color: #fff6e4; font-size: 12px;
+    transition: transform 0.14s var(--ease-open), box-shadow 0.14s ease;
+  }
+  .devbar button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(232,164,91,0.25); }
+  .kbd {
+    display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 5px; border: 1px solid var(--stroke); background: rgba(0,0,0,0.35);
+    font-size: 11px; color: var(--paper);
+  }
+  .readout {
+    position: absolute; right: 24px; top: 22px; padding: 10px 14px; border-radius: 14px;
+    background: linear-gradient(150deg, var(--glass-a), var(--glass-b));
+    border: 1px solid var(--stroke); box-shadow: var(--shadow);
+    font-size: 12px; color: var(--paper-soft); z-index: 30;
+  }
+  .readout b { color: var(--gold-a); font-weight: 600; }
+  .toast {
+    position: absolute; left: 50%; top: 34px; transform: translate(-50%, -12px);
+    padding: 9px 16px; border-radius: 12px; font-size: 12px; letter-spacing: 0.04em;
+    background: linear-gradient(150deg, rgba(232,164,91,0.24), rgba(232,164,91,0.08));
+    border: 1px solid rgba(240,220,174,0.5); color: #fff6e4;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.24s var(--ease-open);
+    z-index: 40;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* in-game preview: hide the prototype-only chrome (dev toolbar + readout) */
+  body.ingame .devbar,
+  body.ingame .readout { display: none; }
+  /* the palette now lives in the "Материал" sector, so the bottom strip is prototype-only */
+  body.ingame .palette { display: none; }
+  /* fully transparent in-game: no demo backdrop, no vignette, no world dimming */
+  body.ingame .stage { background: transparent; }
+  body.ingame .vignette { display: none; }
+  body.ingame .radial__dim { opacity: 0 !important; }
+
+  .sector__swatch {
+    width: 28px; height: 28px; border-radius: 9px;
+    border: 1px solid rgba(232, 220, 196, 0.32);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 3px 8px rgba(0,0,0,0.35);
+    margin-bottom: 2px;
+  }
+  .ring--inner .sector__swatch { width: 24px; height: 24px; }
+
+  /* ---------- foliant panel: shape picker / generator ---------- */
+  .foliant {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%) scale(0.94);
+    width: min(680px, 84vw); max-height: 74vh;
+    display: flex; flex-direction: column;
+    background: linear-gradient(150deg, rgba(27,24,20,0.94), rgba(12,11,10,0.92));
+    border: 1px solid rgba(232,220,196,0.28);
+    border-radius: 18px;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.6), inset 0 1px 0 rgba(232,220,196,0.10);
+    opacity: 0; pointer-events: none; z-index: 20;
+    transition: opacity 0.24s var(--ease-soft), transform 0.3s var(--ease-open);
+  }
+  .foliant[data-open="true"] { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  .foliant__head { display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+    border-bottom: 1px solid rgba(232,220,196,0.16); }
+  .foliant__title { flex: 1; text-align: center; font-size: 18px; color: var(--gold-a); }
+  .foliant__back { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 9px;
+    border: 1px solid var(--stroke); color: var(--paper); font-size: 12px; }
+  .foliant__back:hover { border-color: rgba(240,220,174,0.5); }
+  .foliant__body { padding: 16px; overflow: auto; }
+
+  .shape-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .shape-tile { all: unset; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; gap: 6px; padding: 10px 6px; border-radius: 12px; text-align: center;
+    background: linear-gradient(150deg, rgba(32,29,25,0.82), rgba(14,13,12,0.72));
+    border: 1px solid rgba(232,220,196,0.16); color: var(--paper-soft);
+    transition: transform 0.14s var(--ease-open), border-color 0.14s, background 0.14s, color 0.14s; }
+  .shape-tile:hover { transform: translateY(-2px); border-color: rgba(240,220,174,0.5); color: #fff6e4;
+    background: linear-gradient(150deg, rgba(232,164,91,0.22), rgba(232,164,91,0.06)); }
+  .shape-tile__ico { width: 34px; height: 34px; }
+  .shape-tile__ico svg { width: 100%; height: 100%; }
+  .shape-tile__cap { font-size: 10.5px; line-height: 1.05; }
+
+  .gen-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .gen-tab { all: unset; cursor: pointer; padding: 8px 16px; border-radius: 10px;
+    border: 1px solid var(--stroke); color: var(--paper-soft); font-size: 13px; }
+  .gen-tab.is-on { color: #241b0c; background: linear-gradient(150deg, var(--gold-a), var(--gold-b));
+    border-color: rgba(240,220,174,0.9); }
+  .gen-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0; }
+  .gen-row label { width: 92px; text-align: right; color: var(--paper-soft); font-size: 13px; }
+  .gen-step { display: flex; align-items: center; gap: 10px; }
+  .gen-step button { all: unset; cursor: pointer; width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 8px; border: 1px solid var(--stroke); color: var(--paper); font-size: 16px; }
+  .gen-step button:hover { border-color: rgba(240,220,174,0.5); }
+  .gen-step span { min-width: 34px; text-align: center; font-size: 15px; color: #fff6e4; }
+  .gen-create { all: unset; cursor: pointer; display: block; margin: 18px auto 0; padding: 10px 26px;
+    border-radius: 11px; border: 1px solid rgba(240,220,174,0.6); color: #fff6e4; font-size: 14px;
+    background: linear-gradient(150deg, rgba(232,164,91,0.3), rgba(232,164,91,0.1)); }
+  .gen-create:hover { box-shadow: 0 10px 24px rgba(232,164,91,0.25); }
+
+  /* while the foliant is open the wheel steps aside */
+  .radial.panel-open .ring, .radial.panel-open .hub, .radial.panel-open .ornament,
+  .radial.panel-open .ray, .radial.panel-open .emblem, .radial.panel-open .halo {
+    opacity: 0 !important; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="vignette"></div>
+
+    <!-- ===== prototype-only chrome ===== -->
+    <div class="devbar">
+      <span>Eclipse · <b>Радиальное меню</b></span>
+      <button id="openBtn">Открыть</button>
+      <span><span class="kbd">Tab</span> — открыть · <span class="kbd">Esc</span> — закрыть · колесо — материал · <span class="kbd">1</span>–<span class="kbd">9</span> — слот</span>
+    </div>
+    <div class="readout">Выбрано: <b id="readout">—</b></div>
+    <div class="toast" id="toast">—</div>
+
+    <!-- ===== radial root ===== -->
+    <div class="radial" id="radial" data-open="false" aria-hidden="true">
+
+      <div class="radial__dim"></div>
+      <div class="grain"></div>
+
+      <div class="wheel" id="wheel">
+      <div class="emblem"></div>
+
+      <svg class="ornament" viewBox="0 0 520 520" aria-hidden="true">
+        <g class="spin" fill="none" stroke="rgba(232,220,196,0.30)" stroke-width="1">
+          <circle cx="260" cy="260" r="246" stroke-dasharray="2 10" />
+          <circle cx="260" cy="260" r="196" stroke-dasharray="1 7" stroke="rgba(232,220,196,0.22)" />
+        </g>
+        <g class="spin-rev" fill="none" stroke="rgba(232,164,91,0.35)" stroke-width="1">
+          <circle cx="260" cy="260" r="256" stroke-dasharray="1 22" />
+        </g>
+      </svg>
+
+      <div class="halo"></div>
+
+      <!-- light ray that sweeps to the hot sector (rotated via --ray-a) -->
+      <div class="ray" id="ray"></div>
+
+      <div class="hub">
+        <div class="hub__ring"></div>
+        <div class="hub__icon" id="hubIcon"></div>
+        <div class="hub__label serif" id="hubLabel">Микровоксели</div>
+        <div class="hub__sub" id="hubSub">выберите действие</div>
+      </div>
+
+      <div class="ring ring--outer" id="ringOuter"></div>
+      <div class="ring ring--inner" id="ringInner"></div>
+      </div><!-- /wheel -->
+
+      <!-- material strip lives inside the overlay so it can animate with it -->
+      <div class="palette" id="palette">
+        <div>
+          <div class="palette__title">Материал</div>
+          <div class="palette__meta" id="paletteMeta">дубовая доска</div>
+        </div>
+        <div class="swatches" id="swatches"></div>
+      </div>
+
+      <!-- shape picker / generator foliant: opens over the wheel -->
+      <div class="foliant" id="foliant" data-open="false">
+        <div class="foliant__head">
+          <button class="foliant__back" id="foliantBack">&#8249; Назад</button>
+          <span class="foliant__title serif" id="foliantTitle">Форма</span>
+        </div>
+        <div class="foliant__body" id="foliantBody"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ============================ icons ============================ */
+  const I = {
+    place:   '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
+    erase:   '<path d="M4 16 14 6a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-7 7H7z"/><path d="M11 20h9"/>',
+    shape:   '<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    gen:     '<path d="M3 20h6v-5h5v-5h5V5h2"/>',
+    brush:   '<path d="M4 20s1-4 5-4 5-2 5-5 2-4 6-4"/><path d="M4 20c3 0 5-2 5-5"/>',
+    clip:    '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>',
+    carver:  '<path d="M6 3h9a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h9"/><path d="M6 3v18"/><path d="M18 3v6M18 15v6"/>',
+    ramp:    '<path d="M3 20 20 3"/><path d="M3 20h17"/>',
+    column:  '<path d="M9 3h6l-1.5 4h-3z"/><path d="M10.5 7v10"/><path d="M7 20h10l-1.5-3h-7z"/>',
+    roof:    '<path d="M3 12 12 4l9 8"/><path d="M6 12v8h12v-8"/>',
+    single:  '<rect x="9" y="9" width="6" height="6" rx="1"/>',
+    line:    '<path d="M5 12h14"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>',
+    square:  '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    circle:  '<circle cx="12" cy="12" r="8"/>',
+    undo:    '<path d="M9 7 4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 0 10h-3"/>',
+    redo:    '<path d="m15 7 5 5-5 5"/><path d="M20 12H9a5 5 0 0 0 0 10h3"/>',
+    paste:   '<rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 4h6"/><path d="M9 12h6M9 16h4"/>',
+    rotate:  '<path d="M20 8a8 8 0 1 0 1 6"/><path d="M21 3v5h-5"/>',
+    mirror:  '<path d="M12 3v18"/><path d="M8 7 3 12l5 5z"/><path d="M16 7l5 5-5 5z"/>',
+    on:      '<circle cx="12" cy="12" r="8"/><path d="m9 12 2 2 4-5"/>',
+    off:     '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>',
+    palette: '<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h6a3 3 0 0 0 3-3 8 8 0 0 0-9-7z"/><circle cx="8" cy="9" r="1.2"/><circle cx="12" cy="7" r="1.2"/><circle cx="16" cy="9" r="1.2"/>',
+    cube:    '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'
+  };
+
+  // Shape catalog order must match MicrovoxelShape.Type (wire enum).
+  const SHAPE_NAMES = [
+    "FULL", "SLAB_BOTTOM", "SLAB_TOP", "PANEL_X", "PANEL_Z",
+    "RAMP_S", "RAMP_N", "RAMP_E", "RAMP_W",
+    "BEVEL_SW", "BEVEL_SE", "BEVEL_NW", "BEVEL_NE",
+    "QUARTER_ROUND_SW", "QUARTER_ROUND_SE", "QUARTER_ROUND_NW", "QUARTER_ROUND_NE",
+    "QUARTER_ROUND_XZ_SW", "QUARTER_ROUND_XZ_SE", "QUARTER_ROUND_XZ_NW", "QUARTER_ROUND_XZ_NE"
+  ];
+
+  function shapeIcon(name) {
+    if (name === "FULL") return I.cube;
+    if (name.startsWith("SLAB_BOTTOM")) return '<path d="M3 12h18v8H3z"/>';
+    if (name.startsWith("SLAB_TOP")) return '<path d="M3 4h18v8H3z"/>';
+    if (name.startsWith("PANEL_X")) return '<path d="M9 3h6v18H9z"/>';
+    if (name.startsWith("PANEL_Z")) return '<path d="M3 9h18v6H3z"/>';
+    if (name.startsWith("RAMP")) return '<path d="M3 20 20 3v17z"/>';
+    if (name.startsWith("BEVEL")) return '<path d="M3 21 21 3v18z"/>';
+    return '<circle cx="12" cy="12" r="8"/>';
+  }
+  const svg = (name) =>
+    '<svg class="sector__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (I[name] || I.on) + '</svg>';
+
+  /* ============================ data ============================ */
+  // Outer ring = перший рівень. Пункт із children відкриває внутрішнє кільце.
+  const SECTORS = [
+    { id: "place",  label: "Поставить", icon: "place" },
+    { id: "erase",  label: "Убрать",    icon: "erase" },
+    { id: "shape",  label: "Форма",     icon: "shape", picker: "shape" },
+    { id: "material", label: "Материал", icon: "palette", dynamic: "materials" },
+    { id: "gen",    label: "Генератор", icon: "gen" },
+    { id: "brush",  label: "Кисть",     icon: "brush", children: [
+        { id: "brush.single", label: "Одна",    icon: "single" },
+        { id: "brush.line",   label: "Линия",   icon: "line" },
+        { id: "brush.square", label: "Квадрат", icon: "square" },
+        { id: "brush.circle", label: "Круг",    icon: "circle" }
+    ]},
+    { id: "clip",   label: "Буфер",     icon: "clip", children: [
+        { id: "clip.copy",   label: "Копировать", icon: "clip" },
+        { id: "clip.paste",  label: "Вставить",   icon: "paste" },
+        { id: "clip.rotate", label: "Поворот",    icon: "rotate" },
+        { id: "clip.mirror", label: "Зеркало",    icon: "mirror" }
+    ]},
+    { id: "history", label: "История",   icon: "history", children: [
+        { id: "history.undo", label: "Отменить", icon: "undo" },
+        { id: "history.redo", label: "Вернуть",  icon: "redo" }
+    ]}
+  ];
+
+  const MATERIALS = [
+    { name: "дубовая доска",    color: "#b58a4e" },
+    { name: "каменный кирпич",  color: "#8a8a8a" },
+    { name: "кварц",            color: "#e6e2d6" },
+    { name: "изумрудный блок",  color: "#2fae6b" },
+    { name: "кирпич",           color: "#9a4b3b" },
+    { name: "синяя керамика",   color: "#2f5fae" },
+    { name: "песчаник",         color: "#d8c68a" }
+  ];
+
+  /* ============================ refs ============================ */
+  const root        = document.getElementById("radial");
+  const ringOuter   = document.getElementById("ringOuter");
+  const ringInner   = document.getElementById("ringInner");
+  const hubIcon     = document.getElementById("hubIcon");
+  const hubLabel    = document.getElementById("hubLabel");
+  const hubSub      = document.getElementById("hubSub");
+  const ray         = document.getElementById("ray");
+  const paletteMeta = document.getElementById("paletteMeta");
+  const swatches    = document.getElementById("swatches");
+  const readout     = document.getElementById("readout");
+  const toast       = document.getElementById("toast");
+  const openBtn     = document.getElementById("openBtn");
+  const foliant      = document.getElementById("foliant");
+  const foliantTitle = document.getElementById("foliantTitle");
+  const foliantBody  = document.getElementById("foliantBody");
+  const foliantBack  = document.getElementById("foliantBack");
+
+  /* ============================ state ============================ */
+  let isOpen        = false;
+  let outerEls      = [];
+  let innerEls      = [];
+  let hotOuter      = -1;
+  let hotInner      = -1;
+  let selectedOuter = -1;      // "розкритий" пункт із children
+  let materialIndex = 0;
+  let pointer       = { x: 0, y: 0 };
+  let center        = { x: 0, y: 0 };
+  let animTimer     = null;
+  const onSelectListeners = new Set();
+  let uiScale = 1;
+  let panelOpen = false;
+  let genType = "ramp";
+  const genDims = { length: 5, width: 3, height: 1 };
+
+  /** Fit the whole wheel to the smaller screen dimension, so it adapts to any resolution. */
+  function updateScale() {
+    uiScale = Math.min(1.35, Math.max(0.62, Math.min(window.innerWidth, window.innerHeight) / 900));
+    root.style.setProperty("--ui-scale", uiScale);
+  }
+  window.addEventListener("resize", updateScale);
+
+  /* ============================ build ============================ */
+  function build() {
+    ringOuter.innerHTML = "";
+    outerEls = SECTORS.map((sector, i) => {
+      const el = document.createElement("div");
+      el.className = "sector";
+      el.dataset.id = sector.id;
+      el.style.setProperty("--a", angleFor(i, SECTORS.length) + "deg");
+      el.style.setProperty("--d", (i * 26) + "ms");
+      el.innerHTML = svg(sector.icon) + '<span class="sector__label">' + sector.label + "</span>" +
+        (sector.children ? '<span class="sector__badge">' + sector.children.length + "</span>" : "");
+      ringOuter.appendChild(el);
+      return el;
+    });
+
+    buildPalette();
+  }
+
+  function buildPalette() {
+    swatches.innerHTML = "";
+    MATERIALS.forEach((m, i) => {
+      const el = document.createElement("div");
+      el.className = "swatch" + (i === materialIndex ? " is-hot" : "");
+      el.style.background = "linear-gradient(150deg," + (m.color || "#8a8a8a") + ",rgba(0,0,0,0.25))";
+      el.title = m.name + (m.units != null ? " — " + m.units : "");
+      el.addEventListener("click", () => selectMaterial(i));
+      swatches.appendChild(el);
+    });
+    if (MATERIALS.length) paletteMeta.textContent = MATERIALS[materialIndex].name;
+  }
+
+  const angleFor = (index, total) => (360 / total) * index;           // 0° = вгорі
+  const angleTo  = (dx, dy) => (Math.atan2(dx, -dy) * 180) / Math.PI; // 0° вгорі, за годинниковою
+
+  /** Options shown in the sub-ring for a sector: static children or a dynamic list. */
+  function optionsFor(parent) {
+    if (!parent) return null;
+    if (parent.dynamic === "materials") {
+      return MATERIALS.slice(0, 9).map((m) => ({
+        id: "material", label: m.name, material: m.id, fragment: !!m.fragment,
+        color: m.color, units: m.units
+      }));
+    }
+    return parent.children || null;
+  }
+
+  const hasOptions = (sector) => !!optionsFor(sector);
+
+  const prettify = (name) => name.replace(/_/g, " ").toLowerCase();
+  function svgShape(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" '
+      + 'stroke-linecap="round" stroke-linejoin="round">' + shapeIcon(name) + "</svg>";
+  }
+
+  function openPanel(kind) {
+    panelOpen = true;
+    root.classList.add("panel-open");
+    foliant.setAttribute("data-open", "true");
+    foliantTitle.textContent = kind === "shape" ? "Форма" : "Генератор";
+    foliantBody.innerHTML = "";
+    if (kind === "shape") buildShapeGrid();
+    else buildGeneratorPanel();
+  }
+
+  function closePanel() {
+    if (!panelOpen) return;
+    panelOpen = false;
+    root.classList.remove("panel-open");
+    foliant.setAttribute("data-open", "false");
+  }
+
+  function buildShapeGrid() {
+    const grid = document.createElement("div");
+    grid.className = "shape-grid";
+    SHAPE_NAMES.forEach((name, id) => {
+      const tile = document.createElement("button");
+      tile.className = "shape-tile";
+      tile.innerHTML = '<span class="shape-tile__ico">' + svgShape(name) + "</span>"
+        + '<span class="shape-tile__cap">' + prettify(name) + "</span>";
+      tile.addEventListener("click", () => emit("shape.set", { shapeId: id, label: prettify(name) }));
+      grid.appendChild(tile);
+    });
+    foliantBody.appendChild(grid);
+  }
+
+  function buildGeneratorPanel() {
+    const types = [["ramp", "Рампа"], ["column", "Колонна"], ["roof", "Крыша"]];
+    const tabs = document.createElement("div");
+    tabs.className = "gen-tabs";
+    types.forEach(([type, label]) => {
+      const button = document.createElement("button");
+      button.className = "gen-tab" + (type === genType ? " is-on" : "");
+      button.textContent = label;
+      button.addEventListener("click", () => { genType = type; openPanel("gen"); });
+      tabs.appendChild(button);
+    });
+    foliantBody.appendChild(tabs);
+
+    [["length", "Длина"], ["width", "Ширина"], ["height", "Высота"]].forEach(([key, label]) => {
+      const row = document.createElement("div");
+      row.className = "gen-row";
+      const caption = document.createElement("label");
+      caption.textContent = label;
+      row.appendChild(caption);
+      const step = document.createElement("div");
+      step.className = "gen-step";
+      const minus = document.createElement("button");
+      minus.textContent = "\u2212";
+      const value = document.createElement("span");
+      value.textContent = genDims[key];
+      const plus = document.createElement("button");
+      plus.textContent = "+";
+      minus.addEventListener("click", () => {
+        genDims[key] = Math.max(1, genDims[key] - 1);
+        value.textContent = genDims[key];
+      });
+      plus.addEventListener("click", () => {
+        genDims[key] = Math.min(31, genDims[key] + 1);
+        value.textContent = genDims[key];
+      });
+      step.appendChild(minus);
+      step.appendChild(value);
+      step.appendChild(plus);
+      row.appendChild(step);
+      foliantBody.appendChild(row);
+    });
+
+    const create = document.createElement("button");
+    create.className = "gen-create";
+    create.textContent = "Создать";
+    const label = types.find(([type]) => type === genType)[1];
+    create.addEventListener("click", () => emit("gen." + genType, {
+      length: genDims.length, width: genDims.width, height: genDims.height, label: label
+    }));
+    foliantBody.appendChild(create);
+  }
+
+  function renderInner(parentIndex) {
+    ringInner.innerHTML = "";
+    innerEls = [];
+    selectedOuter = parentIndex;
+    if (parentIndex < 0) return;
+    const options = optionsFor(SECTORS[parentIndex]);
+    if (!options || !options.length) return;
+
+    const base = angleFor(parentIndex, SECTORS.length);
+    const n = options.length;
+    const spread = n <= 1 ? 0 : Math.min(150, 30 * (n - 1) + 28);
+    options.forEach((child, i) => {
+      const offset = n === 1 ? 0 : -spread / 2 + (spread / (n - 1)) * i;
+      const el = document.createElement("div");
+      el.className = "sector";
+      el.dataset.id = child.id;
+      if (child.material) { el.dataset.material = child.material; el.dataset.fragment = child.fragment ? "1" : "0"; }
+      if (child.units != null) el.dataset.units = String(child.units);
+      el.style.setProperty("--a", (base + offset) + "deg");
+      el.style.setProperty("--d", (i * 24) + "ms");
+      // pop in at the final (outer) radius — never overlaps the parent card
+      el.style.setProperty("--s", "0.5");
+      el.style.opacity = "0";
+      el.style.transitionDelay = (i * 24) + "ms";
+      el.innerHTML = child.material
+        ? '<span class="sector__swatch" style="background:linear-gradient(150deg,'
+            + (child.color || "#8a8a8a") + ',rgba(0,0,0,0.3))"></span>'
+          + '<span class="sector__label">' + child.label + '</span>'
+          + (child.units != null ? '<span class="sector__badge">' + child.units + '</span>' : "")
+        : svg(child.icon) + '<span class="sector__label">' + child.label + "</span>";
+      ringInner.appendChild(el);
+      innerEls.push(el);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.style.removeProperty("--s");
+        el.style.opacity = "";
+        setTimeout(() => { el.style.transitionDelay = "0ms"; }, 440);
+      }));
+    });
+  }
+
+  /* ============================ open / close ============================ */
+  function openAt(x = window.innerWidth / 2, y = window.innerHeight / 2) {
+    if (isOpen) return;
+    isOpen = true;
+    center = { x, y };
+    pointer = { x, y };
+
+    build();
+    ringInner.innerHTML = "";
+    innerEls = [];
+    selectedOuter = -1;
+    hotOuter = 0;
+    hotInner = -1;
+
+    root.style.setProperty("--cx", x + "px");
+    root.style.setProperty("--cy", y + "px");
+    root.setAttribute("aria-hidden", "false");
+
+    // keep the closed state one frame, then flip to open so the transition runs
+    root.classList.add("is-animating");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!isOpen) return;
+      root.setAttribute("data-open", "true");
+      updateHot();
+    }));
+    clearTimeout(animTimer);
+    animTimer = setTimeout(() => root.classList.remove("is-animating"), 520);
+  }
+
+  function close(fireCancel = false) {
+    if (!isOpen) return;
+    isOpen = false;
+    closePanel();
+    root.classList.add("is-animating");
+    // reverse stagger: last item leaves first
+    outerEls.forEach((el, i) => el.style.setProperty("--d", ((outerEls.length - 1 - i) * 16) + "ms"));
+    innerEls.forEach((el, i) => el.style.setProperty("--d", ((innerEls.length - 1 - i) * 12) + "ms"));
+    root.setAttribute("data-open", "false");
+    root.setAttribute("aria-hidden", "true");
+    clearTimeout(animTimer);
+    animTimer = setTimeout(() => {
+      root.classList.remove("is-animating");
+      if (!isOpen) { ringInner.innerHTML = ""; innerEls = []; }
+    }, 460);
+    if (fireCancel) emit(null);
+  }
+
+  /* ============================ selection ============================ */
+  function nearestIndex(angle, count) {
+    const step = 360 / count;
+    return ((Math.round(angle / step) % count) + count) % count;
+  }
+
+  // Ring radii mirrored from CSS (px at scale 1). Thresholds scale with the wheel so the
+  // hit-zones stay correct on any screen size.
+  const OUTER_R = 200;
+  const SUB_R = 344;
+
+  /** Smallest angular gap between the currently shown sub-options (for a stable pick). */
+  function childSpacing() {
+    if (innerEls.length < 2) return 180;
+    const angles = innerEls
+      .map((el) => parseFloat(el.style.getPropertyValue("--a")) || 0)
+      .sort((a, b) => a - b);
+    let min = 360;
+    for (let i = 1; i < angles.length; i++) min = Math.min(min, angles[i] - angles[i - 1]);
+    return min;
+  }
+
+  function updateHot() {
+    if (!isOpen) return;
+    const dx = pointer.x - center.x;
+    const dy = pointer.y - center.y;
+    const dist = Math.hypot(dx, dy);
+    const ang = angleTo(dx, dy);
+
+    const hubDead = 66 * uiScale;
+    const subZone = ((OUTER_R + SUB_R) / 2) * uiScale;
+
+    // Near the hub nothing is picked yet: the whole ring stays calm on open and only
+    // fans out (outward) once the cursor actually leaves the centre.
+    if (dist < hubDead) {
+      hotOuter = -1;
+      hotInner = -1;
+      outerEls.forEach((el) => el.classList.remove("is-hot"));
+      innerEls.forEach((el) => el.classList.remove("is-hot"));
+      root.classList.remove("has-hot");
+      hubLabel.textContent = "Микровоксели";
+      hubSub.textContent = "выберите действие";
+      if (hubIcon.dataset.id !== "root") {
+        hubIcon.dataset.id = "root";
+        hubIcon.innerHTML = svg("shape");
+        hubIcon.classList.remove("is-swap");
+        void hubIcon.offsetWidth;
+        hubIcon.classList.add("is-swap");
+      }
+      ray.style.opacity = "0";
+      if (selectedOuter !== -1) { selectedOuter = -1; ringInner.innerHTML = ""; innerEls = []; }
+      return;
+    }
+
+    // While a folder is expanded, the parent is LOCKED as long as the cursor is out in
+    // the sub-ring, so brushing past a neighbouring main item never hijacks the choice.
+    // Moving back inward (or to the hub) releases the lock and lets outer switching resume.
+    const inSubZone = selectedOuter !== -1 && dist > subZone;
+    if (inSubZone) {
+      hotOuter = selectedOuter;
+    } else {
+      hotOuter = nearestIndex(ang, SECTORS.length);
+      const parent = SECTORS[hotOuter];
+      if (hasOptions(parent) && selectedOuter !== hotOuter) {
+        renderInner(hotOuter);
+        root.classList.add("is-animating");
+        clearTimeout(animTimer);
+        animTimer = setTimeout(() => root.classList.remove("is-animating"), 520);
+      } else if (!hasOptions(parent) && selectedOuter !== -1) {
+        selectedOuter = -1;
+        ringInner.innerHTML = "";
+        innerEls = [];
+      }
+    }
+
+    // sub-option pick: only out in the sub-ring, tolerant to the real child spacing
+    hotInner = -1;
+    if (inSubZone && innerEls.length) {
+      let best = -1, bestD = 1e9;
+      innerEls.forEach((el, i) => {
+        const a = parseFloat(el.style.getPropertyValue("--a")) || 0;
+        const d = Math.abs(((ang - a + 540) % 360) - 180);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      if (best !== -1 && bestD <= Math.max(14, childSpacing() * 0.55)) hotInner = best;
+    }
+
+    outerEls.forEach((el, i) => {
+      el.classList.toggle("is-hot", i === hotOuter && hotInner === -1);
+      el.classList.toggle("is-active", i === selectedOuter);
+    });
+    innerEls.forEach((el, i) => el.classList.toggle("is-hot", i === hotInner));
+    root.classList.toggle("has-hot", hotOuter !== -1 || hotInner !== -1);
+
+    const focus = hotInner !== -1
+      ? SECTORS[selectedOuter].children[hotInner]
+      : SECTORS[hotOuter];
+
+    hubLabel.textContent = focus.label;
+    hubSub.textContent = hotInner !== -1 ? SECTORS[selectedOuter].label : (focus.children ? "выберите вариант" : "ЛКМ — выбрать");
+    if (hubIcon.dataset.id !== focus.id) {
+      hubIcon.dataset.id = focus.id;
+      hubIcon.innerHTML = svg(focus.icon);
+      hubIcon.classList.remove("is-swap");
+      void hubIcon.offsetWidth;          // reflow to restart the keyframe
+      hubIcon.classList.add("is-swap");
+    }
+
+    // selection arc points at the focused sector
+    const arcAngle = hotInner !== -1
+      ? parseFloat(innerEls[hotInner].style.getPropertyValue("--a"))
+      : angleFor(hotOuter, SECTORS.length);
+    ray.style.setProperty("--ray-a", arcAngle + "deg");
+    ray.style.opacity = "1";
+  }
+
+  /* ============================ confirm ============================ */
+  function confirm() {
+    if (!isOpen) return;
+    if (hotInner !== -1 && selectedOuter !== -1) {
+      const el = innerEls[hotInner];
+      if (!el) { close(false); return; }
+      const extra = {};
+      const labelNode = el.querySelector(".sector__label");
+      if (labelNode) extra.label = labelNode.textContent;
+      if (el.dataset.material) {
+        extra.material = el.dataset.material;
+        extra.fragment = el.dataset.fragment === "1";
+        const idx = MATERIALS.findIndex((m) => m.id === el.dataset.material);
+        if (idx >= 0) materialIndex = idx;
+      }
+      if (el.dataset.shapeId) extra.shapeId = parseInt(el.dataset.shapeId, 10);
+      emit(el.dataset.id, extra);
+      return;
+    }
+    const sector = SECTORS[hotOuter];
+    if (hasOptions(sector)) {
+      renderInner(hotOuter);              // розкрити, не закривати
+      hotInner = -1;
+      updateHot();
+      return;
+    }
+    if (sector.id === "shape") { openPanel("shape"); return; }
+    if (sector.id === "gen") { openPanel("gen"); return; }
+    emit(sector.id);
+  }
+
+  function emit(id, extra) {
+    if (id) {
+      const label = (extra && extra.label) || findLabel(id);
+      readout.textContent = label;
+      showToast(label);
+    }
+    onSelectListeners.forEach((cb) => cb(id));
+    // Java↔JS bridge: the in-game screen listens on the CEF console message channel.
+    try {
+      const current = MATERIALS[materialIndex];
+      const payload = Object.assign({
+        action: id,
+        material: current ? current.id : null,
+        fragment: current ? !!current.fragment : true
+      }, extra || {});
+      console.log("@eclipse/radial:" + JSON.stringify(payload));
+    } catch (ignore) {
+      // no bridge (plain browser preview) — ignore
+    }
+    close(false);
+  }
+
+  function findLabel(id) {
+    for (const s of SECTORS) {
+      if (s.id === id) return s.label;
+      if (s.children) for (const c of s.children) if (c.id === id) return s.label + " · " + c.label;
+    }
+    return id;
+  }
+
+  function selectMaterial(index) {
+    materialIndex = index;
+    [...swatches.children].forEach((el, i) => el.classList.toggle("is-hot", i === index));
+    paletteMeta.textContent = MATERIALS[index].name;
+    showToast("Материал: " + MATERIALS[index].name);
+  }
+
+  function cycleMaterial(delta) {
+    selectMaterial((materialIndex + delta + MATERIALS.length) % MATERIALS.length);
+  }
+
+  let toastTimer = null;
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 1100);
+  }
+
+  /* ============================ input ============================ */
+  window.addEventListener("pointermove", (e) => {
+    pointer = { x: e.clientX, y: e.clientY };
+    if (isOpen) updateHot();
+  });
+  window.addEventListener("mousedown", (e) => {
+    if (!isOpen) return;
+    if (panelOpen) return;                                         // the foliant owns its clicks
+    if (e.target.closest && e.target.closest(".devbar")) return;   // prototype chrome
+    e.preventDefault();
+    confirm();
+  });
+  window.addEventListener("wheel", (e) => { if (isOpen) { e.preventDefault(); cycleMaterial(Math.sign(e.deltaY)); } }, { passive: false });
+  window.addEventListener("contextmenu", (e) => { if (isOpen) e.preventDefault(); });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isOpen) {
+      e.preventDefault();
+      if (panelOpen) closePanel();
+      else close(true);
+      return;
+    }
+    if (!isOpen) return;
+    if (e.key >= "1" && e.key <= "9") {
+      const n = parseInt(e.key, 10) - 1;
+      if (n < MATERIALS.length) selectMaterial(n);
+    }
+  });
+
+  // prototype entry: hold Tab (in-game this becomes the scroll gesture / key)
+  window.addEventListener("keydown", (e) => { if (e.key === "Tab" && !isOpen) { e.preventDefault(); openAt(); } });
+  openBtn.addEventListener("click", () => openAt());
+  if (foliantBack) foliantBack.addEventListener("click", () => closePanel());
+
+  /* ============================ public bridge ============================ */
+  // The in-game build will call these from the Java/MCEF side and subscribe to onSelect.
+  window.EclipseRadial = {
+    open: openAt,
+    close: () => close(false),
+    onSelect: (cb) => { onSelectListeners.add(cb); return () => onSelectListeners.delete(cb); },
+    setMaterial: (index) => selectMaterial(index),
+    // Java injects the client-computed palette: [{id, name, units, fragment, color}]
+    setMaterials: (list) => {
+      if (!Array.isArray(list)) return;
+      MATERIALS.length = 0;
+      list.forEach((m) => MATERIALS.push({
+        id: m.id,
+        name: m.name || m.id,
+        color: m.color || "#8a8a8a",
+        units: m.units,
+        fragment: !!m.fragment
+      }));
+      materialIndex = 0;
+      buildPalette();
+    }
+  };
+
+  updateScale();
+  build();
+
+  // ---- prototype/deeplink hooks (used for screenshots & manual checks) ----
+  // #open              → open the wheel centred
+  // #open=<sectorId>   → open and pre-hover that sector (shows the outward pop)
+  // &ingame            → hide the prototype chrome (dev toolbar + readout)
+  // e.g. index.html#open=gen&ingame
+  const rawHash = location.hash.replace(/^#/, "");
+  const tokens = rawHash.split(/[&,]/).filter(Boolean);
+  if (tokens.includes("ingame") || location.search.includes("ingame")) {
+    document.body.classList.add("ingame");
+  }
+  const openToken = tokens.find((token) => token.startsWith("open"));
+  if (openToken) {
+    const wanted = openToken.includes("=") ? openToken.split("=")[1] : null;
+    setTimeout(() => {
+      openAt();
+      // headless --virtual-time-budget does not fire rAF, so force the settled state
+      root.setAttribute("data-open", "true");
+      if (wanted && wanted.startsWith("panel:")) {
+        openPanel(wanted.slice("panel:".length));
+        return;
+      }
+      const idx = wanted ? SECTORS.findIndex((s) => s.id === wanted) : -1;
+      if (idx >= 0) {
+        const a = (angleFor(idx, SECTORS.length) * Math.PI) / 180;
+        renderInner(idx);
+        innerEls.forEach((el) => {           // settle immediately (headless has no rAF)
+          el.style.removeProperty("--recede");
+          el.style.removeProperty("--s");
+          el.style.opacity = "";
+          el.style.transitionDelay = "0ms";
+        });
+        const r = SUB_R * uiScale;            // out on the sub-ring so a child is hot
+        pointer = { x: center.x + Math.sin(a) * r, y: center.y - Math.cos(a) * r };
+      }
+      updateHot();
+    }, 30);
+  }
+})();
+</script>
+</body>
+</html>

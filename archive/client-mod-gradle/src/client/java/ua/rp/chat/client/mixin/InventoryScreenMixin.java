@@ -1,0 +1,13 @@
+package ua.rp.chat.client.mixin;
+
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.network.chat.Component;
+import org.spongepowered.asm.mixin.Mixin;
+
+@Mixin(InventoryScreen.class)
+public abstract class InventoryScreenMixin extends Screen {
+    protected InventoryScreenMixin(Component title) {
+        super(title);
+    }
+}

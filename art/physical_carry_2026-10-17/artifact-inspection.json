@@ -1,0 +1,35 @@
+{
+  "verified_utc": "2026-10-18T09:54:19.423045+00:00",
+  "artifacts": [
+    {
+      "path": "D:\\23\\fabric-server\\client-mod-gradle\\build\\libs\\client-1.5.68.jar",
+      "version": "1.5.68",
+      "mod_id": "eclipseclient",
+      "bytes": 5494924,
+      "sha256": "eb7a09277c17abe309c7ec90d9608a6252b22eea49153656ebb17767c5227a6b",
+      "entries": 859,
+      "required_entries_present": true,
+      "original_concept_01_sha256": "38b6681d69f0ab29a6b145910eadc3459362673467105f0c0d247b9e77d7dace",
+      "client_hooks_registered": true,
+      "carry_key_locales": [
+        "uk_ua",
+        "ru_ru",
+        "en_us"
+      ]
+    },
+    {
+      "path": "D:\\23\\fabric-server\\server\\build\\libs\\server-1.5.34.jar",
+      "version": "1.5.34",
+      "mod_id": "eclipseserver",
+      "bytes": 15649992,
+      "sha256": "99b9b6228656c525562b3b9f90aee692ce451e1ee537f31343c55b9ba7c72b06",
+      "entries": 464,
+      "required_entries_present": true
+    }
+  ],
+  "joint_check_assemble_passed": true,
+  "game_launched": false,
+  "runtime_mods_changed": false,
+  "published": false,
+  "verification_log_sha256": "f7f5d567d781463d4a28859371e40077b2278adffb13f4f06574551ba756071c"
+}

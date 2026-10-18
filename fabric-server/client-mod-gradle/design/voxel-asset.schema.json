@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eclipse-rp.local/schemas/voxel-asset.schema.json",
+  "title": "Eclipse RP deterministic voxel asset",
+  "type": "object",
+  "required": ["format", "asset", "origin", "display", "atlas", "faceProfiles", "geometry"],
+  "properties": {
+    "format": {"const": 1},
+    "asset": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+    "origin": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number"}],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "display": {
+      "type": "object",
+      "required": ["anchorY", "fixedScale"],
+      "properties": {
+        "anchorY": {"type": "number"},
+        "fixedScale": {"type": "number", "exclusiveMinimum": 0, "maximum": 4}
+      }
+    },
+    "atlas": {
+      "type": "object",
+      "required": ["size", "cellSize", "swatches"],
+      "properties": {
+        "size": {"type": "integer", "minimum": 4, "maximum": 256},
+        "cellSize": {"type": "integer", "minimum": 1},
+        "swatches": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "type": "object",
+            "required": ["name", "cell", "rgb"],
+            "properties": {
+              "name": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+              "cell": {
+                "type": "array",
+                "prefixItems": [{"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 0}],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "rgb": {
+                "type": "array",
+                "prefixItems": [
+                  {"type": "integer", "minimum": 0, "maximum": 255},
+                  {"type": "integer", "minimum": 0, "maximum": 255},
+                  {"type": "integer", "minimum": 0, "maximum": 255}
+                ],
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "faceProfiles": {"type": "object", "minProperties": 1},
+    "geometry": {"type": "object"}
+  }
+}

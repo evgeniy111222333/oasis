@@ -16,55 +16,115 @@ import java.net.URI;
 
 public class BodyStatusScreen extends Screen {
     private final String url;
+    private final String traceId = McefDiagnostics.nextTraceId("body");
+    private final long createdNanos = System.nanoTime();
     private MCEFBrowser browser;
-    private String fallbackStatus = "Opening body status...";
+    private int ticksWithoutTexture;
+    private int ticksOpen;
+    private boolean browserClosed;
+    private String fallbackStatus = "Открываем состояние персонажа...";
     private int panelX;
     private int panelY;
     private int panelWidth;
     private int panelHeight;
+    private boolean lastTextureReady;
+    private boolean firstFallbackLogged;
+    private boolean firstBlitLogged;
+    private int lastBrowserWidth = -1;
+    private int lastBrowserHeight = -1;
 
     public BodyStatusScreen(String url) {
-        super(Component.literal("Oasis Body Status"));
+        super(Component.literal("Eclipse: состояние персонажа"));
         this.url = url;
+        log("constructed: url=" + McefDiagnostics.safeUrl(url));
     }
 
     @Override
     protected void init() {
         super.init();
+        log("init start: screen=" + width + "x" + height + ", guiScale=" + getGuiScale()
+                + ", " + McefDiagnostics.browserState(browser));
         try {
             if (!MCEF.isInitialized()) {
+                log("MCEF.initialize start");
                 MCEF.initialize();
+                log("MCEF.initialize complete");
             }
-            if (browser == null) {
-                browser = MCEF.createBrowser(url, true);
-            }
+            browser = MCEF.createBrowser(url, true);
+            log("browser created: " + McefDiagnostics.browserState(browser));
+            browserClosed = false;
             resizeBrowser();
             if (browser != null) {
                 browser.setFocus(true);
             }
         } catch (Throwable t) {
             browser = null;
-            fallbackStatus = "Embedded status panel is unavailable. Opening in your browser.";
-            OasisAuthMod.LOGGER.warn("MCEF body status failed, using external fallback.", t);
+            fallbackStatus = "Встроенная панель состояния недоступна. Открываем в браузере.";
+            EclipseClientMod.LOGGER.warn("MCEF body status failed, using external fallback.", t);
+            log("init failed: " + t.getClass().getName() + ": " + String.valueOf(t.getMessage()));
             openExternalFallback();
         }
+        log("init complete: " + McefDiagnostics.browserState(browser));
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-        extractBackground(graphics, mouseX, mouseY, delta);
+        super.extractRenderState(graphics, mouseX, mouseY, delta);
         updatePanelBounds();
-        graphics.fill(0, 0, width, height, 0x88000000);
         if (browser != null && browser.isTextureReady()) {
             Identifier texture = browser.getTextureIdentifier();
             if (texture != null) {
+                if (!firstBlitLogged) {
+                    firstBlitLogged = true;
+                    log("first browser blit: texture=" + texture + ", panel=" + panelWidth + "x" + panelHeight
+                            + "@" + panelX + "," + panelY + ", " + McefDiagnostics.browserState(browser));
+                }
                 graphics.blit(RenderPipelines.GUI_TEXTURED, texture, panelX, panelY, 0.0f, 0.0f, panelWidth, panelHeight, panelWidth, panelHeight);
                 return;
             }
         }
+        if (!firstFallbackLogged) {
+            firstFallbackLogged = true;
+            log("rendering fallback because browser texture is unavailable: " + McefDiagnostics.browserState(browser));
+        }
         graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF012100F);
-        graphics.centeredText(font, "OASIS BODY STATUS", width / 2, height / 2 - 12, 0xFFE3C099);
+        graphics.centeredText(font, "ECLIPSE: СТАТУС", width / 2, height / 2 - 12, 0xFFE3C099);
         graphics.centeredText(font, fallbackStatus, width / 2, height / 2 + 10, 0xFFA5C3C4);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        ticksOpen++;
+        boolean textureReady = browser != null && browser.isTextureReady();
+        if (textureReady != lastTextureReady) {
+            lastTextureReady = textureReady;
+            log("textureReady changed to " + textureReady + ": " + McefDiagnostics.browserState(browser));
+        }
+        if (browser != null && !textureReady) {
+            ticksWithoutTexture++;
+            if (ticksWithoutTexture == 100) {
+                EclipseClientMod.LOGGER.warn("[BODY][" + traceId + "] MCEF browser has not produced a texture after 5 seconds: "
+                        + McefDiagnostics.browserState(browser));
+            }
+        } else {
+            ticksWithoutTexture = 0;
+        }
+        if (ticksWithoutTexture == 1 || ticksWithoutTexture == 5 || ticksWithoutTexture == 20
+                || ticksWithoutTexture == 40 || ticksWithoutTexture == 80) {
+            log("waiting for texture, tick=" + ticksWithoutTexture + ": " + McefDiagnostics.browserState(browser));
+        }
+        if (ticksOpen == 1 || ticksOpen == 5 || ticksOpen == 20 || ticksOpen == 40
+                || ticksOpen == 80 || ticksOpen == 100 || ticksOpen == 200
+                || ticksOpen == 400 || ticksOpen == 800) {
+            log("screen heartbeat tick=" + ticksOpen + ": " + McefDiagnostics.browserState(browser));
+        }
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        // The medical panel is an in-world overlay. Leaving this empty prevents
+        // Screen from drawing the profile-dependent menu panorama behind MCEF.
     }
 
     @Override
@@ -141,13 +201,19 @@ public class BodyStatusScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (browser != null) {
-            browser.close();
-            browser = null;
-        }
+        log("onClose invoked");
+        closeBrowser("onClose");
         if (minecraft != null) {
             minecraft.setScreen(null);
         }
+    }
+
+    @Override
+    public void removed() {
+        log("removed from Minecraft; currentScreen="
+                + (minecraft == null || minecraft.screen == null ? "none" : minecraft.screen.getClass().getSimpleName()));
+        closeBrowser("removed");
+        super.removed();
     }
 
     @Override
@@ -161,12 +227,21 @@ public class BodyStatusScreen extends Screen {
         }
         updatePanelBounds();
         int scale = Math.max(1, minecraft.getWindow().getGuiScale());
-        browser.resize(Math.max(1, panelWidth * scale), Math.max(1, panelHeight * scale));
+        int browserWidth = Math.max(1, panelWidth * scale);
+        int browserHeight = Math.max(1, panelHeight * scale);
+        browser.resize(browserWidth, browserHeight);
+        if (browserWidth != lastBrowserWidth || browserHeight != lastBrowserHeight) {
+            lastBrowserWidth = browserWidth;
+            lastBrowserHeight = browserHeight;
+            log("browser resize requested: screen=" + width + "x" + height + ", panel="
+                    + panelWidth + "x" + panelHeight + "@" + panelX + "," + panelY
+                    + ", scale=" + scale + ", browser=" + browserWidth + "x" + browserHeight);
+        }
     }
 
     private void updatePanelBounds() {
-        panelWidth = Math.min(640, Math.max(420, width - 80));
-        panelHeight = Math.min(390, Math.max(300, height - 72));
+        panelWidth = Math.min(980, Math.max(680, width - 48));
+        panelHeight = Math.min(620, Math.max(460, height - 48));
         panelX = (width - panelWidth) / 2;
         panelY = (height - panelHeight) / 2;
     }
@@ -183,12 +258,30 @@ public class BodyStatusScreen extends Screen {
         return minecraft == null ? 1 : Math.max(1, minecraft.getWindow().getGuiScale());
     }
 
+    private void closeBrowser(String reason) {
+        if (browser == null || browserClosed) {
+            log("close skipped: reason=" + reason + ", browser=" + (browser == null ? "null" : "already-closed"));
+            return;
+        }
+        browserClosed = true;
+        log("closing browser: reason=" + reason + ", " + McefDiagnostics.browserState(browser));
+        browser.setFocus(false);
+        browser.close();
+        browser = null;
+        log("browser close returned: reason=" + reason);
+    }
+
     private void openExternalFallback() {
         try {
             Util.getPlatform().openUri(new URI(url));
         } catch (Exception e) {
-            fallbackStatus = "Could not open body status.";
-            OasisAuthMod.LOGGER.warn("Failed to open body status URL.", e);
+            fallbackStatus = "Не удалось открыть состояние персонажа.";
+            EclipseClientMod.LOGGER.warn("Failed to open body status URL.", e);
         }
+    }
+
+    private void log(String message) {
+        long elapsedMs = (System.nanoTime() - createdNanos) / 1_000_000L;
+        EclipseClientMod.LOGGER.info("[BODY][" + traceId + "][+" + elapsedMs + "ms] " + message);
     }
 }

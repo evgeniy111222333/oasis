@@ -12,14 +12,16 @@ import ua.rp.chat.client.camera.SmartCameraManager;
 @Mixin(LevelRenderer.class)
 public class LevelRendererMixin {
     @Inject(method = "extractLevel", at = @At("HEAD"))
-    private void oasis$beforeExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
-        if (SmartCameraManager.getInstance().isFirstPersonBodyEnabled()) {
-            SmartCameraManager.getInstance().setRenderingFirstPersonPlayer(true);
-        }
+    private void eclipse$beforeExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
+        SmartCameraManager cameraManager = SmartCameraManager.getInstance();
+        cameraManager.setRenderingFirstPersonPlayer(cameraManager.isFullBodyFirstPersonEnabled());
     }
 
     @Inject(method = "extractLevel", at = @At("RETURN"))
-    private void oasis$afterExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
-        SmartCameraManager.getInstance().setRenderingFirstPersonPlayer(false);
+    private void eclipse$afterExtractLevel(DeltaTracker deltaTracker, Camera camera, float partialTick, CallbackInfo ci) {
+        SmartCameraManager cameraManager = SmartCameraManager.getInstance();
+        if (!cameraManager.isFullBodyFirstPersonEnabled()) {
+            cameraManager.setRenderingFirstPersonPlayer(false);
+        }
     }
 }
