@@ -9,7 +9,8 @@
       "ua.rp.chat.EclipseClientCore"
     ],
     "client": [
-      "ua.rp.chat.client.EclipseClientMod"
+      "ua.rp.chat.client.EclipseClientMod",
+      "ua.rp.chat.client.carry.CarryClient"
     ]
   },
   "mixins": [

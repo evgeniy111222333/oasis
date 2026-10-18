@@ -15,13 +15,35 @@ import ua.rp.chat.microvoxel.MicrovoxelItemScale;
 
 @Mixin(ItemStackRenderState.class)
 public abstract class ItemStackRenderStateMixin implements MicrovoxelItemRenderState,
-        ua.rp.chat.client.modeleditor.ModelPlacementRenderState {
+        ua.rp.chat.client.modeleditor.ModelPlacementRenderState,
+        ua.rp.chat.client.carry.CarryGhostState {
     @Shadow ItemDisplayContext displayContext;
     @Shadow private int activeLayerCount;
     @Shadow private ItemStackRenderState.LayerRenderState[] layers;
     @Shadow public abstract void clear();
     @Shadow public abstract ItemStackRenderState.LayerRenderState newLayer();
     @Shadow public abstract void appendModelIdentityElement(Object identity);
+
+    @Override public boolean eclipse$hasCarryGhostQuads() {
+        for (int i = 0; i < activeLayerCount; i++)
+            if (layers[i] != null && !layers[i].prepareQuadList().isEmpty()) return true;
+        return false;
+    }
+
+    @Override public void eclipse$emitCarryGhost(com.mojang.blaze3d.vertex.PoseStack pose,
+            net.minecraft.client.renderer.MultiBufferSource.BufferSource buffers,
+            java.util.Set<net.minecraft.client.renderer.rendertype.RenderType> used, int color, int light) {
+        for (int i = 0; i < activeLayerCount; i++) {
+            var layer = layers[i];
+            if (layer == null) continue;
+            pose.pushPose();
+            ((ItemLayerRenderStateAccessor) (Object) layer).eclipse$applyCarryGhostTransform(pose.last());
+            for (var quad : layer.prepareQuadList()) {
+                ua.rp.chat.client.carry.CarryGhostVertices.emit(pose, quad, buffers, used, color, light);
+            }
+            pose.popPose();
+        }
+    }
 
     @Override
     public void eclipse$applyPlacement(ua.rp.chat.modeleditor.ModelPlacement placement) {

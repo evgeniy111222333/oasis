@@ -64,5 +64,8 @@
   "item.eclipseserver.carver_chisel_flat": "Flat chisel",
   "item.eclipseserver.carver_chisel_point": "Point chisel",
   "key.eclipseclient.tab_previous_page": "TAB: предыдущая страница",
-  "key.eclipseclient.tab_next_page": "TAB: следующая страница"
+  "key.eclipseclient.tab_next_page": "TAB: следующая страница",
+  "key.eclipse.carry_menu": "Held object: actions",
+  "key.eclipse.carry_rotate_left": "Placement: rotate left",
+  "key.eclipse.carry_rotate_right": "Placement: rotate right"
 }

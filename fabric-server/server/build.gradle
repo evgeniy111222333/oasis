@@ -857,6 +857,7 @@ tasks.register("verifyModelEditorWire", JavaExec) {
 }
 
 tasks.named("check") {
+    dependsOn tasks.named("verifyRoleplayPacing")
     dependsOn tasks.named("verifyModelEditor")
     dependsOn tasks.named("verifyModelEditorWire")
     dependsOn tasks.named("verifyCarverParity")
@@ -884,6 +885,14 @@ tasks.named("check") {
     dependsOn tasks.named("verifyCarver")
     dependsOn tasks.named("verifyMicrovoxelParentage")
     dependsOn tasks.named("verifyAppearanceLegacySkin")
+}
+
+tasks.register("verifyRoleplayPacing", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    description = "Checks authored RP walk/crouch pace with unchanged sprint and symptom composition."
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.locomotion.RoleplayPacingTest"
 }
 
 // Fast local loop: pure unit invariants only (no asset or file-contract checks).
@@ -924,3 +933,11 @@ tasks.register("syncServerDistribution", Copy) {
 tasks.named("build") {
     finalizedBy tasks.named("syncServerDistribution")
 }
+
+tasks.register("verifyPhysicalCarry", JavaExec) {
+    dependsOn tasks.named("testClasses")
+    group = "verification"
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "ua.rp.chat.carry.CarryServerTest"
+}
+tasks.named("check") { dependsOn tasks.named("verifyPhysicalCarry") }

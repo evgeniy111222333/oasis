@@ -87,3 +87,10 @@ __pycache__/
 
 # External reference codebase (LittleTiles), not part of this project
 /LittleTiles/
+
+# Runtime dumps and local scratch (not for publication)
+/fabric-server/debug/chunk-world-*
+/fabric-server/config/RPChat/*.json.bak
+/plugins/RPChat/*.dat
+distribution-git-backup-*/
+pre-publication-runtime/

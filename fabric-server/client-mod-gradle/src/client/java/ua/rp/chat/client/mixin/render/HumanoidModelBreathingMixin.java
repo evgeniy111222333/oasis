@@ -20,12 +20,18 @@ public class HumanoidModelBreathingMixin {
             at = @At("RETURN")
     )
     private void eclipse$applyArmorBreathing(HumanoidRenderState state, CallbackInfo ci) {
-        if ((Object) this instanceof PlayerModel || !(state instanceof AvatarRenderState avatar)
+        if ((Object) this instanceof PlayerModel) return;
+        HumanoidModel<?> model = (HumanoidModel<?>) (Object) this;
+        if (!(state instanceof AvatarRenderState candidate)
+                || !ua.rp.chat.client.animation.PlayerAnimationRig.active(candidate)) {
+            ua.rp.chat.client.animation.PlayerArmorAnimationRig.reset(model);
+        }
+        if (!(state instanceof AvatarRenderState avatar)
                 || avatar.isFallFlying || avatar.isVisuallySwimming || avatar.isPassenger) {
             return;
         }
 
-        HumanoidModel<?> model = (HumanoidModel<?>) (Object) this;
+        ua.rp.chat.client.animation.PlayerAnimationRig.applyArmor(model, avatar);
         BreathingPoseState.Sample sample = BreathingPoseState.sample(avatar);
         var respiration = sample.respiration();
         float amplitude = BreathingTorsoLayout.amplitude(
@@ -48,5 +54,6 @@ public class HumanoidModelBreathingMixin {
         model.rightArm.xRot += shoulder.forwardPitchRadians();
         model.leftArm.zRot -= shoulder.outwardRollRadians();
         model.rightArm.zRot += shoulder.outwardRollRadians();
+        ua.rp.chat.client.carry.CarryPoseRenderer.apply(model, avatar);
     }
 }

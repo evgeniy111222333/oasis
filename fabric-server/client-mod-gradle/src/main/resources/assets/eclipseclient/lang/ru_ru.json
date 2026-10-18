@@ -64,5 +64,8 @@
   "item.eclipseserver.carver_chisel_flat": "Долото плоское",
   "item.eclipseserver.carver_chisel_point": "Долото точечное",
   "key.eclipseclient.tab_previous_page": "TAB: предыдущая страница",
-  "key.eclipseclient.tab_next_page": "TAB: следующая страница"
+  "key.eclipseclient.tab_next_page": "TAB: следующая страница",
+  "key.eclipse.carry_menu": "Предмет в руках: действия",
+  "key.eclipse.carry_rotate_left": "Установка: повернуть влево",
+  "key.eclipse.carry_rotate_right": "Установка: повернуть вправо"
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1789494379188,
+  "savedAt": 1792318332181,
   "players": {
     "85307a7e-3cf5-39fe-98e5-639b63a71759": {
       "stamina": 100.0,
@@ -177,13 +177,13 @@
       }
     },
     "d252dd31-70b2-3c72-9702-56cf11bc067c": {
-      "stamina": 100.0,
-      "breathDebt": 0.0,
-      "fatigue": 0.0,
-      "blood": 100.0,
-      "lastDamage": 0.0,
-      "lastDamageCause": "",
-      "ticks": 58727,
+      "stamina": 9.30840568776039,
+      "breathDebt": 59.206345808214415,
+      "fatigue": 19.760316760436034,
+      "blood": 99.86860006376082,
+      "lastDamage": 0.3658238056953469,
+      "lastDamageCause": "projectile",
+      "ticks": 1601,
       "unconsciousTicks": 0,
       "parts": {
         "head": {
@@ -214,31 +214,49 @@
           "wounds": []
         },
         "chest": {
-          "condition": 100.0,
-          "bleeding": 0.0,
-          "pain": 0.0,
+          "condition": 93.41328473123792,
+          "bleeding": 4.108434141602707,
+          "pain": 4.993946592466495,
           "burn": 0.0,
           "fracture": false,
           "infected": false,
-          "openWound": false,
+          "openWound": true,
           "bandaged": false,
           "woundCleaned": false,
           "fractureStabilized": false,
           "tourniquet": false,
           "burnTreated": false,
-          "embeddedArrow": false,
-          "openWoundTicks": 0,
+          "embeddedArrow": true,
+          "openWoundTicks": 115,
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Немає",
-          "lastCause": "",
-          "woundSide": 0.0,
-          "woundHeight": 0.5,
-          "woundIntensity": 0.0,
-          "woundSeed": 0,
-          "woundProfile": -1,
-          "wounds": []
+          "injury": "Прокол",
+          "lastCause": "projectile",
+          "woundSide": -0.1327374279499054,
+          "woundHeight": 0.5884088873863218,
+          "woundIntensity": 0.20598848317743748,
+          "woundSeed": -7440158995328926628,
+          "woundProfile": 1,
+          "wounds": [
+            {
+              "id": -7440158995328926628,
+              "seed": -7440158995328926628,
+              "side": -0.1327374279499054,
+              "height": 0.5884088873863218,
+              "intensity": 0.20598848317743748,
+              "profile": 1,
+              "face": 2,
+              "flowWeight": 0.9059884548187256,
+              "directionX": -0.8887449318362564,
+              "directionY": -0.15318054218751878,
+              "directionZ": -0.4320511169184797,
+              "penetrationDepth": 0.052859193355140194,
+              "embeddedProjectile": true,
+              "projectileExit": false,
+              "projectileShallow": true
+            }
+          ]
         },
         "leftArm": {
           "condition": 100.0,
@@ -322,31 +340,49 @@
           "wounds": []
         },
         "rightLeg": {
-          "condition": 100.0,
-          "bleeding": 0.0,
-          "pain": 0.0,
+          "condition": 95.128,
+          "bleeding": 3.093000000000011,
+          "pain": 3.754000000000012,
           "burn": 0.0,
           "fracture": false,
           "infected": false,
-          "openWound": false,
+          "openWound": true,
           "bandaged": false,
           "woundCleaned": false,
           "fractureStabilized": false,
           "tourniquet": false,
           "burnTreated": false,
-          "embeddedArrow": false,
-          "openWoundTicks": 0,
+          "embeddedArrow": true,
+          "openWoundTicks": 55,
           "tourniquetTicks": 0,
           "medicatedTicks": 0,
           "antibioticsTicks": 0,
-          "injury": "Немає",
-          "lastCause": "",
-          "woundSide": 0.0,
-          "woundHeight": 0.5,
-          "woundIntensity": 0.0,
-          "woundSeed": 0,
-          "woundProfile": -1,
-          "wounds": []
+          "injury": "Прокол",
+          "lastCause": "projectile",
+          "woundSide": -0.7444086670875549,
+          "woundHeight": 0.16441529989242554,
+          "woundIntensity": 0.15236363636363637,
+          "woundSeed": 6887698890782979823,
+          "woundProfile": 1,
+          "wounds": [
+            {
+              "id": 6887698890782979823,
+              "seed": 6887698890782979823,
+              "side": -0.7444086670875549,
+              "height": 0.16441529989242554,
+              "intensity": 0.15236363636363637,
+              "profile": 1,
+              "face": 1,
+              "flowWeight": 0.852363646030426,
+              "directionX": 0.49745843604389856,
+              "directionY": -0.4811562997141883,
+              "directionZ": -0.7218197279474348,
+              "penetrationDepth": 0.03045893748878219,
+              "embeddedProjectile": true,
+              "projectileExit": false,
+              "projectileShallow": true
+            }
+          ]
         }
       }
     }

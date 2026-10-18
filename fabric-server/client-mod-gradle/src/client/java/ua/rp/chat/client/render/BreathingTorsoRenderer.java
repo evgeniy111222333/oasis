@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.geom.ModelPart;
 import org.joml.Vector3f;
 import ua.rp.chat.BreathingTorsoLayout;
+import ua.rp.chat.client.animation.PlayerTorsoSkeleton;
 
 import java.util.Collections;
 import java.util.Map;
@@ -36,6 +37,11 @@ public final class BreathingTorsoRenderer {
         data.intensity = clamp(finiteOr(intensity, 0.0), 0.0, 1.0);
         data.calm = clamp(finiteOr(calm, 1.0), 0.0, 1.0);
         data.firstPerson = firstPerson;
+    }
+
+    public static void setSkeleton(ModelPart marker, PlayerTorsoSkeleton skeleton) {
+        TorsoData data = TORSOS.get(marker);
+        if (data != null) data.skeleton = skeleton;
     }
 
     public static boolean renderIfRegistered(
@@ -78,6 +84,12 @@ public final class BreathingTorsoRenderer {
             positions[ring][1] = new Vector3f(bounds.maxX(), bounds.y(), bounds.minZ());
             positions[ring][2] = new Vector3f(bounds.maxX(), bounds.y(), bounds.maxZ());
             positions[ring][3] = new Vector3f(bounds.minX(), bounds.y(), bounds.maxZ());
+            if (data.skeleton != null) {
+                for (int corner = 0; corner < 4; corner++) {
+                    Vector3f point = positions[ring][corner];
+                    positions[ring][corner] = data.skeleton.deform(point.x, point.y, point.z);
+                }
+            }
             textureV[ring] = (textureY + 4.0f + bounds.y()) / 64.0f;
         }
 
@@ -160,6 +172,7 @@ public final class BreathingTorsoRenderer {
         private double intensity;
         private double calm = 1.0;
         private boolean firstPerson;
+        private PlayerTorsoSkeleton skeleton;
 
         private TorsoData(ModelPart jacketToggle) {
             this.jacketToggle = jacketToggle;

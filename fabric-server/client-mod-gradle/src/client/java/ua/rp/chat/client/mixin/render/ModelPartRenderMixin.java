@@ -8,11 +8,26 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import ua.rp.chat.client.render.BreathingTorsoRenderer;
+import ua.rp.chat.client.render.DistalLimbRenderer;
 import ua.rp.chat.client.render.ElbowBridgeRenderer;
 import ua.rp.chat.client.render.KneeBridgeRenderer;
 
 @Mixin(ModelPart.class)
 public class ModelPartRenderMixin {
+    @Inject(
+            method = "compile(Lcom/mojang/blaze3d/vertex/PoseStack$Pose;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void eclipse$compileDistalSkin(
+            PoseStack.Pose pose, VertexConsumer consumer,
+            int light, int overlay, int color, CallbackInfo ci) {
+        if (DistalLimbRenderer.compileIfRegistered(
+                (ModelPart) (Object) this, pose, consumer, light, overlay, color)) {
+            ci.cancel();
+        }
+    }
+
     @Inject(
             method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V",
             at = @At("HEAD"),

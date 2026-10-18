@@ -41,6 +41,7 @@ import ua.rp.chat.projectile.ArrowImpactPhysics;
 import ua.rp.chat.projectile.ArrowImpactRuntime;
 import ua.rp.chat.combat.CombatBodyZone;
 import ua.rp.chat.combat.CombatDamageProfile;
+import ua.rp.chat.locomotion.RoleplayPaceAttributes;
 
 import java.io.File;
 import java.io.FileReader;
@@ -389,6 +390,7 @@ public class StaminaManager {
 
     public void onQuit(ServerPlayer player) {
         bloodFx.clear(player, -1);
+        RoleplayPaceAttributes.clear(player);
         Vitals v = vitals.get(player.getUUID());
         if (v != null) {
             restorePlayerMovementAndSymptoms(player);
@@ -520,6 +522,7 @@ public class StaminaManager {
         saveTicks++;
         for (ServerPlayer player : plugin.getServer().getPlayerList().getPlayers()) {
             if (player.gameMode.getGameModeForPlayer() == GameType.SPECTATOR || !player.isAlive()) {
+                RoleplayPaceAttributes.clear(player);
                 continue;
             }
             Vitals v = getVitals(player);
@@ -748,6 +751,7 @@ public class StaminaManager {
     }
 
     private void restorePlayerMovementAndSymptoms(ServerPlayer player) {
+        RoleplayPaceAttributes.clear(player);
         setWalkSpeed(player, 0.2f);
         player.setSprinting(false);
         removeEffect(player, MobEffects.BLINDNESS);
@@ -901,6 +905,7 @@ public class StaminaManager {
         if (Math.abs((player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED) != null ? (float)(player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED).getBaseValue() * 2.0) : 0.2f) - walkSpeed) > 0.002f) {
             setWalkSpeed(player, walkSpeed);
         }
+        RoleplayPaceAttributes.apply(player);
     }
 
     private DamageProfile profileFor(DamageSource source, ServerPlayer victim) {

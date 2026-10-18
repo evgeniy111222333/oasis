@@ -63,6 +63,7 @@ public class RPChat implements DedicatedServerModInitializer {
     private ua.rp.chat.carver.CarverManager carverManager;
     private ua.rp.chat.modeleditor.ModelEditorManager modelEditorManager;
     private ItemPickupManager itemPickupManager;
+    private ua.rp.chat.carry.CarryManager carryManager;
     private SimpleConfig config;
     private Logger logger = Logger.getLogger("RPChat");
     private int tickCounter = 0;
@@ -144,6 +145,8 @@ public class RPChat implements DedicatedServerModInitializer {
         carverManager.reloadTuning();
         itemPickupManager = new ItemPickupManager(this);
         itemPickupManager.start();
+        carryManager = new ua.rp.chat.carry.CarryManager(this);
+        carryManager.register();
         ua.rp.chat.crawling.CrawlingServerManager.init(this::isPendingAuth);
         modelEditorManager = new ua.rp.chat.modeleditor.ModelEditorManager(this);
         modelEditorManager.register();
@@ -184,6 +187,7 @@ public class RPChat implements DedicatedServerModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register(srv -> server = srv);
         ServerLifecycleEvents.SERVER_STARTED.register(srv -> {
             microvoxelManager.start();
+            carryManager.start();
             authWebServer.start(webPort);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(srv -> onDisable());
@@ -196,6 +200,7 @@ public class RPChat implements DedicatedServerModInitializer {
             rpChatService.tickBubbles();
             microvoxelManager.tick();
             carverManager.tick();
+            carryManager.tick();
             bloodFootprintService.tick();
             bloodSurfaceFilmService.tick();
             if (tickCounter % 1200 == 0) carverManager.reloadTuning();
@@ -216,6 +221,7 @@ public class RPChat implements DedicatedServerModInitializer {
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, srv) -> {
             ServerPlayer player = handler.player;
+            carryManager.recover(player);
             authListener.onQuit(player);
             staminaManager.onQuit(player);
             
@@ -239,7 +245,7 @@ public class RPChat implements DedicatedServerModInitializer {
         // Register custom packet receivers
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.CombatIntentPayload.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
-            if (isPendingAuth(player)) return;
+            if (isPendingAuth(player) || carryManager.busy(player)) return;
             combatManager.handleIntent(player, payload.attackId(), payload.targetId(), payload.zoneOrdinal(), payload.hitRatio(), payload.lateral(), payload.distance());
         });
 
@@ -247,6 +253,7 @@ public class RPChat implements DedicatedServerModInitializer {
             ServerPlayer player = context.player();
             if (isPendingAuth(player)
                     && !MicrovoxelProtocol.isSynchronizationAction(payload.action())) return;
+            if (carryManager.busy(player) && !MicrovoxelProtocol.isSynchronizationAction(payload.action())) return;
             microvoxelManager.handleAction(player, payload.protocolVersion(), payload.transactionId(),
                     payload.sessionNonce(),
                     payload.action(), payload.x(), payload.y(), payload.z(), payload.cell(), payload.revision(),
@@ -268,6 +275,7 @@ public class RPChat implements DedicatedServerModInitializer {
             for (ua.rp.chat.client.microvoxel.MicrovoxelBatchPayload.Entry entry : payload.entries()) {
                 if (isPendingAuth(player)
                         && !MicrovoxelProtocol.isSynchronizationAction(entry.action())) return;
+                if (carryManager.busy(player) && !MicrovoxelProtocol.isSynchronizationAction(entry.action())) return;
                 microvoxelManager.handleAction(player, payload.protocolVersion(), entry.transactionId(),
                         payload.sessionNonce(),
                         entry.action(), entry.x(), entry.y(), entry.z(), entry.cell(), entry.revision(),
@@ -297,7 +305,7 @@ public class RPChat implements DedicatedServerModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(ua.rp.chat.client.carver.CarverActionPayload.TYPE,
                 (payload, context) -> {
                     ServerPlayer actionPlayer = context.player();
-                    if (isPendingAuth(actionPlayer)) return;
+                    if (isPendingAuth(actionPlayer) || carryManager.busy(actionPlayer)) return;
                     if (payload.protocolVersion() != ua.rp.chat.carver.CarverProtocol.VERSION) {
                         actionPlayer.sendSystemMessage(Component.literal(
                                 "Версия клиентского модуля резчика не совместима с сервером."), true);
@@ -311,7 +319,7 @@ public class RPChat implements DedicatedServerModInitializer {
         // Restore the gameplay hooks that previously came from Bukkit listeners.
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, level, hand) -> {
             if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
-            if (isPendingAuth(serverPlayer)) return InteractionResult.FAIL;
+            if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer)) return InteractionResult.FAIL;
             if (acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
             // Loose microvoxel fragments: RMB merges matching fragments, Shift+RMB splits one.
             if (microvoxelManager.consolidateFragments(
@@ -325,7 +333,7 @@ public class RPChat implements DedicatedServerModInitializer {
             if (!(player instanceof ServerPlayer serverPlayer) || !(level instanceof net.minecraft.server.level.ServerLevel serverLevel)) {
                 return InteractionResult.PASS;
             }
-            if (isPendingAuth(serverPlayer)) return InteractionResult.FAIL;
+            if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer)) return InteractionResult.FAIL;
             if (acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
             net.minecraft.core.BlockPos placementPos = hit.getBlockPos().relative(hit.getDirection());
             net.minecraft.world.item.ItemStack held = player.getItemInHand(hand);
@@ -384,7 +392,7 @@ public class RPChat implements DedicatedServerModInitializer {
 
         AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
             if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
-            if (isPendingAuth(serverPlayer)) return InteractionResult.FAIL;
+            if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer)) return InteractionResult.FAIL;
             if (acquaintanceManager.checkBoundAttack(serverPlayer)) return InteractionResult.FAIL;
             microvoxelManager.startMining(serverPlayer, pos);
             return InteractionResult.PASS;
@@ -392,7 +400,7 @@ public class RPChat implements DedicatedServerModInitializer {
 
         net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (player instanceof ServerPlayer serverPlayer) {
-                if (isPendingAuth(serverPlayer) || acquaintanceManager.checkBoundAttack(serverPlayer)) {
+                if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer) || acquaintanceManager.checkBoundAttack(serverPlayer)) {
                     return InteractionResult.FAIL;
                 }
             }
@@ -401,7 +409,7 @@ public class RPChat implements DedicatedServerModInitializer {
 
         net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
             if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
-            if (isPendingAuth(serverPlayer) || acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
+            if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer) || acquaintanceManager.onBoundInteract(serverPlayer)) return InteractionResult.FAIL;
             if (entity instanceof net.minecraft.world.entity.item.ItemEntity item) {
                 return itemPickupManager.onUseEntity(serverPlayer, item, hand);
             }
@@ -410,7 +418,7 @@ public class RPChat implements DedicatedServerModInitializer {
 
         net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> {
             if (!(player instanceof ServerPlayer serverPlayer)) return true;
-            if (isPendingAuth(serverPlayer) || acquaintanceManager.checkBoundAttack(serverPlayer)) return false;
+            if (isPendingAuth(serverPlayer) || carryManager.busy(serverPlayer) || acquaintanceManager.checkBoundAttack(serverPlayer)) return false;
             return !microvoxelManager.onBlockBreak(serverPlayer, pos);
         });
 
@@ -791,6 +799,7 @@ public class RPChat implements DedicatedServerModInitializer {
     }
 
     public void onDisable() {
+        if (carryManager != null) carryManager.shutdown();
         if (staminaManager != null) {
             staminaManager.shutdown();
         }
@@ -979,6 +988,8 @@ public class RPChat implements DedicatedServerModInitializer {
     public AcquaintanceManager getAcquaintanceManager() {
         return acquaintanceManager;
     }
+
+    public ua.rp.chat.carry.CarryManager getCarryManager() { return carryManager; }
 
     public MicrovoxelManager getMicrovoxelManager() {
         return microvoxelManager;

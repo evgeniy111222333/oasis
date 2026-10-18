@@ -38,6 +38,10 @@ public class PlayerItemInHandLayerMixin {
         Minecraft client = Minecraft.getInstance();
         if (client.level == null) return;
         if (client.level.getEntity(state.id) instanceof Player player) {
+            if (ua.rp.chat.client.carry.CarryClientState.holdingLarge(player.getUUID())) {
+                ci.cancel();
+                return;
+            }
             if (CarverBagRenderLayer.getWorkTicks(player, client) >= 0.0) {
                 ci.cancel();
             }

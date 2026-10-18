@@ -1,0 +1,11 @@
+gradle.projectsEvaluated {
+    def client = gradle.rootProject.project(':client')
+    client.tasks.named('processGametestResources').configure {
+        doLast {
+            def file = client.layout.buildDirectory.file('resources/gametest/fabric.mod.json').get().asFile
+            def json = new groovy.json.JsonSlurper().parse(file)
+            json.entrypoints['fabric-client-gametest'] = ['ua.rp.chat.RoleplayPacingClientGameTest']
+            file.setText(groovy.json.JsonOutput.toJson(json), 'UTF-8')
+        }
+    }
+}

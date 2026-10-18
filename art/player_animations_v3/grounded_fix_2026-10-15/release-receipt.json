@@ -1,0 +1,37 @@
+{
+  "verifiedAt": "2026-10-15T11:53:19.045Z",
+  "releaseId": "20261015-114959",
+  "clientVersion": "1.5.64",
+  "clientSha256": "2f43bd8a9edc3a5fd6aa7a59817ee6afeedfbdb9d932ca3edff5b175be707868",
+  "size": 4414378,
+  "mirrors": [
+    {
+      "name": "r2",
+      "manifestUrl": "https://dist.eclipse-roleplay.online/manifests/production.json?verify=1792065197564",
+      "jarUrl": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.64.jar?sha256=2f43bd8a9edc3a5fd6aa7a59817ee6afeedfbdb9d932ca3edff5b175be707868",
+      "releaseId": "20261015-114959",
+      "signed": true,
+      "size": 4414378,
+      "sha256": "2f43bd8a9edc3a5fd6aa7a59817ee6afeedfbdb9d932ca3edff5b175be707868"
+    },
+    {
+      "name": "github",
+      "manifestUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/manifests/production.json?verify=1792065197619",
+      "jarUrl": "https://raw.githubusercontent.com/evgeniy111222333/oasis/dist/client/mods/eclipse-client-1.5.64.jar?sha256=2f43bd8a9edc3a5fd6aa7a59817ee6afeedfbdb9d932ca3edff5b175be707868",
+      "releaseId": "20261015-114959",
+      "signed": true,
+      "size": 4414378,
+      "sha256": "2f43bd8a9edc3a5fd6aa7a59817ee6afeedfbdb9d932ca3edff5b175be707868"
+    }
+  ],
+  "verification": {
+    "nativeClientGameTests": "native-client.log",
+    "fullClientChecksAndBuild": "publish_update.log",
+    "screenshots": "screenshots/",
+    "animation": "22 authored clips and bones, distance-based grounded gait with world support anchors, native skin and armor contacts, immediate input release, observed braking, final support steps, crouch holds and real-time stop clocks",
+    "wideAndSlim": true,
+    "distantEditorPreview": true,
+    "allClipAndBoneProbes": true
+  },
+  "serverProtocolChanged": false
+}

@@ -1,0 +1,17 @@
+{
+  "verified_utc": "2026-10-18T10:00:59.437236+00:00",
+  "address": "localhost:25565",
+  "status_handshake": "ok",
+  "minecraft": {
+    "name": "26.1.2",
+    "protocol": 775
+  },
+  "players_online": 0,
+  "auth_port": 25580,
+  "server_mod_version": "1.5.34",
+  "server_mod_sha256": "99b9b6228656c525562b3b9f90aee692ce451e1ee537f31343c55b9ba7c72b06",
+  "carry_ledger_initialized": true,
+  "carry_profiles": "D:\\23\\fabric-server\\config\\RPChat\\carry-profiles.properties",
+  "startup_errors_detected": false,
+  "game_client_launched": false
+}

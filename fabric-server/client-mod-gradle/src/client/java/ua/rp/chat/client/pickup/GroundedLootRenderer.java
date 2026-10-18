@@ -71,7 +71,7 @@ public final class GroundedLootRenderer {
                 poseStack.translate(dx, profile.copyLift * copy, dz);
                 poseStack.mulPose(Axis.YP.rotationDegrees((seeded01(entity.getUUID(), copy * 31L) - 0.5f) * 8.0f));
             }
-            state.item.submit(poseStack, collector, light, OverlayTexture.NO_OVERLAY, 0);
+            state.item.submit(poseStack, collector, light, OverlayTexture.NO_OVERLAY, state.outlineColor);
             poseStack.popPose();
         }
         poseStack.popPose();

@@ -1,0 +1,1140 @@
+Compiled from "BuiltInBlockModels.java"
+public class net.minecraft.client.renderer.block.BuiltInBlockModels {
+  public net.minecraft.client.renderer.block.BuiltInBlockModels();
+    Code:
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: return
+
+  private static void addDefaults(net.minecraft.client.renderer.block.BuiltInBlockModels$Builder);
+    Code:
+         0: aload_0
+         1: getstatic     #7                  // Field net/minecraft/world/level/block/Blocks.AIR:Lnet/minecraft/world/level/block/Block;
+         4: invokestatic  #13                 // Method createAir:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/Block;)V
+         7: aload_0
+         8: getstatic     #19                 // Field net/minecraft/world/level/block/Blocks.CAVE_AIR:Lnet/minecraft/world/level/block/Block;
+        11: invokestatic  #13                 // Method createAir:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/Block;)V
+        14: aload_0
+        15: getstatic     #22                 // Field net/minecraft/world/level/block/Blocks.VOID_AIR:Lnet/minecraft/world/level/block/Block;
+        18: invokestatic  #13                 // Method createAir:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/Block;)V
+        21: aload_0
+        22: getstatic     #25                 // Field net/minecraft/world/level/block/SkullBlock$Types.SKELETON:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        25: getstatic     #31                 // Field net/minecraft/world/level/block/Blocks.SKELETON_SKULL:Lnet/minecraft/world/level/block/Block;
+        28: getstatic     #34                 // Field net/minecraft/world/level/block/Blocks.SKELETON_WALL_SKULL:Lnet/minecraft/world/level/block/Block;
+        31: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        34: aload_0
+        35: getstatic     #41                 // Field net/minecraft/world/level/block/SkullBlock$Types.ZOMBIE:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        38: getstatic     #44                 // Field net/minecraft/world/level/block/Blocks.ZOMBIE_HEAD:Lnet/minecraft/world/level/block/Block;
+        41: getstatic     #47                 // Field net/minecraft/world/level/block/Blocks.ZOMBIE_WALL_HEAD:Lnet/minecraft/world/level/block/Block;
+        44: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        47: aload_0
+        48: getstatic     #50                 // Field net/minecraft/world/level/block/SkullBlock$Types.CREEPER:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        51: getstatic     #53                 // Field net/minecraft/world/level/block/Blocks.CREEPER_HEAD:Lnet/minecraft/world/level/block/Block;
+        54: getstatic     #56                 // Field net/minecraft/world/level/block/Blocks.CREEPER_WALL_HEAD:Lnet/minecraft/world/level/block/Block;
+        57: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        60: aload_0
+        61: getstatic     #59                 // Field net/minecraft/world/level/block/SkullBlock$Types.DRAGON:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        64: getstatic     #62                 // Field net/minecraft/world/level/block/Blocks.DRAGON_HEAD:Lnet/minecraft/world/level/block/Block;
+        67: getstatic     #65                 // Field net/minecraft/world/level/block/Blocks.DRAGON_WALL_HEAD:Lnet/minecraft/world/level/block/Block;
+        70: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        73: aload_0
+        74: getstatic     #68                 // Field net/minecraft/world/level/block/SkullBlock$Types.PIGLIN:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        77: getstatic     #71                 // Field net/minecraft/world/level/block/Blocks.PIGLIN_HEAD:Lnet/minecraft/world/level/block/Block;
+        80: getstatic     #74                 // Field net/minecraft/world/level/block/Blocks.PIGLIN_WALL_HEAD:Lnet/minecraft/world/level/block/Block;
+        83: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        86: aload_0
+        87: getstatic     #77                 // Field net/minecraft/world/level/block/SkullBlock$Types.WITHER_SKELETON:Lnet/minecraft/world/level/block/SkullBlock$Types;
+        90: getstatic     #80                 // Field net/minecraft/world/level/block/Blocks.WITHER_SKELETON_SKULL:Lnet/minecraft/world/level/block/Block;
+        93: getstatic     #83                 // Field net/minecraft/world/level/block/Blocks.WITHER_SKELETON_WALL_SKULL:Lnet/minecraft/world/level/block/Block;
+        96: invokestatic  #37                 // Method createMobHeads:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/SkullBlock$Types;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+        99: aload_0
+       100: invokestatic  #86                 // Method createPlayerHead:()Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       103: getstatic     #90                 // Field net/minecraft/world/level/block/Blocks.PLAYER_HEAD:Lnet/minecraft/world/level/block/Block;
+       106: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       109: aload_0
+       110: invokestatic  #99                 // Method createPlayerWallHead:()Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       113: getstatic     #102                // Field net/minecraft/world/level/block/Blocks.PLAYER_WALL_HEAD:Lnet/minecraft/world/level/block/Block;
+       116: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       119: aload_0
+       120: getstatic     #105                // Field net/minecraft/world/item/DyeColor.WHITE:Lnet/minecraft/world/item/DyeColor;
+       123: getstatic     #111                // Field net/minecraft/world/level/block/Blocks.WHITE_BANNER:Lnet/minecraft/world/level/block/Block;
+       126: getstatic     #114                // Field net/minecraft/world/level/block/Blocks.WHITE_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       129: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       132: aload_0
+       133: getstatic     #121                // Field net/minecraft/world/item/DyeColor.ORANGE:Lnet/minecraft/world/item/DyeColor;
+       136: getstatic     #124                // Field net/minecraft/world/level/block/Blocks.ORANGE_BANNER:Lnet/minecraft/world/level/block/Block;
+       139: getstatic     #127                // Field net/minecraft/world/level/block/Blocks.ORANGE_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       142: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       145: aload_0
+       146: getstatic     #130                // Field net/minecraft/world/item/DyeColor.MAGENTA:Lnet/minecraft/world/item/DyeColor;
+       149: getstatic     #133                // Field net/minecraft/world/level/block/Blocks.MAGENTA_BANNER:Lnet/minecraft/world/level/block/Block;
+       152: getstatic     #136                // Field net/minecraft/world/level/block/Blocks.MAGENTA_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       155: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       158: aload_0
+       159: getstatic     #139                // Field net/minecraft/world/item/DyeColor.LIGHT_BLUE:Lnet/minecraft/world/item/DyeColor;
+       162: getstatic     #142                // Field net/minecraft/world/level/block/Blocks.LIGHT_BLUE_BANNER:Lnet/minecraft/world/level/block/Block;
+       165: getstatic     #145                // Field net/minecraft/world/level/block/Blocks.LIGHT_BLUE_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       168: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       171: aload_0
+       172: getstatic     #148                // Field net/minecraft/world/item/DyeColor.YELLOW:Lnet/minecraft/world/item/DyeColor;
+       175: getstatic     #151                // Field net/minecraft/world/level/block/Blocks.YELLOW_BANNER:Lnet/minecraft/world/level/block/Block;
+       178: getstatic     #154                // Field net/minecraft/world/level/block/Blocks.YELLOW_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       181: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       184: aload_0
+       185: getstatic     #157                // Field net/minecraft/world/item/DyeColor.LIME:Lnet/minecraft/world/item/DyeColor;
+       188: getstatic     #160                // Field net/minecraft/world/level/block/Blocks.LIME_BANNER:Lnet/minecraft/world/level/block/Block;
+       191: getstatic     #163                // Field net/minecraft/world/level/block/Blocks.LIME_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       194: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       197: aload_0
+       198: getstatic     #166                // Field net/minecraft/world/item/DyeColor.PINK:Lnet/minecraft/world/item/DyeColor;
+       201: getstatic     #169                // Field net/minecraft/world/level/block/Blocks.PINK_BANNER:Lnet/minecraft/world/level/block/Block;
+       204: getstatic     #172                // Field net/minecraft/world/level/block/Blocks.PINK_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       207: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       210: aload_0
+       211: getstatic     #175                // Field net/minecraft/world/item/DyeColor.GRAY:Lnet/minecraft/world/item/DyeColor;
+       214: getstatic     #178                // Field net/minecraft/world/level/block/Blocks.GRAY_BANNER:Lnet/minecraft/world/level/block/Block;
+       217: getstatic     #181                // Field net/minecraft/world/level/block/Blocks.GRAY_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       220: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       223: aload_0
+       224: getstatic     #184                // Field net/minecraft/world/item/DyeColor.LIGHT_GRAY:Lnet/minecraft/world/item/DyeColor;
+       227: getstatic     #187                // Field net/minecraft/world/level/block/Blocks.LIGHT_GRAY_BANNER:Lnet/minecraft/world/level/block/Block;
+       230: getstatic     #190                // Field net/minecraft/world/level/block/Blocks.LIGHT_GRAY_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       233: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       236: aload_0
+       237: getstatic     #193                // Field net/minecraft/world/item/DyeColor.CYAN:Lnet/minecraft/world/item/DyeColor;
+       240: getstatic     #196                // Field net/minecraft/world/level/block/Blocks.CYAN_BANNER:Lnet/minecraft/world/level/block/Block;
+       243: getstatic     #199                // Field net/minecraft/world/level/block/Blocks.CYAN_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       246: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       249: aload_0
+       250: getstatic     #202                // Field net/minecraft/world/item/DyeColor.PURPLE:Lnet/minecraft/world/item/DyeColor;
+       253: getstatic     #205                // Field net/minecraft/world/level/block/Blocks.PURPLE_BANNER:Lnet/minecraft/world/level/block/Block;
+       256: getstatic     #208                // Field net/minecraft/world/level/block/Blocks.PURPLE_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       259: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       262: aload_0
+       263: getstatic     #211                // Field net/minecraft/world/item/DyeColor.BLUE:Lnet/minecraft/world/item/DyeColor;
+       266: getstatic     #214                // Field net/minecraft/world/level/block/Blocks.BLUE_BANNER:Lnet/minecraft/world/level/block/Block;
+       269: getstatic     #217                // Field net/minecraft/world/level/block/Blocks.BLUE_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       272: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       275: aload_0
+       276: getstatic     #220                // Field net/minecraft/world/item/DyeColor.BROWN:Lnet/minecraft/world/item/DyeColor;
+       279: getstatic     #223                // Field net/minecraft/world/level/block/Blocks.BROWN_BANNER:Lnet/minecraft/world/level/block/Block;
+       282: getstatic     #226                // Field net/minecraft/world/level/block/Blocks.BROWN_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       285: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       288: aload_0
+       289: getstatic     #229                // Field net/minecraft/world/item/DyeColor.GREEN:Lnet/minecraft/world/item/DyeColor;
+       292: getstatic     #232                // Field net/minecraft/world/level/block/Blocks.GREEN_BANNER:Lnet/minecraft/world/level/block/Block;
+       295: getstatic     #235                // Field net/minecraft/world/level/block/Blocks.GREEN_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       298: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       301: aload_0
+       302: getstatic     #238                // Field net/minecraft/world/item/DyeColor.RED:Lnet/minecraft/world/item/DyeColor;
+       305: getstatic     #241                // Field net/minecraft/world/level/block/Blocks.RED_BANNER:Lnet/minecraft/world/level/block/Block;
+       308: getstatic     #244                // Field net/minecraft/world/level/block/Blocks.RED_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       311: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       314: aload_0
+       315: getstatic     #247                // Field net/minecraft/world/item/DyeColor.BLACK:Lnet/minecraft/world/item/DyeColor;
+       318: getstatic     #250                // Field net/minecraft/world/level/block/Blocks.BLACK_BANNER:Lnet/minecraft/world/level/block/Block;
+       321: getstatic     #253                // Field net/minecraft/world/level/block/Blocks.BLACK_WALL_BANNER:Lnet/minecraft/world/level/block/Block;
+       324: invokestatic  #117                // Method createBanners:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       327: aload_0
+       328: getstatic     #105                // Field net/minecraft/world/item/DyeColor.WHITE:Lnet/minecraft/world/item/DyeColor;
+       331: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       334: getstatic     #260                // Field net/minecraft/world/level/block/Blocks.WHITE_BED:Lnet/minecraft/world/level/block/Block;
+       337: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       340: aload_0
+       341: getstatic     #121                // Field net/minecraft/world/item/DyeColor.ORANGE:Lnet/minecraft/world/item/DyeColor;
+       344: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       347: getstatic     #263                // Field net/minecraft/world/level/block/Blocks.ORANGE_BED:Lnet/minecraft/world/level/block/Block;
+       350: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       353: aload_0
+       354: getstatic     #130                // Field net/minecraft/world/item/DyeColor.MAGENTA:Lnet/minecraft/world/item/DyeColor;
+       357: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       360: getstatic     #266                // Field net/minecraft/world/level/block/Blocks.MAGENTA_BED:Lnet/minecraft/world/level/block/Block;
+       363: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       366: aload_0
+       367: getstatic     #139                // Field net/minecraft/world/item/DyeColor.LIGHT_BLUE:Lnet/minecraft/world/item/DyeColor;
+       370: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       373: getstatic     #269                // Field net/minecraft/world/level/block/Blocks.LIGHT_BLUE_BED:Lnet/minecraft/world/level/block/Block;
+       376: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       379: aload_0
+       380: getstatic     #148                // Field net/minecraft/world/item/DyeColor.YELLOW:Lnet/minecraft/world/item/DyeColor;
+       383: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       386: getstatic     #272                // Field net/minecraft/world/level/block/Blocks.YELLOW_BED:Lnet/minecraft/world/level/block/Block;
+       389: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       392: aload_0
+       393: getstatic     #157                // Field net/minecraft/world/item/DyeColor.LIME:Lnet/minecraft/world/item/DyeColor;
+       396: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       399: getstatic     #275                // Field net/minecraft/world/level/block/Blocks.LIME_BED:Lnet/minecraft/world/level/block/Block;
+       402: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       405: aload_0
+       406: getstatic     #166                // Field net/minecraft/world/item/DyeColor.PINK:Lnet/minecraft/world/item/DyeColor;
+       409: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       412: getstatic     #278                // Field net/minecraft/world/level/block/Blocks.PINK_BED:Lnet/minecraft/world/level/block/Block;
+       415: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       418: aload_0
+       419: getstatic     #175                // Field net/minecraft/world/item/DyeColor.GRAY:Lnet/minecraft/world/item/DyeColor;
+       422: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       425: getstatic     #281                // Field net/minecraft/world/level/block/Blocks.GRAY_BED:Lnet/minecraft/world/level/block/Block;
+       428: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       431: aload_0
+       432: getstatic     #184                // Field net/minecraft/world/item/DyeColor.LIGHT_GRAY:Lnet/minecraft/world/item/DyeColor;
+       435: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       438: getstatic     #284                // Field net/minecraft/world/level/block/Blocks.LIGHT_GRAY_BED:Lnet/minecraft/world/level/block/Block;
+       441: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       444: aload_0
+       445: getstatic     #193                // Field net/minecraft/world/item/DyeColor.CYAN:Lnet/minecraft/world/item/DyeColor;
+       448: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       451: getstatic     #287                // Field net/minecraft/world/level/block/Blocks.CYAN_BED:Lnet/minecraft/world/level/block/Block;
+       454: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       457: aload_0
+       458: getstatic     #202                // Field net/minecraft/world/item/DyeColor.PURPLE:Lnet/minecraft/world/item/DyeColor;
+       461: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       464: getstatic     #290                // Field net/minecraft/world/level/block/Blocks.PURPLE_BED:Lnet/minecraft/world/level/block/Block;
+       467: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       470: aload_0
+       471: getstatic     #211                // Field net/minecraft/world/item/DyeColor.BLUE:Lnet/minecraft/world/item/DyeColor;
+       474: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       477: getstatic     #293                // Field net/minecraft/world/level/block/Blocks.BLUE_BED:Lnet/minecraft/world/level/block/Block;
+       480: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       483: aload_0
+       484: getstatic     #220                // Field net/minecraft/world/item/DyeColor.BROWN:Lnet/minecraft/world/item/DyeColor;
+       487: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       490: getstatic     #296                // Field net/minecraft/world/level/block/Blocks.BROWN_BED:Lnet/minecraft/world/level/block/Block;
+       493: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       496: aload_0
+       497: getstatic     #229                // Field net/minecraft/world/item/DyeColor.GREEN:Lnet/minecraft/world/item/DyeColor;
+       500: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       503: getstatic     #299                // Field net/minecraft/world/level/block/Blocks.GREEN_BED:Lnet/minecraft/world/level/block/Block;
+       506: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       509: aload_0
+       510: getstatic     #238                // Field net/minecraft/world/item/DyeColor.RED:Lnet/minecraft/world/item/DyeColor;
+       513: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       516: getstatic     #302                // Field net/minecraft/world/level/block/Blocks.RED_BED:Lnet/minecraft/world/level/block/Block;
+       519: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       522: aload_0
+       523: getstatic     #247                // Field net/minecraft/world/item/DyeColor.BLACK:Lnet/minecraft/world/item/DyeColor;
+       526: invokestatic  #256                // Method createBed:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       529: getstatic     #305                // Field net/minecraft/world/level/block/Blocks.BLACK_BED:Lnet/minecraft/world/level/block/Block;
+       532: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       535: aload_0
+       536: invokestatic  #308                // Method createShulkerBox:()Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       539: getstatic     #311                // Field net/minecraft/world/level/block/Blocks.SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       542: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       545: aload_0
+       546: getstatic     #105                // Field net/minecraft/world/item/DyeColor.WHITE:Lnet/minecraft/world/item/DyeColor;
+       549: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       552: getstatic     #317                // Field net/minecraft/world/level/block/Blocks.WHITE_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       555: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       558: aload_0
+       559: getstatic     #121                // Field net/minecraft/world/item/DyeColor.ORANGE:Lnet/minecraft/world/item/DyeColor;
+       562: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       565: getstatic     #320                // Field net/minecraft/world/level/block/Blocks.ORANGE_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       568: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       571: aload_0
+       572: getstatic     #130                // Field net/minecraft/world/item/DyeColor.MAGENTA:Lnet/minecraft/world/item/DyeColor;
+       575: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       578: getstatic     #323                // Field net/minecraft/world/level/block/Blocks.MAGENTA_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       581: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       584: aload_0
+       585: getstatic     #139                // Field net/minecraft/world/item/DyeColor.LIGHT_BLUE:Lnet/minecraft/world/item/DyeColor;
+       588: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       591: getstatic     #326                // Field net/minecraft/world/level/block/Blocks.LIGHT_BLUE_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       594: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       597: aload_0
+       598: getstatic     #148                // Field net/minecraft/world/item/DyeColor.YELLOW:Lnet/minecraft/world/item/DyeColor;
+       601: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       604: getstatic     #329                // Field net/minecraft/world/level/block/Blocks.YELLOW_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       607: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       610: aload_0
+       611: getstatic     #157                // Field net/minecraft/world/item/DyeColor.LIME:Lnet/minecraft/world/item/DyeColor;
+       614: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       617: getstatic     #332                // Field net/minecraft/world/level/block/Blocks.LIME_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       620: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       623: aload_0
+       624: getstatic     #166                // Field net/minecraft/world/item/DyeColor.PINK:Lnet/minecraft/world/item/DyeColor;
+       627: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       630: getstatic     #335                // Field net/minecraft/world/level/block/Blocks.PINK_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       633: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       636: aload_0
+       637: getstatic     #175                // Field net/minecraft/world/item/DyeColor.GRAY:Lnet/minecraft/world/item/DyeColor;
+       640: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       643: getstatic     #338                // Field net/minecraft/world/level/block/Blocks.GRAY_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       646: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       649: aload_0
+       650: getstatic     #184                // Field net/minecraft/world/item/DyeColor.LIGHT_GRAY:Lnet/minecraft/world/item/DyeColor;
+       653: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       656: getstatic     #341                // Field net/minecraft/world/level/block/Blocks.LIGHT_GRAY_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       659: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       662: aload_0
+       663: getstatic     #193                // Field net/minecraft/world/item/DyeColor.CYAN:Lnet/minecraft/world/item/DyeColor;
+       666: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       669: getstatic     #344                // Field net/minecraft/world/level/block/Blocks.CYAN_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       672: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       675: aload_0
+       676: getstatic     #202                // Field net/minecraft/world/item/DyeColor.PURPLE:Lnet/minecraft/world/item/DyeColor;
+       679: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       682: getstatic     #347                // Field net/minecraft/world/level/block/Blocks.PURPLE_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       685: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       688: aload_0
+       689: getstatic     #211                // Field net/minecraft/world/item/DyeColor.BLUE:Lnet/minecraft/world/item/DyeColor;
+       692: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       695: getstatic     #350                // Field net/minecraft/world/level/block/Blocks.BLUE_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       698: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       701: aload_0
+       702: getstatic     #220                // Field net/minecraft/world/item/DyeColor.BROWN:Lnet/minecraft/world/item/DyeColor;
+       705: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       708: getstatic     #353                // Field net/minecraft/world/level/block/Blocks.BROWN_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       711: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       714: aload_0
+       715: getstatic     #229                // Field net/minecraft/world/item/DyeColor.GREEN:Lnet/minecraft/world/item/DyeColor;
+       718: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       721: getstatic     #356                // Field net/minecraft/world/level/block/Blocks.GREEN_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       724: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       727: aload_0
+       728: getstatic     #238                // Field net/minecraft/world/item/DyeColor.RED:Lnet/minecraft/world/item/DyeColor;
+       731: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       734: getstatic     #359                // Field net/minecraft/world/level/block/Blocks.RED_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       737: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       740: aload_0
+       741: getstatic     #247                // Field net/minecraft/world/item/DyeColor.BLACK:Lnet/minecraft/world/item/DyeColor;
+       744: invokestatic  #314                // Method createDyedShulkerBox:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       747: getstatic     #362                // Field net/minecraft/world/level/block/Blocks.BLACK_SHULKER_BOX:Lnet/minecraft/world/level/block/Block;
+       750: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       753: aload_0
+       754: getstatic     #365                // Field net/minecraft/world/level/block/state/properties/WoodType.OAK:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       757: getstatic     #371                // Field net/minecraft/world/level/block/Blocks.OAK_SIGN:Lnet/minecraft/world/level/block/Block;
+       760: getstatic     #374                // Field net/minecraft/world/level/block/Blocks.OAK_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       763: getstatic     #377                // Field net/minecraft/world/level/block/Blocks.OAK_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       766: getstatic     #380                // Field net/minecraft/world/level/block/Blocks.OAK_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       769: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       772: aload_0
+       773: getstatic     #387                // Field net/minecraft/world/level/block/state/properties/WoodType.SPRUCE:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       776: getstatic     #390                // Field net/minecraft/world/level/block/Blocks.SPRUCE_SIGN:Lnet/minecraft/world/level/block/Block;
+       779: getstatic     #393                // Field net/minecraft/world/level/block/Blocks.SPRUCE_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       782: getstatic     #396                // Field net/minecraft/world/level/block/Blocks.SPRUCE_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       785: getstatic     #399                // Field net/minecraft/world/level/block/Blocks.SPRUCE_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       788: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       791: aload_0
+       792: getstatic     #402                // Field net/minecraft/world/level/block/state/properties/WoodType.BIRCH:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       795: getstatic     #405                // Field net/minecraft/world/level/block/Blocks.BIRCH_SIGN:Lnet/minecraft/world/level/block/Block;
+       798: getstatic     #408                // Field net/minecraft/world/level/block/Blocks.BIRCH_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       801: getstatic     #411                // Field net/minecraft/world/level/block/Blocks.BIRCH_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       804: getstatic     #414                // Field net/minecraft/world/level/block/Blocks.BIRCH_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       807: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       810: aload_0
+       811: getstatic     #417                // Field net/minecraft/world/level/block/state/properties/WoodType.ACACIA:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       814: getstatic     #420                // Field net/minecraft/world/level/block/Blocks.ACACIA_SIGN:Lnet/minecraft/world/level/block/Block;
+       817: getstatic     #423                // Field net/minecraft/world/level/block/Blocks.ACACIA_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       820: getstatic     #426                // Field net/minecraft/world/level/block/Blocks.ACACIA_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       823: getstatic     #429                // Field net/minecraft/world/level/block/Blocks.ACACIA_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       826: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       829: aload_0
+       830: getstatic     #432                // Field net/minecraft/world/level/block/state/properties/WoodType.CHERRY:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       833: getstatic     #435                // Field net/minecraft/world/level/block/Blocks.CHERRY_SIGN:Lnet/minecraft/world/level/block/Block;
+       836: getstatic     #438                // Field net/minecraft/world/level/block/Blocks.CHERRY_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       839: getstatic     #441                // Field net/minecraft/world/level/block/Blocks.CHERRY_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       842: getstatic     #444                // Field net/minecraft/world/level/block/Blocks.CHERRY_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       845: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       848: aload_0
+       849: getstatic     #447                // Field net/minecraft/world/level/block/state/properties/WoodType.JUNGLE:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       852: getstatic     #450                // Field net/minecraft/world/level/block/Blocks.JUNGLE_SIGN:Lnet/minecraft/world/level/block/Block;
+       855: getstatic     #453                // Field net/minecraft/world/level/block/Blocks.JUNGLE_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       858: getstatic     #456                // Field net/minecraft/world/level/block/Blocks.JUNGLE_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       861: getstatic     #459                // Field net/minecraft/world/level/block/Blocks.JUNGLE_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       864: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       867: aload_0
+       868: getstatic     #462                // Field net/minecraft/world/level/block/state/properties/WoodType.DARK_OAK:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       871: getstatic     #465                // Field net/minecraft/world/level/block/Blocks.DARK_OAK_SIGN:Lnet/minecraft/world/level/block/Block;
+       874: getstatic     #468                // Field net/minecraft/world/level/block/Blocks.DARK_OAK_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       877: getstatic     #471                // Field net/minecraft/world/level/block/Blocks.DARK_OAK_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       880: getstatic     #474                // Field net/minecraft/world/level/block/Blocks.DARK_OAK_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       883: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       886: aload_0
+       887: getstatic     #477                // Field net/minecraft/world/level/block/state/properties/WoodType.PALE_OAK:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       890: getstatic     #480                // Field net/minecraft/world/level/block/Blocks.PALE_OAK_SIGN:Lnet/minecraft/world/level/block/Block;
+       893: getstatic     #483                // Field net/minecraft/world/level/block/Blocks.PALE_OAK_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       896: getstatic     #486                // Field net/minecraft/world/level/block/Blocks.PALE_OAK_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       899: getstatic     #489                // Field net/minecraft/world/level/block/Blocks.PALE_OAK_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       902: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       905: aload_0
+       906: getstatic     #492                // Field net/minecraft/world/level/block/state/properties/WoodType.MANGROVE:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       909: getstatic     #495                // Field net/minecraft/world/level/block/Blocks.MANGROVE_SIGN:Lnet/minecraft/world/level/block/Block;
+       912: getstatic     #498                // Field net/minecraft/world/level/block/Blocks.MANGROVE_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       915: getstatic     #501                // Field net/minecraft/world/level/block/Blocks.MANGROVE_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       918: getstatic     #504                // Field net/minecraft/world/level/block/Blocks.MANGROVE_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       921: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       924: aload_0
+       925: getstatic     #507                // Field net/minecraft/world/level/block/state/properties/WoodType.BAMBOO:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       928: getstatic     #510                // Field net/minecraft/world/level/block/Blocks.BAMBOO_SIGN:Lnet/minecraft/world/level/block/Block;
+       931: getstatic     #513                // Field net/minecraft/world/level/block/Blocks.BAMBOO_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       934: getstatic     #516                // Field net/minecraft/world/level/block/Blocks.BAMBOO_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       937: getstatic     #519                // Field net/minecraft/world/level/block/Blocks.BAMBOO_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       940: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       943: aload_0
+       944: getstatic     #522                // Field net/minecraft/world/level/block/state/properties/WoodType.CRIMSON:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       947: getstatic     #525                // Field net/minecraft/world/level/block/Blocks.CRIMSON_SIGN:Lnet/minecraft/world/level/block/Block;
+       950: getstatic     #528                // Field net/minecraft/world/level/block/Blocks.CRIMSON_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       953: getstatic     #531                // Field net/minecraft/world/level/block/Blocks.CRIMSON_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       956: getstatic     #534                // Field net/minecraft/world/level/block/Blocks.CRIMSON_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       959: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       962: aload_0
+       963: getstatic     #537                // Field net/minecraft/world/level/block/state/properties/WoodType.WARPED:Lnet/minecraft/world/level/block/state/properties/WoodType;
+       966: getstatic     #540                // Field net/minecraft/world/level/block/Blocks.WARPED_SIGN:Lnet/minecraft/world/level/block/Block;
+       969: getstatic     #543                // Field net/minecraft/world/level/block/Blocks.WARPED_WALL_SIGN:Lnet/minecraft/world/level/block/Block;
+       972: getstatic     #546                // Field net/minecraft/world/level/block/Blocks.WARPED_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       975: getstatic     #549                // Field net/minecraft/world/level/block/Blocks.WARPED_WALL_HANGING_SIGN:Lnet/minecraft/world/level/block/Block;
+       978: invokestatic  #383                // Method createSigns:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+       981: aload_0
+       982: getstatic     #552                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.ENDER_CHEST:Lnet/minecraft/resources/Identifier;
+       985: invokestatic  #558                // Method createSingletonChest:(Lnet/minecraft/resources/Identifier;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+       988: getstatic     #562                // Field net/minecraft/world/level/block/Blocks.ENDER_CHEST:Lnet/minecraft/world/level/block/Block;
+       991: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+       994: aload_0
+       995: getstatic     #564                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.REGULAR:Lnet/minecraft/client/renderer/MultiblockChestResources;
+       998: invokestatic  #568                // Method createXmasChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1001: getstatic     #572                // Field net/minecraft/world/level/block/Blocks.CHEST:Lnet/minecraft/world/level/block/Block;
+      1004: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+      1007: aload_0
+      1008: getstatic     #575                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.TRAPPED:Lnet/minecraft/client/renderer/MultiblockChestResources;
+      1011: invokestatic  #568                // Method createXmasChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1014: getstatic     #578                // Field net/minecraft/world/level/block/Blocks.TRAPPED_CHEST:Lnet/minecraft/world/level/block/Block;
+      1017: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+      1020: aload_0
+      1021: getstatic     #581                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.COPPER_UNAFFECTED:Lnet/minecraft/client/renderer/MultiblockChestResources;
+      1024: invokestatic  #584                // Method createChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1027: getstatic     #587                // Field net/minecraft/world/level/block/Blocks.COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1030: getstatic     #590                // Field net/minecraft/world/level/block/Blocks.WAXED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1033: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1036: aload_0
+      1037: getstatic     #596                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.COPPER_EXPOSED:Lnet/minecraft/client/renderer/MultiblockChestResources;
+      1040: invokestatic  #584                // Method createChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1043: getstatic     #599                // Field net/minecraft/world/level/block/Blocks.EXPOSED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1046: getstatic     #602                // Field net/minecraft/world/level/block/Blocks.WAXED_EXPOSED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1049: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1052: aload_0
+      1053: getstatic     #605                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.COPPER_WEATHERED:Lnet/minecraft/client/renderer/MultiblockChestResources;
+      1056: invokestatic  #584                // Method createChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1059: getstatic     #608                // Field net/minecraft/world/level/block/Blocks.WEATHERED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1062: getstatic     #611                // Field net/minecraft/world/level/block/Blocks.WAXED_WEATHERED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1065: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1068: aload_0
+      1069: getstatic     #614                // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.COPPER_OXIDIZED:Lnet/minecraft/client/renderer/MultiblockChestResources;
+      1072: invokestatic  #584                // Method createChest:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1075: getstatic     #617                // Field net/minecraft/world/level/block/Blocks.OXIDIZED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1078: getstatic     #620                // Field net/minecraft/world/level/block/Blocks.WAXED_OXIDIZED_COPPER_CHEST:Lnet/minecraft/world/level/block/Block;
+      1081: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1084: aload_0
+      1085: getstatic     #623                // Field net/minecraft/world/level/block/WeatheringCopper$WeatherState.UNAFFECTED:Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;
+      1088: invokestatic  #629                // Method createCopperGolem:(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1091: getstatic     #633                // Field net/minecraft/world/level/block/Blocks.COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1094: getstatic     #636                // Field net/minecraft/world/level/block/Blocks.WAXED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1097: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1100: aload_0
+      1101: getstatic     #639                // Field net/minecraft/world/level/block/WeatheringCopper$WeatherState.EXPOSED:Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;
+      1104: invokestatic  #629                // Method createCopperGolem:(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1107: getstatic     #642                // Field net/minecraft/world/level/block/Blocks.EXPOSED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1110: getstatic     #645                // Field net/minecraft/world/level/block/Blocks.WAXED_EXPOSED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1113: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1116: aload_0
+      1117: getstatic     #648                // Field net/minecraft/world/level/block/WeatheringCopper$WeatherState.WEATHERED:Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;
+      1120: invokestatic  #629                // Method createCopperGolem:(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1123: getstatic     #651                // Field net/minecraft/world/level/block/Blocks.WEATHERED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1126: getstatic     #654                // Field net/minecraft/world/level/block/Blocks.WAXED_WEATHERED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1129: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1132: aload_0
+      1133: getstatic     #657                // Field net/minecraft/world/level/block/WeatheringCopper$WeatherState.OXIDIZED:Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;
+      1136: invokestatic  #629                // Method createCopperGolem:(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1139: getstatic     #660                // Field net/minecraft/world/level/block/Blocks.OXIDIZED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1142: getstatic     #663                // Field net/minecraft/world/level/block/Blocks.WAXED_OXIDIZED_COPPER_GOLEM_STATUE:Lnet/minecraft/world/level/block/Block;
+      1145: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1148: aload_0
+      1149: new           #666                // class net/minecraft/client/renderer/special/BellSpecialRenderer$Unbaked
+      1152: dup
+      1153: invokespecial #668                // Method net/minecraft/client/renderer/special/BellSpecialRenderer$Unbaked."<init>":()V
+      1156: invokestatic  #669                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+      1159: getstatic     #673                // Field net/minecraft/world/level/block/Blocks.BELL:Lnet/minecraft/world/level/block/Block;
+      1162: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+      1165: aload_0
+      1166: new           #679                // class net/minecraft/client/renderer/special/ConduitSpecialRenderer$Unbaked
+      1169: dup
+      1170: invokespecial #681                // Method net/minecraft/client/renderer/special/ConduitSpecialRenderer$Unbaked."<init>":()V
+      1173: getstatic     #682                // Field net/minecraft/client/renderer/blockentity/ConduitRenderer.DEFAULT_TRANSFORMATION:Lcom/mojang/math/Transformation;
+      1176: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+      1179: getstatic     #691                // Field net/minecraft/world/level/block/Blocks.CONDUIT:Lnet/minecraft/world/level/block/Block;
+      1182: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+      1185: aload_0
+      1186: invokestatic  #694                // Method createDecoratedPot:()Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+      1189: getstatic     #697                // Field net/minecraft/world/level/block/Blocks.DECORATED_POT:Lnet/minecraft/world/level/block/Block;
+      1192: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+      1195: aload_0
+      1196: invokestatic  #700                // Method createEnchantingTable:()Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+      1199: getstatic     #704                // Field net/minecraft/world/level/block/Blocks.ENCHANTING_TABLE:Lnet/minecraft/world/level/block/Block;
+      1202: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+      1205: aload_0
+      1206: new           #707                // class net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Unbaked
+      1209: dup
+      1210: getstatic     #709                // Field net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type.GATEWAY:Lnet/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type;
+      1213: invokespecial #715                // Method net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type;)V
+      1216: invokestatic  #669                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+      1219: getstatic     #718                // Field net/minecraft/world/level/block/Blocks.END_GATEWAY:Lnet/minecraft/world/level/block/Block;
+      1222: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+      1225: aload_0
+      1226: new           #707                // class net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Unbaked
+      1229: dup
+      1230: getstatic     #721                // Field net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type.PORTAL:Lnet/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type;
+      1233: invokespecial #715                // Method net/minecraft/client/renderer/special/EndCubeSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/client/renderer/special/EndCubeSpecialRenderer$Type;)V
+      1236: getstatic     #724                // Field net/minecraft/client/renderer/blockentity/TheEndPortalRenderer.TRANSFORMATION:Lcom/mojang/math/Transformation;
+      1239: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+      1242: getstatic     #729                // Field net/minecraft/world/level/block/Blocks.END_PORTAL:Lnet/minecraft/world/level/block/Block;
+      1245: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+      1248: aload_0
+      1249: invokedynamic #732,  0            // InvokeDynamic #0:create:()Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;
+      1254: getstatic     #736                // Field net/minecraft/world/level/block/Blocks.WILDFLOWERS:Lnet/minecraft/world/level/block/Block;
+      1257: getstatic     #739                // Field net/minecraft/world/level/block/Blocks.PINK_PETALS:Lnet/minecraft/world/level/block/Block;
+      1260: invokevirtual #593                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/block/Block;)V
+      1263: return
+
+  private static void createAir(net.minecraft.client.renderer.block.BuiltInBlockModels$Builder, net.minecraft.world.level.block.Block);
+    Code:
+         0: aload_0
+         1: new           #742                // class net/minecraft/client/renderer/block/model/EmptyBlockModel$Unbaked
+         4: dup
+         5: invokespecial #744                // Method net/minecraft/client/renderer/block/model/EmptyBlockModel$Unbaked."<init>":()V
+         8: aload_1
+         9: invokevirtual #676                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/world/level/block/Block;)V
+        12: return
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked special(net.minecraft.client.renderer.special.SpecialModelRenderer$Unbaked<?>);
+    Code:
+         0: new           #745                // class net/minecraft/client/renderer/block/model/SpecialBlockModelWrapper$Unbaked
+         3: dup
+         4: aload_0
+         5: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+         8: invokespecial #753                // Method net/minecraft/client/renderer/block/model/SpecialBlockModelWrapper$Unbaked."<init>":(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Ljava/util/Optional;)V
+        11: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked special(net.minecraft.client.renderer.special.SpecialModelRenderer$Unbaked<?>, com.mojang.math.Transformation);
+    Code:
+         0: new           #745                // class net/minecraft/client/renderer/block/model/SpecialBlockModelWrapper$Unbaked
+         3: dup
+         4: aload_0
+         5: aload_1
+         6: invokestatic  #756                // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+         9: invokespecial #753                // Method net/minecraft/client/renderer/block/model/SpecialBlockModelWrapper$Unbaked."<init>":(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Ljava/util/Optional;)V
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createMobHead(net.minecraft.world.level.block.SkullBlock$Types);
+    Code:
+         0: getstatic     #760                // Field net/minecraft/world/level/block/SkullBlock.ROTATION:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+         3: aload_0
+         4: invokedynamic #766,  0            // InvokeDynamic #1:apply:(Lnet/minecraft/world/level/block/SkullBlock$Types;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createMobWallHead(net.minecraft.world.level.block.SkullBlock$Types);
+    Code:
+         0: getstatic     #774                // Field net/minecraft/world/level/block/WallSkullBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #780,  0            // InvokeDynamic #2:apply:(Lnet/minecraft/world/level/block/SkullBlock$Types;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static void createMobHeads(net.minecraft.client.renderer.block.BuiltInBlockModels$Builder, net.minecraft.world.level.block.SkullBlock$Types, net.minecraft.world.level.block.Block, net.minecraft.world.level.block.Block);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokestatic  #781                // Method createMobHead:(Lnet/minecraft/world/level/block/SkullBlock$Types;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+         5: aload_2
+         6: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+         9: aload_0
+        10: aload_1
+        11: invokestatic  #785                // Method createMobWallHead:(Lnet/minecraft/world/level/block/SkullBlock$Types;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        14: aload_3
+        15: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+        18: return
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createPlayerHead();
+    Code:
+         0: getstatic     #788                // Field net/minecraft/world/level/block/PlayerHeadBlock.ROTATION:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+         3: invokedynamic #791,  0            // InvokeDynamic #3:apply:()Ljava/util/function/Function;
+         8: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        11: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createPlayerWallHead();
+    Code:
+         0: getstatic     #794                // Field net/minecraft/world/level/block/PlayerWallHeadBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: invokedynamic #797,  0            // InvokeDynamic #4:apply:()Ljava/util/function/Function;
+         8: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        11: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createBanner(net.minecraft.world.item.DyeColor);
+    Code:
+         0: getstatic     #798                // Field net/minecraft/world/level/block/BannerBlock.ROTATION:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+         3: aload_0
+         4: invokedynamic #801,  0            // InvokeDynamic #5:apply:(Lnet/minecraft/world/item/DyeColor;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createWallBanner(net.minecraft.world.item.DyeColor);
+    Code:
+         0: getstatic     #804                // Field net/minecraft/world/level/block/WallBannerBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #807,  0            // InvokeDynamic #6:apply:(Lnet/minecraft/world/item/DyeColor;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static void createBanners(net.minecraft.client.renderer.block.BuiltInBlockModels$Builder, net.minecraft.world.item.DyeColor, net.minecraft.world.level.block.Block, net.minecraft.world.level.block.Block);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokestatic  #808                // Method createBanner:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+         5: aload_2
+         6: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+         9: aload_0
+        10: aload_1
+        11: invokestatic  #811                // Method createWallBanner:(Lnet/minecraft/world/item/DyeColor;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        14: aload_3
+        15: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+        18: return
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createBed(net.minecraft.world.item.DyeColor);
+    Code:
+         0: getstatic     #814                // Field net/minecraft/world/level/block/BedBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: getstatic     #817                // Field net/minecraft/world/level/block/BedBlock.PART:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         6: aload_0
+         7: invokedynamic #820,  0            // InvokeDynamic #7:apply:(Lnet/minecraft/world/item/DyeColor;)Ljava/util/function/BiFunction;
+        12: invokestatic  #823                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createShulkerBox();
+    Code:
+         0: getstatic     #826                // Field net/minecraft/world/level/block/ShulkerBoxBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: invokedynamic #829,  0            // InvokeDynamic #8:apply:()Ljava/util/function/Function;
+         8: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        11: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createDyedShulkerBox(net.minecraft.world.item.DyeColor);
+    Code:
+         0: getstatic     #826                // Field net/minecraft/world/level/block/ShulkerBoxBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #830,  0            // InvokeDynamic #9:apply:(Lnet/minecraft/world/item/DyeColor;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createStandingSign(net.minecraft.world.level.block.state.properties.WoodType);
+    Code:
+         0: getstatic     #831                // Field net/minecraft/world/level/block/StandingSignBlock.ROTATION:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+         3: aload_0
+         4: invokedynamic #834,  0            // InvokeDynamic #10:apply:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createWallSign(net.minecraft.world.level.block.state.properties.WoodType);
+    Code:
+         0: getstatic     #837                // Field net/minecraft/world/level/block/WallSignBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #840,  0            // InvokeDynamic #11:apply:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createCeilingHangingSign(net.minecraft.world.level.block.state.properties.WoodType);
+    Code:
+         0: getstatic     #841                // Field net/minecraft/world/level/block/CeilingHangingSignBlock.ROTATION:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+         3: getstatic     #844                // Field net/minecraft/world/level/block/CeilingHangingSignBlock.ATTACHED:Lnet/minecraft/world/level/block/state/properties/BooleanProperty;
+         6: aload_0
+         7: invokedynamic #848,  0            // InvokeDynamic #12:apply:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Ljava/util/function/BiFunction;
+        12: invokestatic  #823                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createWallHangingSign(net.minecraft.world.level.block.state.properties.WoodType);
+    Code:
+         0: getstatic     #851                // Field net/minecraft/world/level/block/WallHangingSignBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #854,  0            // InvokeDynamic #13:apply:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static void createSigns(net.minecraft.client.renderer.block.BuiltInBlockModels$Builder, net.minecraft.world.level.block.state.properties.WoodType, net.minecraft.world.level.block.Block, net.minecraft.world.level.block.Block, net.minecraft.world.level.block.Block, net.minecraft.world.level.block.Block);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokestatic  #855                // Method createStandingSign:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+         5: aload_2
+         6: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+         9: aload_0
+        10: aload_1
+        11: invokestatic  #859                // Method createWallSign:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        14: aload_3
+        15: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+        18: aload_0
+        19: aload_1
+        20: invokestatic  #862                // Method createCeilingHangingSign:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        23: aload         4
+        25: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+        28: aload_0
+        29: aload_1
+        30: invokestatic  #865                // Method createWallHangingSign:(Lnet/minecraft/world/level/block/state/properties/WoodType;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        33: aload         5
+        35: invokevirtual #93                 // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.put:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$ModelFactory;Lnet/minecraft/world/level/block/Block;)V
+        38: return
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked createChest(net.minecraft.resources.Identifier, net.minecraft.world.level.block.state.properties.ChestType, net.minecraft.core.Direction);
+    Code:
+         0: new           #868                // class net/minecraft/client/renderer/special/ChestSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: aload_1
+         6: invokespecial #870                // Method net/minecraft/client/renderer/special/ChestSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/state/properties/ChestType;)V
+         9: aload_2
+        10: invokestatic  #873                // Method net/minecraft/client/renderer/blockentity/ChestRenderer.modelTransformation:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        13: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createSingletonChest(net.minecraft.resources.Identifier);
+    Code:
+         0: getstatic     #879                // Field net/minecraft/world/level/block/ChestBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: aload_0
+         4: invokedynamic #882,  0            // InvokeDynamic #14:apply:(Lnet/minecraft/resources/Identifier;)Ljava/util/function/Function;
+         9: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        12: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createChest(net.minecraft.client.renderer.MultiblockChestResources<net.minecraft.resources.Identifier>);
+    Code:
+         0: getstatic     #879                // Field net/minecraft/world/level/block/ChestBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: getstatic     #885                // Field net/minecraft/world/level/block/ChestBlock.TYPE:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         6: aload_0
+         7: invokedynamic #888,  0            // InvokeDynamic #15:apply:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Ljava/util/function/BiFunction;
+        12: invokestatic  #823                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createXmasChest(net.minecraft.client.renderer.MultiblockChestResources<net.minecraft.resources.Identifier>);
+    Code:
+         0: getstatic     #879                // Field net/minecraft/world/level/block/ChestBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: getstatic     #885                // Field net/minecraft/world/level/block/ChestBlock.TYPE:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         6: aload_0
+         7: invokedynamic #891,  0            // InvokeDynamic #16:apply:(Lnet/minecraft/client/renderer/MultiblockChestResources;)Ljava/util/function/BiFunction;
+        12: invokestatic  #823                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createCopperGolem(net.minecraft.world.level.block.WeatheringCopper$WeatherState);
+    Code:
+         0: getstatic     #892                // Field net/minecraft/world/level/block/CopperGolemStatueBlock.FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: getstatic     #895                // Field net/minecraft/world/level/block/CopperGolemStatueBlock.POSE:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         6: aload_0
+         7: invokedynamic #898,  0            // InvokeDynamic #17:apply:(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;)Ljava/util/function/BiFunction;
+        12: invokestatic  #823                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory createDecoratedPot();
+    Code:
+         0: getstatic     #901                // Field net/minecraft/world/level/block/DecoratedPotBlock.HORIZONTAL_FACING:Lnet/minecraft/world/level/block/state/properties/EnumProperty;
+         3: invokedynamic #906,  0            // InvokeDynamic #18:apply:()Ljava/util/function/Function;
+         8: invokestatic  #770                // Method specialModelWithPropertyDispatch:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+        11: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockStateModelWrapper$Unbaked createBlockStateModelWrapper(net.minecraft.client.color.block.BlockColors, net.minecraft.world.level.block.state.BlockState);
+    Code:
+         0: new           #907                // class net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked
+         3: dup
+         4: aload_1
+         5: aload_0
+         6: aload_1
+         7: invokevirtual #909                // Method net/minecraft/client/color/block/BlockColors.getTintSources:(Lnet/minecraft/world/level/block/state/BlockState;)Ljava/util/List;
+        10: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+        13: invokespecial #915                // Method net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/BlockState;Ljava/util/List;Ljava/util/Optional;)V
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.model.CompositeBlockModel$Unbaked combineSpecialAndBlockModels(net.minecraft.client.renderer.block.model.BlockModel$Unbaked, net.minecraft.client.color.block.BlockColors, net.minecraft.world.level.block.state.BlockState);
+    Code:
+         0: new           #918                // class net/minecraft/client/renderer/block/model/CompositeBlockModel$Unbaked
+         3: dup
+         4: aload_1
+         5: aload_2
+         6: invokestatic  #920                // Method createBlockStateModelWrapper:(Lnet/minecraft/client/color/block/BlockColors;Lnet/minecraft/world/level/block/state/BlockState;)Lnet/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked;
+         9: aload_0
+        10: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+        13: invokespecial #924                // Method net/minecraft/client/renderer/block/model/CompositeBlockModel$Unbaked."<init>":(Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Ljava/util/Optional;)V
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.SelectBlockModel$Unbaked createFlowerBedModel(net.minecraft.client.color.block.BlockColors, net.minecraft.world.level.block.state.BlockState);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #909                // Method net/minecraft/client/color/block/BlockColors.getTintSources:(Lnet/minecraft/world/level/block/state/BlockState;)Ljava/util/List;
+         5: astore_2
+         6: new           #927                // class com/mojang/math/Transformation
+         9: dup
+        10: new           #929                // class org/joml/Vector3f
+        13: dup
+        14: ldc_w         #931                // float 0.25f
+        17: fconst_0
+        18: ldc_w         #931                // float 0.25f
+        21: invokespecial #932                // Method org/joml/Vector3f."<init>":(FFF)V
+        24: aconst_null
+        25: aconst_null
+        26: aconst_null
+        27: invokespecial #935                // Method com/mojang/math/Transformation."<init>":(Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;)V
+        30: astore_3
+        31: new           #907                // class net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked
+        34: dup
+        35: aload_1
+        36: aload_2
+        37: aload_3
+        38: invokestatic  #756                // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+        41: invokespecial #915                // Method net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/BlockState;Ljava/util/List;Ljava/util/Optional;)V
+        44: astore        4
+        46: new           #907                // class net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked
+        49: dup
+        50: aload_1
+        51: aload_2
+        52: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+        55: invokespecial #915                // Method net/minecraft/client/renderer/block/model/BlockStateModelWrapper$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/BlockState;Ljava/util/List;Ljava/util/Optional;)V
+        58: astore        5
+        60: new           #938                // class net/minecraft/client/renderer/block/SelectBlockModel$Unbaked
+        63: dup
+        64: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+        67: new           #940                // class net/minecraft/client/renderer/block/SelectBlockModel$UnbakedSwitch
+        70: dup
+        71: new           #942                // class net/minecraft/client/renderer/block/model/properties/select/DisplayContext
+        74: dup
+        75: invokespecial #944                // Method net/minecraft/client/renderer/block/model/properties/select/DisplayContext."<init>":()V
+        78: new           #945                // class net/minecraft/client/renderer/block/SelectBlockModel$SwitchCase
+        81: dup
+        82: getstatic     #947                // Field net/minecraft/client/renderer/entity/CopperGolemRenderer.BLOCK_DISPLAY_CONTEXT:Lnet/minecraft/client/renderer/block/model/BlockDisplayContext;
+        85: invokestatic  #953                // InterfaceMethod java/util/List.of:(Ljava/lang/Object;)Ljava/util/List;
+        88: aload         4
+        90: invokespecial #958                // Method net/minecraft/client/renderer/block/SelectBlockModel$SwitchCase."<init>":(Ljava/util/List;Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;)V
+        93: invokestatic  #953                // InterfaceMethod java/util/List.of:(Ljava/lang/Object;)Ljava/util/List;
+        96: invokespecial #961                // Method net/minecraft/client/renderer/block/SelectBlockModel$UnbakedSwitch."<init>":(Lnet/minecraft/client/renderer/block/model/properties/select/SelectBlockModelProperty;Ljava/util/List;)V
+        99: aload         5
+       101: invokestatic  #756                // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+       104: invokespecial #964                // Method net/minecraft/client/renderer/block/SelectBlockModel$Unbaked."<init>":(Ljava/util/Optional;Lnet/minecraft/client/renderer/block/SelectBlockModel$UnbakedSwitch;Ljava/util/Optional;)V
+       107: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked createEnchantingTable();
+    Code:
+         0: new           #967                // class net/minecraft/client/renderer/special/BookSpecialRenderer$Unbaked
+         3: dup
+         4: fconst_0
+         5: fconst_0
+         6: fconst_0
+         7: invokespecial #969                // Method net/minecraft/client/renderer/special/BookSpecialRenderer$Unbaked."<init>":(FFF)V
+        10: new           #927                // class com/mojang/math/Transformation
+        13: dup
+        14: new           #929                // class org/joml/Vector3f
+        17: dup
+        18: ldc_w         #970                // float 0.5f
+        21: ldc_w         #971                // float 0.8125f
+        24: ldc_w         #970                // float 0.5f
+        27: invokespecial #932                // Method org/joml/Vector3f."<init>":(FFF)V
+        30: getstatic     #972                // Field com/mojang/math/Axis.ZP:Lcom/mojang/math/Axis;
+        33: ldc_w         #978                // float 180.0f
+        36: invokeinterface #979,  2          // InterfaceMethod com/mojang/math/Axis.rotationDegrees:(F)Lorg/joml/Quaternionf;
+        41: aconst_null
+        42: getstatic     #983                // Field com/mojang/math/Axis.XP:Lcom/mojang/math/Axis;
+        45: ldc_w         #986                // float 90.0f
+        48: invokeinterface #979,  2          // InterfaceMethod com/mojang/math/Axis.rotationDegrees:(F)Lorg/joml/Quaternionf;
+        53: invokespecial #935                // Method com/mojang/math/Transformation."<init>":(Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;)V
+        56: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        59: areturn
+
+  private static <P extends java.lang.Comparable<P>> net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory specialModelWithPropertyDispatch(net.minecraft.world.level.block.state.properties.Property<P>, java.util.function.Function<P, net.minecraft.client.renderer.block.model.BlockModel$Unbaked>);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: invokedynamic #987,  0            // InvokeDynamic #19:createSpecial:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/Function;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+         7: areturn
+
+  private static <P1 extends java.lang.Comparable<P1>, P2 extends java.lang.Comparable<P2>> net.minecraft.client.renderer.block.BuiltInBlockModels$SpecialModelFactory specialModelWithPropertyDispatch(net.minecraft.world.level.block.state.properties.Property<P1>, net.minecraft.world.level.block.state.properties.Property<P2>, java.util.function.BiFunction<P1, P2, net.minecraft.client.renderer.block.model.BlockModel$Unbaked>);
+    Code:
+         0: aload_0
+         1: aload_1
+         2: aload_2
+         3: invokedynamic #990,  0            // InvokeDynamic #20:createSpecial:(Lnet/minecraft/world/level/block/state/properties/Property;Lnet/minecraft/world/level/block/state/properties/Property;Ljava/util/function/BiFunction;)Lnet/minecraft/client/renderer/block/BuiltInBlockModels$SpecialModelFactory;
+         8: areturn
+
+  public static java.util.Map<net.minecraft.world.level.block.state.BlockState, net.minecraft.client.renderer.block.model.BlockModel$Unbaked> createBlockModels(net.minecraft.client.color.block.BlockColors);
+    Code:
+         0: new           #94                 // class net/minecraft/client/renderer/block/BuiltInBlockModels$Builder
+         3: dup
+         4: aload_0
+         5: invokespecial #992                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder."<init>":(Lnet/minecraft/client/color/block/BlockColors;)V
+         8: astore_1
+         9: aload_1
+        10: invokestatic  #995                // Method addDefaults:(Lnet/minecraft/client/renderer/block/BuiltInBlockModels$Builder;)V
+        13: aload_1
+        14: invokevirtual #999                // Method net/minecraft/client/renderer/block/BuiltInBlockModels$Builder.build:()Ljava/util/Map;
+        17: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$specialModelWithPropertyDispatch$1(net.minecraft.world.level.block.state.properties.Property, net.minecraft.world.level.block.state.properties.Property, java.util.function.BiFunction, net.minecraft.world.level.block.state.BlockState);
+    Code:
+         0: aload_3
+         1: aload_0
+         2: invokevirtual #1003               // Method net/minecraft/world/level/block/state/BlockState.getValue:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+         5: astore        4
+         7: aload_3
+         8: aload_1
+         9: invokevirtual #1003               // Method net/minecraft/world/level/block/state/BlockState.getValue:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+        12: astore        5
+        14: aload_2
+        15: aload         4
+        17: aload         5
+        19: invokeinterface #1009,  3         // InterfaceMethod java/util/function/BiFunction.apply:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+        24: checkcast     #1014               // class net/minecraft/client/renderer/block/model/BlockModel$Unbaked
+        27: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$specialModelWithPropertyDispatch$0(net.minecraft.world.level.block.state.properties.Property, java.util.function.Function, net.minecraft.world.level.block.state.BlockState);
+    Code:
+         0: aload_2
+         1: aload_0
+         2: invokevirtual #1003               // Method net/minecraft/world/level/block/state/BlockState.getValue:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+         5: astore_3
+         6: aload_1
+         7: aload_3
+         8: invokeinterface #1016,  2         // InterfaceMethod java/util/function/Function.apply:(Ljava/lang/Object;)Ljava/lang/Object;
+        13: checkcast     #1014               // class net/minecraft/client/renderer/block/model/BlockModel$Unbaked
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createDecoratedPot$0(net.minecraft.core.Direction);
+    Code:
+         0: new           #1021               // class net/minecraft/client/renderer/special/DecoratedPotSpecialRenderer$Unbaked
+         3: dup
+         4: invokespecial #1023               // Method net/minecraft/client/renderer/special/DecoratedPotSpecialRenderer$Unbaked."<init>":()V
+         7: aload_0
+         8: invokestatic  #1024               // Method net/minecraft/client/renderer/blockentity/DecoratedPotRenderer.modelTransformation:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        11: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        14: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createCopperGolem$0(net.minecraft.world.level.block.WeatheringCopper$WeatherState, net.minecraft.core.Direction, net.minecraft.world.level.block.CopperGolemStatueBlock$Pose);
+    Code:
+         0: new           #1027               // class net/minecraft/client/renderer/special/CopperGolemStatueSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: aload_2
+         6: invokespecial #1029               // Method net/minecraft/client/renderer/special/CopperGolemStatueSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/WeatheringCopper$WeatherState;Lnet/minecraft/world/level/block/CopperGolemStatueBlock$Pose;)V
+         9: aload_1
+        10: invokestatic  #1032               // Method net/minecraft/client/renderer/blockentity/CopperGolemStatueBlockRenderer.modelTransformation:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        13: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createXmasChest$0(net.minecraft.client.renderer.MultiblockChestResources, net.minecraft.core.Direction, net.minecraft.world.level.block.state.properties.ChestType);
+    Code:
+         0: new           #1035               // class net/minecraft/client/renderer/block/model/ConditionalBlockModel$Unbaked
+         3: dup
+         4: invokestatic  #747                // Method java/util/Optional.empty:()Ljava/util/Optional;
+         7: new           #1037               // class net/minecraft/client/renderer/block/model/properties/conditional/IsXmas
+        10: dup
+        11: invokespecial #1039               // Method net/minecraft/client/renderer/block/model/properties/conditional/IsXmas."<init>":()V
+        14: getstatic     #1040               // Field net/minecraft/client/renderer/special/ChestSpecialRenderer.CHRISTMAS:Lnet/minecraft/client/renderer/MultiblockChestResources;
+        17: aload_2
+        18: invokevirtual #1043               // Method net/minecraft/client/renderer/MultiblockChestResources.select:(Lnet/minecraft/world/level/block/state/properties/ChestType;)Ljava/lang/Object;
+        21: checkcast     #1049               // class net/minecraft/resources/Identifier
+        24: aload_2
+        25: aload_1
+        26: invokestatic  #1051               // Method createChest:(Lnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/state/properties/ChestType;Lnet/minecraft/core/Direction;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        29: aload_0
+        30: aload_2
+        31: invokevirtual #1043               // Method net/minecraft/client/renderer/MultiblockChestResources.select:(Lnet/minecraft/world/level/block/state/properties/ChestType;)Ljava/lang/Object;
+        34: checkcast     #1049               // class net/minecraft/resources/Identifier
+        37: aload_2
+        38: aload_1
+        39: invokestatic  #1051               // Method createChest:(Lnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/state/properties/ChestType;Lnet/minecraft/core/Direction;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        42: invokespecial #1054               // Method net/minecraft/client/renderer/block/model/ConditionalBlockModel$Unbaked."<init>":(Ljava/util/Optional;Lnet/minecraft/client/renderer/block/model/properties/conditional/ConditionalBlockModelProperty;Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;)V
+        45: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createChest$0(net.minecraft.client.renderer.MultiblockChestResources, net.minecraft.core.Direction, net.minecraft.world.level.block.state.properties.ChestType);
+    Code:
+         0: aload_0
+         1: aload_2
+         2: invokevirtual #1043               // Method net/minecraft/client/renderer/MultiblockChestResources.select:(Lnet/minecraft/world/level/block/state/properties/ChestType;)Ljava/lang/Object;
+         5: checkcast     #1049               // class net/minecraft/resources/Identifier
+         8: aload_2
+         9: aload_1
+        10: invokestatic  #1051               // Method createChest:(Lnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/state/properties/ChestType;Lnet/minecraft/core/Direction;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        13: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createSingletonChest$0(net.minecraft.resources.Identifier, net.minecraft.core.Direction);
+    Code:
+         0: aload_0
+         1: getstatic     #1057               // Field net/minecraft/world/level/block/state/properties/ChestType.SINGLE:Lnet/minecraft/world/level/block/state/properties/ChestType;
+         4: aload_1
+         5: invokestatic  #1051               // Method createChest:(Lnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/state/properties/ChestType;Lnet/minecraft/core/Direction;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+         8: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createWallHangingSign$0(net.minecraft.world.level.block.state.properties.WoodType, net.minecraft.core.Direction);
+    Code:
+         0: new           #1063               // class net/minecraft/client/renderer/special/HangingSignSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: getstatic     #1065               // Field net/minecraft/world/level/block/HangingSignBlock$Attachment.WALL:Lnet/minecraft/world/level/block/HangingSignBlock$Attachment;
+         8: invokespecial #1071               // Method net/minecraft/client/renderer/special/HangingSignSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/HangingSignBlock$Attachment;)V
+        11: getstatic     #1074               // Field net/minecraft/client/renderer/blockentity/HangingSignRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        14: aload_1
+        15: invokevirtual #1080               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.wallTransformation:(Lnet/minecraft/core/Direction;)Ljava/lang/Object;
+        18: checkcast     #1086               // class net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations
+        21: invokevirtual #1088               // Method net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations.body:()Lcom/mojang/math/Transformation;
+        24: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        27: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createCeilingHangingSign$0(net.minecraft.world.level.block.state.properties.WoodType, java.lang.Integer, java.lang.Boolean);
+    Code:
+         0: new           #1063               // class net/minecraft/client/renderer/special/HangingSignSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: aload_2
+         6: invokevirtual #1092               // Method java/lang/Boolean.booleanValue:()Z
+         9: invokestatic  #1098               // Method net/minecraft/world/level/block/CeilingHangingSignBlock.getAttachmentPoint:(Z)Lnet/minecraft/world/level/block/HangingSignBlock$Attachment;
+        12: invokespecial #1071               // Method net/minecraft/client/renderer/special/HangingSignSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/HangingSignBlock$Attachment;)V
+        15: getstatic     #1074               // Field net/minecraft/client/renderer/blockentity/HangingSignRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        18: aload_1
+        19: invokevirtual #1102               // Method java/lang/Integer.intValue:()I
+        22: invokevirtual #1108               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.freeTransformations:(I)Ljava/lang/Object;
+        25: checkcast     #1086               // class net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations
+        28: invokevirtual #1088               // Method net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations.body:()Lcom/mojang/math/Transformation;
+        31: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        34: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createWallSign$0(net.minecraft.world.level.block.state.properties.WoodType, net.minecraft.core.Direction);
+    Code:
+         0: new           #1112               // class net/minecraft/client/renderer/special/StandingSignSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: getstatic     #1114               // Field net/minecraft/world/level/block/PlainSignBlock$Attachment.WALL:Lnet/minecraft/world/level/block/PlainSignBlock$Attachment;
+         8: invokespecial #1119               // Method net/minecraft/client/renderer/special/StandingSignSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/PlainSignBlock$Attachment;)V
+        11: getstatic     #1122               // Field net/minecraft/client/renderer/blockentity/StandingSignRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        14: aload_1
+        15: invokevirtual #1080               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.wallTransformation:(Lnet/minecraft/core/Direction;)Ljava/lang/Object;
+        18: checkcast     #1086               // class net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations
+        21: invokevirtual #1088               // Method net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations.body:()Lcom/mojang/math/Transformation;
+        24: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        27: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createStandingSign$0(net.minecraft.world.level.block.state.properties.WoodType, java.lang.Integer);
+    Code:
+         0: new           #1112               // class net/minecraft/client/renderer/special/StandingSignSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: getstatic     #1125               // Field net/minecraft/world/level/block/PlainSignBlock$Attachment.GROUND:Lnet/minecraft/world/level/block/PlainSignBlock$Attachment;
+         8: invokespecial #1119               // Method net/minecraft/client/renderer/special/StandingSignSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/state/properties/WoodType;Lnet/minecraft/world/level/block/PlainSignBlock$Attachment;)V
+        11: getstatic     #1122               // Field net/minecraft/client/renderer/blockentity/StandingSignRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        14: aload_1
+        15: invokevirtual #1102               // Method java/lang/Integer.intValue:()I
+        18: invokevirtual #1108               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.freeTransformations:(I)Ljava/lang/Object;
+        21: checkcast     #1086               // class net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations
+        24: invokevirtual #1088               // Method net/minecraft/client/renderer/blockentity/state/SignRenderState$SignTransformations.body:()Lcom/mojang/math/Transformation;
+        27: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        30: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createDyedShulkerBox$0(net.minecraft.world.item.DyeColor, net.minecraft.core.Direction);
+    Code:
+         0: new           #1128               // class net/minecraft/client/renderer/special/ShulkerBoxSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: invokespecial #1130               // Method net/minecraft/client/renderer/special/ShulkerBoxSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/item/DyeColor;)V
+         8: aload_1
+         9: invokestatic  #1133               // Method net/minecraft/client/renderer/blockentity/ShulkerBoxRenderer.modelTransform:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        12: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        15: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createShulkerBox$0(net.minecraft.core.Direction);
+    Code:
+         0: new           #1128               // class net/minecraft/client/renderer/special/ShulkerBoxSpecialRenderer$Unbaked
+         3: dup
+         4: invokespecial #1138               // Method net/minecraft/client/renderer/special/ShulkerBoxSpecialRenderer$Unbaked."<init>":()V
+         7: aload_0
+         8: invokestatic  #1133               // Method net/minecraft/client/renderer/blockentity/ShulkerBoxRenderer.modelTransform:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        11: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        14: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createBed$0(net.minecraft.world.item.DyeColor, net.minecraft.core.Direction, net.minecraft.world.level.block.state.properties.BedPart);
+    Code:
+         0: new           #1139               // class net/minecraft/client/renderer/special/BedSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: aload_2
+         6: invokespecial #1141               // Method net/minecraft/client/renderer/special/BedSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/state/properties/BedPart;)V
+         9: aload_1
+        10: invokestatic  #1144               // Method net/minecraft/client/renderer/blockentity/BedRenderer.modelTransform:(Lnet/minecraft/core/Direction;)Lcom/mojang/math/Transformation;
+        13: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        16: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createWallBanner$0(net.minecraft.world.item.DyeColor, net.minecraft.core.Direction);
+    Code:
+         0: new           #1147               // class net/minecraft/client/renderer/special/BannerSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: getstatic     #1149               // Field net/minecraft/world/level/block/BannerBlock$AttachmentType.WALL:Lnet/minecraft/world/level/block/BannerBlock$AttachmentType;
+         8: invokespecial #1154               // Method net/minecraft/client/renderer/special/BannerSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/BannerBlock$AttachmentType;)V
+        11: getstatic     #1157               // Field net/minecraft/client/renderer/blockentity/BannerRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        14: aload_1
+        15: invokevirtual #1080               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.wallTransformation:(Lnet/minecraft/core/Direction;)Ljava/lang/Object;
+        18: checkcast     #927                // class com/mojang/math/Transformation
+        21: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        24: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createBanner$0(net.minecraft.world.item.DyeColor, java.lang.Integer);
+    Code:
+         0: new           #1147               // class net/minecraft/client/renderer/special/BannerSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: getstatic     #1160               // Field net/minecraft/world/level/block/BannerBlock$AttachmentType.GROUND:Lnet/minecraft/world/level/block/BannerBlock$AttachmentType;
+         8: invokespecial #1154               // Method net/minecraft/client/renderer/special/BannerSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/item/DyeColor;Lnet/minecraft/world/level/block/BannerBlock$AttachmentType;)V
+        11: getstatic     #1157               // Field net/minecraft/client/renderer/blockentity/BannerRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        14: aload_1
+        15: invokevirtual #1102               // Method java/lang/Integer.intValue:()I
+        18: invokevirtual #1108               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.freeTransformations:(I)Ljava/lang/Object;
+        21: checkcast     #927                // class com/mojang/math/Transformation
+        24: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        27: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createPlayerWallHead$0(net.minecraft.core.Direction);
+    Code:
+         0: new           #1162               // class net/minecraft/client/renderer/special/PlayerHeadSpecialRenderer$Unbaked
+         3: dup
+         4: invokespecial #1164               // Method net/minecraft/client/renderer/special/PlayerHeadSpecialRenderer$Unbaked."<init>":()V
+         7: getstatic     #1165               // Field net/minecraft/client/renderer/blockentity/SkullBlockRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        10: aload_0
+        11: invokevirtual #1080               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.wallTransformation:(Lnet/minecraft/core/Direction;)Ljava/lang/Object;
+        14: checkcast     #927                // class com/mojang/math/Transformation
+        17: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        20: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createPlayerHead$0(java.lang.Integer);
+    Code:
+         0: new           #1162               // class net/minecraft/client/renderer/special/PlayerHeadSpecialRenderer$Unbaked
+         3: dup
+         4: invokespecial #1164               // Method net/minecraft/client/renderer/special/PlayerHeadSpecialRenderer$Unbaked."<init>":()V
+         7: getstatic     #1165               // Field net/minecraft/client/renderer/blockentity/SkullBlockRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        10: aload_0
+        11: invokevirtual #1102               // Method java/lang/Integer.intValue:()I
+        14: invokevirtual #1108               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.freeTransformations:(I)Ljava/lang/Object;
+        17: checkcast     #927                // class com/mojang/math/Transformation
+        20: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        23: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createMobWallHead$0(net.minecraft.world.level.block.SkullBlock$Types, net.minecraft.core.Direction);
+    Code:
+         0: new           #1168               // class net/minecraft/client/renderer/special/SkullSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: invokespecial #1170               // Method net/minecraft/client/renderer/special/SkullSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/SkullBlock$Type;)V
+         8: getstatic     #1165               // Field net/minecraft/client/renderer/blockentity/SkullBlockRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        11: aload_1
+        12: invokevirtual #1080               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.wallTransformation:(Lnet/minecraft/core/Direction;)Ljava/lang/Object;
+        15: checkcast     #927                // class com/mojang/math/Transformation
+        18: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        21: areturn
+
+  private static net.minecraft.client.renderer.block.model.BlockModel$Unbaked lambda$createMobHead$0(net.minecraft.world.level.block.SkullBlock$Types, java.lang.Integer);
+    Code:
+         0: new           #1168               // class net/minecraft/client/renderer/special/SkullSpecialRenderer$Unbaked
+         3: dup
+         4: aload_0
+         5: invokespecial #1170               // Method net/minecraft/client/renderer/special/SkullSpecialRenderer$Unbaked."<init>":(Lnet/minecraft/world/level/block/SkullBlock$Type;)V
+         8: getstatic     #1165               // Field net/minecraft/client/renderer/blockentity/SkullBlockRenderer.TRANSFORMATIONS:Lnet/minecraft/client/renderer/blockentity/WallAndGroundTransformations;
+        11: aload_1
+        12: invokevirtual #1102               // Method java/lang/Integer.intValue:()I
+        15: invokevirtual #1108               // Method net/minecraft/client/renderer/blockentity/WallAndGroundTransformations.freeTransformations:(I)Ljava/lang/Object;
+        18: checkcast     #927                // class com/mojang/math/Transformation
+        21: invokestatic  #688                // Method special:(Lnet/minecraft/client/renderer/special/SpecialModelRenderer$Unbaked;Lcom/mojang/math/Transformation;)Lnet/minecraft/client/renderer/block/model/BlockModel$Unbaked;
+        24: areturn
+}

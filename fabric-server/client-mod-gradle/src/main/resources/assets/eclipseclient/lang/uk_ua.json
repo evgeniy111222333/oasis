@@ -63,5 +63,8 @@
   "key.eclipseclient.microvoxel_shape": "Форма комірки",
   "key.eclipseclient.microvoxel_generate": "Генератор (рампа)",
   "key.eclipseclient.tab_previous_page": "TAB: предыдущая страница",
-  "key.eclipseclient.tab_next_page": "TAB: следующая страница"
+  "key.eclipseclient.tab_next_page": "TAB: следующая страница",
+  "key.eclipse.carry_menu": "Предмет у руках: дії",
+  "key.eclipse.carry_rotate_left": "Встановлення: повернути ліворуч",
+  "key.eclipse.carry_rotate_right": "Встановлення: повернути праворуч"
 }

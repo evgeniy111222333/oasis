@@ -76,10 +76,24 @@ public class PlayerModelMixin {
                 model.leftPants, 16, 48, 0, 48);
         ModelPart torsoMarker = eclipse$getChildOrNull(model.body, "eclipse_breathing_torso");
         BreathingTorsoRenderer.register(torsoMarker, model.jacket);
-        if (torsoMarker == null) {
+        if (torsoMarker == null && eclipse$getChildOrNull(model.leftArm, "eclipse_forearm") != null) {
             ua.rp.chat.client.EclipseClientMod.LOGGER.error(
                     "[TORSO] Dynamic breathing marker is missing; player torso cannot be rendered safely.");
         }
+        eclipse$registerDistal(model.leftArm, true);
+        eclipse$registerDistal(model.rightArm, true);
+        eclipse$registerDistal(model.leftLeg, false);
+        eclipse$registerDistal(model.rightLeg, false);
+    }
+
+    @Unique
+    private void eclipse$registerDistal(ModelPart limb, boolean arm) {
+        ModelPart lower = eclipse$getChildOrNull(limb, arm ? "eclipse_forearm" : "eclipse_shin");
+        ModelPart distal = eclipse$getChildOrNull(lower, arm ? "eclipse_hand" : "eclipse_ankle");
+        ModelPart toe = arm ? null : eclipse$getChildOrNull(distal, "eclipse_toe");
+        ua.rp.chat.client.render.DistalLimbRenderer.register(lower, distal, toe);
+        ua.rp.chat.client.render.DistalLimbRenderer.register(
+                eclipse$getChildOrNull(lower, arm ? "eclipse_forearm_sleeve" : "eclipse_shin_pants"), distal, toe);
     }
 
     /**
@@ -121,7 +135,15 @@ public class PlayerModelMixin {
         // one bone without changing vanilla placement when the bend is zero.
         forearm.translateAndRotate(poseStack);
         poseStack.translate(-forearm.x / 16.0f, -forearm.y / 16.0f, -forearm.z / 16.0f);
-
+        ModelPart hand = eclipse$getChildOrNull(forearm, "eclipse_hand");
+        if (hand != null) {
+            // Wrist lives eight pixels below the shoulder in the straight bind pose.
+            // Compose its correction after the elbow, in that same bind coordinate space.
+            poseStack.translate(forearm.x / 16.0f, forearm.y / 16.0f, forearm.z / 16.0f);
+            hand.translateAndRotate(poseStack);
+            poseStack.translate(-(forearm.x + hand.x) / 16.0f,
+                    -(forearm.y + hand.y) / 16.0f, -(forearm.z + hand.z) / 16.0f);
+        }
     }
 
     @Inject(method = "createMesh(Lnet/minecraft/client/model/geom/builders/CubeDeformation;Z)Lnet/minecraft/client/model/geom/builders/MeshDefinition;", at = @At("RETURN"))
@@ -170,10 +192,14 @@ public class PlayerModelMixin {
         Player player = eclipse$getRenderedPlayer(state);
         eclipse$applyPhysicalInteractionPose(model, state, player);
         if (localFirstPerson) {
-            eclipse$anchorUpperBodyAtHips(model);
+            if (!ua.rp.chat.client.animation.PlayerAnimationRig.active(state)) {
+                eclipse$anchorUpperBodyAtHips(model);
+            }
             eclipse$syncWearableLayers(model);
         }
         eclipse$applyCarverWorkPose(model, state, player);
+        ua.rp.chat.client.carry.CarryPoseRenderer.apply(model, state);
+        eclipse$syncWearableLayers(model);
     }
 
     /**
@@ -696,6 +722,8 @@ public class PlayerModelMixin {
     private void eclipse$applyStableRoleplayPose(PlayerModel model, AvatarRenderState state) {
         ModelPart torsoMarker = model == null ? null : eclipse$getChildOrNull(model.body, "eclipse_breathing_torso");
         BreathingTorsoRenderer.update(torsoMarker, 0.0, 0.0, 0.0, false);
+        boolean authored = model != null && state != null
+                && ua.rp.chat.client.animation.PlayerAnimationRig.apply(model, state);
         if (state == null || model == null || state.isFallFlying || state.isVisuallySwimming || state.isPassenger) {
             return;
         }
@@ -737,6 +765,13 @@ public class PlayerModelMixin {
         model.body.xRot += exhaustedPosture * 0.018f;
         model.leftArm.xRot += exhaustedPosture * 0.025f;
         model.rightArm.xRot += exhaustedPosture * 0.025f;
+
+        if (authored) {
+            // Authored clips supply weight shifts, shoulder swing and joint articulation.
+            // Only the shared physiological breath survives above this locomotion layer.
+            eclipse$syncWearableLayers(model);
+            return;
+        }
 
         // Легкий ваго-перенос (вес тела переносится с ноги на ногу).
         float idleShift = (float) Math.sin(state.ageInTicks * 0.0105f + Math.sin(state.ageInTicks * 0.003f) * 0.4f) * calm * (1.0f - moving * 0.35f);
@@ -1067,6 +1102,7 @@ public class PlayerModelMixin {
                                 width, ArticulatedLimbLayout.armLowerHeight()
                                         - ArticulatedLimbLayout.WRIST_SHORTEN, 4, sleeve),
                 PartPose.ZERO);
+        forearm.addOrReplaceChild("eclipse_hand", CubeListBuilder.create(), PartPose.offset(0, 4, 0));
 
         arm.addOrReplaceChild("eclipse_elbow_bridge", CubeListBuilder.create(), PartPose.ZERO);
 
@@ -1118,6 +1154,8 @@ public class PlayerModelMixin {
                                 ArticulatedLimbLayout.LEG_WIDTH, ArticulatedLimbLayout.legLowerHeight()
                                         - ArticulatedLimbLayout.WRIST_SHORTEN, 4, pants),
                 PartPose.ZERO);
+        PartDefinition ankle = shin.addOrReplaceChild("eclipse_ankle", CubeListBuilder.create(), PartPose.offset(0, 4, 0));
+        ankle.addOrReplaceChild("eclipse_toe", CubeListBuilder.create(), PartPose.offset(0, 1, -1));
         leg.addOrReplaceChild("eclipse_knee_bridge", CubeListBuilder.create(), PartPose.ZERO);
         
         leg.addOrReplaceChild(pantsName, CubeListBuilder.create(), PartPose.ZERO);

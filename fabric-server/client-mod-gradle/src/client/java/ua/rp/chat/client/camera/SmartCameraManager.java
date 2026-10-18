@@ -56,6 +56,8 @@ public class SmartCameraManager {
     private double cameraCollisionFraction = 1.0;
     private boolean cameraFailClosed = false;
     private boolean cameraCollisionInitialized = false;
+    private org.joml.Vector3f animatedNeckPixels;
+    private double animatedAvatarScale = 1;
 
     private SmartCameraManager() {}
 
@@ -158,6 +160,10 @@ public class SmartCameraManager {
     public void updatePhysics(Player player, float partialTick) {
         if (player == null) return;
 
+        // Prepare, then freeze this frame's neck; the later skin/armor extraction reuses its pose.
+        animatedNeckPixels = ua.rp.chat.client.animation.PlayerAnimationRuntime.captureFirstPersonNeck(player, partialTick);
+        animatedAvatarScale = player.getScale();
+
         boolean onGround = player.onGround();
         if (onGround && !wasOnGround) {
             double fallDist = player.fallDistance;
@@ -206,28 +212,13 @@ public class SmartCameraManager {
         if (!enabled) {
             return Vec3.ZERO;
         }
-        // Forward offset виносить обличчя попереду шиї, тулуб менше видно в кадрі.
-        // Невеликий down-offset імітує положення очей у черепі, не на маківці.
-        double yawRad = Math.toRadians(yaw);
-        double pitchDown = clamp(pitch, 0.0, 90.0);
-        double inspect = smoothStep(20.0, 80.0, pitchDown);
-        
         Minecraft client = Minecraft.getInstance();
         boolean crouching = client != null && client.player != null && client.player.isCrouching();
-        
-        double forwardAmount = 0.20 + inspect * 0.05;
-        if (crouching) {
-            forwardAmount += 0.34; // Shift camera forward past leaning chest (total 0.54)
-        }
-        
-        double downAmount = 0.02 + inspect * 0.03;
-        if (crouching) {
-            downAmount += 0.02; // Align camera vertically with tilted neck/head
-        }
-        
-        double x = -Math.sin(yawRad) * forwardAmount;
-        double y = -downAmount;
-        double z = Math.cos(yawRad) * forwardAmount;
+        org.joml.Vector3f anchored = ua.rp.chat.client.animation.FirstPersonCameraAnchor.offset(
+                animatedNeckPixels, yaw, pitch, crouching, animatedAvatarScale);
+        double x = anchored.x;
+        double y = anchored.y;
+        double z = anchored.z;
         
         if (client != null && client.player != null) {
             AcquaintanceClientState.RoleplayPose pose = AcquaintanceClientState.poseFor(client.player);
@@ -543,6 +534,8 @@ public class SmartCameraManager {
     }
 
     private void clearCameraCollisionState() {
+        animatedNeckPixels = null;
+        animatedAvatarScale = 1;
         cameraHalfExtents = CameraCollisionResolver.FALLBACK_HALF_EXTENTS;
         desiredCameraOffset = Vec3.ZERO;
         resolvedCameraOffset = Vec3.ZERO;

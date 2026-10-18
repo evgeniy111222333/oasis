@@ -1,0 +1,15 @@
+{
+  "CompletedAtUTC": "2026-10-18T10:05:18.6313556Z",
+  "ReleaseId": "20261018-095907",
+  "ClientVersion": "1.5.68",
+  "ServerVersion": "1.5.34",
+  "GitHubCommit": "69da8248ff6acba168d73ba5804b53a3788f84c5",
+  "MandatoryMirrorsVerified": true,
+  "GoogleDriveUploaded": true,
+  "LocalServerAddress": "localhost:25565",
+  "LocalServerProcessId": 3500,
+  "CarryInitialized": true,
+  "RemoteVPSDeployed": false,
+  "RemoteVPSReason": "SSH connection timed out; optional mirror HTTP timeout",
+  "GameClientLaunched": false
+}

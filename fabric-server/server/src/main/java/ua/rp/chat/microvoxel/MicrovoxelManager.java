@@ -218,7 +218,7 @@ public final class MicrovoxelManager {
 
             @Override
             public void setBlock(ServerLevel world, LevelChunk chunk, BlockPos pos, BlockState state) {
-                world.setBlock(pos, state, 2);
+                world.setBlock(pos, state, ua.rp.chat.carry.CarryBlockMutation.projectionFlags());
             }
 
             @Override

@@ -49,7 +49,7 @@ public class EclipseClientMod implements ClientModInitializer {
 
     // Unique client identifier used by payload channels and asset namespaces.
     public static final String MOD_ID = "eclipseclient";
-    public static final String DIAGNOSTIC_BUILD = "astrolabe-readable-prefilter-20261014-5";
+    public static final String DIAGNOSTIC_BUILD = "physical-carry-concept01-20261018-1";
     // Shared client logger; auth, microvoxel and vitals subsystems all report through it.
     public static final Logger LOGGER = LogManager.getLogger("EclipseAuth");
     // Guards the periodic web-session poll so slow HTTP responses never stack up.
@@ -73,7 +73,12 @@ public class EclipseClientMod implements ClientModInitializer {
         EclipseHudOverlay.register();
         ua.rp.chat.client.tab.EclipseTabRenderer.register();
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
-                (handler, client) -> AcquaintanceClientState.reset());
+                (handler, client) -> {
+                    AcquaintanceClientState.reset();
+                    ua.rp.chat.client.animation.PlayerAnimationRuntime.clear();
+                });
+        LOGGER.info("[PLAYER-ANIMATION] Loaded {} authored clips for the articulated player rig",
+                ua.rp.chat.client.animation.PlayerAnimationRuntime.library().clipCount());
         PickupClientState.register();
         MicrovoxelClientRenderer.register();
         // Unconditional world-space hooks: the hologram copy and its chalk must

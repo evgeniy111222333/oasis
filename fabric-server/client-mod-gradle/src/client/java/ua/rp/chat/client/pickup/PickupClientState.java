@@ -37,6 +37,7 @@ public final class PickupClientState {
 
     /** Intercepts RMB because dropped items are deliberately not vanilla-pickable entities. */
     public static boolean handleUse(Minecraft client) {
+        if (ua.rp.chat.client.carry.CarryClient.supported()) return false;
         ItemEntity item = findTarget(client);
         if (item == null) return false;
         targetedItem = item;
@@ -53,6 +54,10 @@ public final class PickupClientState {
     }
 
     public static void renderHud(GuiGraphicsExtractor graphics, int width, int height) {
+        if (ua.rp.chat.client.carry.CarryClient.supported()) {
+            ua.rp.chat.client.carry.CarryHud.render(graphics, width, height);
+            return;
+        }
         if (promptAlpha <= 0.01f || lastItemName.isBlank()) return;
         Minecraft client = Minecraft.getInstance();
         if (client.font == null || client.screen != null || targetedItem == null) return;

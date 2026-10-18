@@ -49,6 +49,9 @@ public final class ItemPickupManager {
     }
 
     private void take(ServerPlayer player, ItemEntity item) {
+        var carry = plugin.getCarryManager();
+        if (carry != null && carry.busy(player)) { deny(player, "Руки заняты."); return; }
+        if (carry != null && carry.supported(player)) { carry.takeLoose(player, item.getUUID()); return; }
         if (plugin.getAuthManager().isPendingAuth(player.getUUID())) {
             deny(player, "Сначала завершите авторизацию.");
             return;

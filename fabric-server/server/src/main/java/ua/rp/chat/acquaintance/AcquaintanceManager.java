@@ -1461,7 +1461,7 @@ public class AcquaintanceManager {
         }
     }
 
-    private boolean isBound(ServerPlayer player) {
+    public boolean isBound(ServerPlayer player) {
         CaptiveState state = captives.get(player.getUUID());
         return state != null && state.bound;
     }

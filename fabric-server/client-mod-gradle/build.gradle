@@ -107,6 +107,32 @@ tasks.register("verifyStuckProjectileSafety", JavaExec) {
 sourceSets.test.compileClasspath += sourceSets.client.output
 sourceSets.test.runtimeClasspath += sourceSets.client.output
 
+tasks.register("verifyCarryPresentation", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks animated concept-01 pickup feedback, targeting, placement rotation and carry pose math without launching Minecraft."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.carry.CarryPresentationTest"
+}
+tasks.named("check") { dependsOn tasks.named("verifyCarryPresentation") }
+tasks.register("verifyCarryNativeContracts", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Verifies carry mixin/invoker targets and the original transparent concept-01 asset without Minecraft startup."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.carry.CarryNativeContractsTest"
+	systemProperty "java.awt.headless", "true"
+}
+tasks.named("check") { dependsOn tasks.named("verifyCarryNativeContracts") }
+tasks.register("verifyCarryBlockVisuals", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks native chest/shulker orientation models and real placement survival without a game client."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.carry.CarryBlockVisualTest"
+}
+tasks.named("check") { dependsOn tasks.named("verifyCarryBlockVisuals") }
+
 tasks.register("verifyElbowBridgeRenderer", JavaExec) {
 	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
 	group = "verification"
@@ -122,6 +148,16 @@ tasks.register("verifyCameraCollisionMath", JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "ua.rp.chat.CameraCollisionMathTest"
 }
+
+tasks.register("verifyFirstPersonCameraAnchor", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Reconstructs animated first-person views and checks torso clearance, crouch fallback and yaw/scale alignment."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.FirstPersonCameraAnchorTest"
+}
+
+tasks.named("check") { dependsOn tasks.named("verifyFirstPersonCameraAnchor") }
 
 tasks.register("verifyRespirationModel", JavaExec) {
 	dependsOn tasks.named("testClasses")
@@ -690,6 +726,60 @@ tasks.named("build") {
 tasks.named("check") {
 	dependsOn tasks.named("verifyBloodFxCore")
 	dependsOn tasks.named("verifyBloodFxAssets")
+	dependsOn tasks.named("verifyPlayerAnimations")
+	dependsOn tasks.named("verifyPlayerGrounding")
+	dependsOn tasks.named("verifyLocomotionStops")
+	dependsOn tasks.named("verifyGroundedGait")
+	dependsOn tasks.named("verifyGaitTempo")
+	dependsOn tasks.named("verifyDistalLimbRenderer")
+}
+
+tasks.register("verifyPlayerAnimations", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks all authored tracks, directional transitions and frame-independent playback."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.AnimationPlaybackTest"
+}
+
+tasks.register("verifyPlayerGrounding", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks authored soles and crouching against the native world floor."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.PlayerGroundingTest"
+}
+
+tasks.register("verifyLocomotionStops", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks immediate input release, replicated braking and real-time stop clocks."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.LocomotionStopTest"
+}
+
+tasks.register("verifyGroundedGait", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Measures planted skin soles in world space across grounded movement and braking."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.GroundedGaitTest"
+}
+
+tasks.register("verifyGaitTempo", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks authored cycle durations and actual footstep cadence at RP movement speeds."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.animation.GaitTempoTest"
+}
+
+tasks.register("verifyDistalLimbRenderer", JavaExec) {
+	dependsOn tasks.named("clientClasses"), tasks.named("testClasses")
+	group = "verification"
+	description = "Checks wrist, ankle and toe skinning with preserved texture coordinates."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "ua.rp.chat.DistalLimbRendererTest"
 }
 
 // configure the maven publication

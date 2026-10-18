@@ -41,6 +41,9 @@ public final class MicrovoxelItemScale {
         boolean gui = context == ItemDisplayContext.GUI;
         if (!hand && !gui) {
             float scale = switch (context) {
+                // Scene displays and carrying use the exact world geometry. Hand/GUI
+                // readability normalization must never shrink a lifted sculpture.
+                case NONE -> 1.0f;
                 case GROUND, FIXED, ON_SHELF -> 0.55f;
                 default -> 0.65f;
             };

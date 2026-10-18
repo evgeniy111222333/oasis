@@ -4,6 +4,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.resources.model.cuboid.ItemTransform;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Mixin(ItemStackRenderState.LayerRenderState.class)
 public interface ItemLayerRenderStateAccessor {
@@ -12,4 +13,7 @@ public interface ItemLayerRenderStateAccessor {
 
     @Accessor("localTransform")
     org.joml.Matrix4f eclipse$getLocalTransform();
+
+    @Invoker("applyTransform")
+    void eclipse$applyCarryGhostTransform(com.mojang.blaze3d.vertex.PoseStack.Pose pose);
 }
