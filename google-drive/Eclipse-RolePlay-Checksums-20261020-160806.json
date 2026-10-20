@@ -1,0 +1,21 @@
+{
+  "releaseId": "20261020-160806",
+  "algorithm": "SHA-256",
+  "files": [
+    {
+      "name": "Eclipse-RolePlay-Launcher-Setup-1.0.24.exe",
+      "size": 80292737,
+      "sha256": "6846169939a1183592de770f125ed1c8384f3c8e64968b6e2e5c847d4e10b2a5"
+    },
+    {
+      "name": "Eclipse-RolePlay-Client-20261020-160806.zip",
+      "size": 69124158,
+      "sha256": "b791876748732e4f535e6c83cb9cf94c9fb2f82164b6ca94bc244a8ae3cca206"
+    },
+    {
+      "name": "production.json",
+      "size": 8143,
+      "sha256": "0445dfed501242243861a5aaf4a7fc0571456c4392a86245c3337b1e2efdbe68"
+    }
+  ]
+}
