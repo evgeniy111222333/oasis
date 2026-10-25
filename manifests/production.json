@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "channel": "production",
+  "brand": "Eclipse RolePlay",
+  "generatedAt": "2026-10-25T17:34:06.156114Z",
+  "release": {
+    "id": "20261025-173208",
+    "published": true,
+    "publishedAt": "2026-10-25T17:32:08.082103Z",
+    "title": "Резьба: пиксельные эффекты из Blender и русский интерфейс",
+    "summary": "Эффекты резьбы «Освобождение» теперь рисуются пиксельной графикой, интерфейс резьбы переведён на русский.",
+    "notes": [
+      "Рабочая заготовка при резьбе отображается полупрозрачным телом с проступающей структурой: волокна, трещины, жила и полость.",
+      "Сонар и золотая цель рисуются пиксельной геометрией 1/128 блока; готовое изделие хранит полировку, жилу, следы ошибок и клеймо.",
+      "Пыль при расколе плиты и ударах — пиксельные спрайты по временной раскадровке из Blender.",
+      "Если пиксельный рендер даёт сбой, он отключается на сессию и работает прежняя графика.",
+      "Интерфейс резьбы, сообщения сервера и панель состояния тела переведены на русский язык."
+    ],
+    "buttonLabel": "ЗАГРУЗИТЬ ОБНОВЛЕНИЕ",
+    "successMessage": "Обновление загружено и установлено."
+  },
+  "launcher": {
+    "name": "Eclipse-RolePlay-Launcher-Setup-1.0.24.exe",
+    "path": "launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.24.exe",
+    "url": "https://dist.eclipse-roleplay.online/launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.24.exe",
+    "size": 80292737,
+    "sha1": "dbbad7e69d1b167603664ea5e469a84991daf6d4",
+    "sha256": "6846169939a1183592de770f125ed1c8384f3c8e64968b6e2e5c847d4e10b2a5",
+    "version": "1.0.24",
+    "productName": "Eclipse RolePlay Launcher"
+  },
+  "client": {
+    "gameVersion": "26.1.2",
+    "baseUrl": "https://dist.eclipse-roleplay.online/client",
+    "profile": {
+      "name": "26.1.2.json",
+      "path": "versions/26.1.2/26.1.2.json",
+      "url": "https://dist.eclipse-roleplay.online/client/versions/26.1.2/26.1.2.json?sha256=f40b3fa02b803a2904dc3c6f310b81973d3697b5215dbaab8198140dd26c71ba",
+      "size": 133548,
+      "sha1": "b4b02d8cba35c5a38da59b654d9cdc8f83970ab3",
+      "sha256": "f40b3fa02b803a2904dc3c6f310b81973d3697b5215dbaab8198140dd26c71ba"
+    },
+    "mods": [
+      {
+        "name": "eclipse-client-1.5.73.jar",
+        "path": "mods/eclipse-client-1.5.73.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/eclipse-client-1.5.73.jar?sha256=da8a83d02bea8892107b9b2eb0da887725867010b881e51b067d31a8b70324af",
+        "size": 5891712,
+        "sha1": "66494c3f1c8039db98c2123df4f320567eacafc2",
+        "sha256": "da8a83d02bea8892107b9b2eb0da887725867010b881e51b067d31a8b70324af"
+      },
+      {
+        "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "path": "mods/mcef_fabric_2.2.0_MC_26.1.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar?sha256=566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964",
+        "size": 453664,
+        "sha1": "3168366b5cfce5302a53635674dcee443bb7eeca",
+        "sha256": "566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964"
+      },
+      {
+        "name": "fabric-api-0.153.0+26.1.2.jar",
+        "path": "mods/fabric-api-0.153.0+26.1.2.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/fabric-api-0.153.0+26.1.2.jar?sha256=2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c",
+        "size": 2504357,
+        "sha1": "5d984764e54f1f1db397d3f76429a0f15e591845",
+        "sha256": "2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c"
+      },
+      {
+        "name": "fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "path": "mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar?sha256=36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832",
+        "size": 8076848,
+        "sha1": "2bc17bb4275cc70a12e4ac35d139a71a30845720",
+        "sha256": "36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832"
+      },
+      {
+        "name": "yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "path": "mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar?sha256=836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41",
+        "size": 1121083,
+        "sha1": "dd0b7f266eced755bb48d5213df309f07d71de5b",
+        "sha256": "836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41"
+      },
+      {
+        "name": "sodium-fabric-0.8.12+mc26.1.2.jar",
+        "path": "mods/sodium-fabric-0.8.12+mc26.1.2.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/sodium-fabric-0.8.12+mc26.1.2.jar?sha256=e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df",
+        "size": 1844226,
+        "sha1": "cd6c6236f0dcff03c7148414db220de32c934b5a",
+        "sha256": "e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df"
+      },
+      {
+        "name": "iris-fabric-1.10.9+mc26.1.1.jar",
+        "path": "mods/iris-fabric-1.10.9+mc26.1.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/iris-fabric-1.10.9+mc26.1.1.jar?sha256=aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07",
+        "size": 2803860,
+        "sha1": "c30e04509a1b284372cb9037b07714d4223ae91a",
+        "sha256": "aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07"
+      },
+      {
+        "name": "zoomify-2.16.1+26.1.jar",
+        "path": "mods/zoomify-2.16.1+26.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/zoomify-2.16.1+26.1.jar?sha256=944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a",
+        "size": 561967,
+        "sha1": "c180ae8cf90da1abd67c26b5c5e7bf5d795c3b1d",
+        "sha256": "944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a"
+      },
+      {
+        "name": "entity_texture_features_26.1-fabric-7.1.jar",
+        "path": "mods/entity_texture_features_26.1-fabric-7.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/entity_texture_features_26.1-fabric-7.1.jar?sha256=7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4",
+        "size": 740706,
+        "sha1": "ff6284b53ad23e06bc082d1e05e8828e47455126",
+        "sha256": "7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4"
+      },
+      {
+        "name": "entity_model_features-3.2.4-26.1-fabric.jar",
+        "path": "mods/entity_model_features-3.2.4-26.1-fabric.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/entity_model_features-3.2.4-26.1-fabric.jar?sha256=07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8",
+        "size": 577617,
+        "sha1": "7a43e5c92b87e360bfa0156870f2097549e3732d",
+        "sha256": "07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8"
+      },
+      {
+        "name": "Axiom-5.4.2-for-MC26.1.jar",
+        "path": "mods/Axiom-5.4.2-for-MC26.1.jar",
+        "url": "https://dist.eclipse-roleplay.online/client/mods/Axiom-5.4.2-for-MC26.1.jar?sha256=e49aefae000aeb9393f25e7b668479c30d75bdbc6aab00f0e2c9754adcf4f116",
+        "size": 46821470,
+        "sha1": "5d89bb35ca5f73f40dd7dfc9ef6764916b89689f",
+        "sha256": "e49aefae000aeb9393f25e7b668479c30d75bdbc6aab00f0e2c9754adcf4f116",
+        "optional": true,
+        "preferenceKey": "axiom",
+        "modId": "axiom",
+        "displayName": "Axiom",
+        "version": "5.4.2",
+        "category": "Строительство",
+        "description": "Профессиональные инструменты редактирования и строительства мира.",
+        "icon": "fa-wand-magic-sparkles",
+        "defaultEnabled": false
+      }
+    ]
+  },
+  "mirrors": {
+    "googleDrive": {
+      "releaseId": "20261025-173208",
+      "folderId": "172LaveeAVxZVCNw4JAPGAH5favem-sBZ",
+      "folderUrl": "https://drive.google.com/drive/folders/172LaveeAVxZVCNw4JAPGAH5favem-sBZ",
+      "files": [
+        {
+          "id": "1IhXeaFOl_3ItkO5Wg-lkSmDFs2Ul7L0H",
+          "name": "26.1.2.json",
+          "webContentLink": "https://drive.google.com/uc?id=1IhXeaFOl_3ItkO5Wg-lkSmDFs2Ul7L0H&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1IhXeaFOl_3ItkO5Wg-lkSmDFs2Ul7L0H/view?usp=drivesdk",
+          "md5Checksum": "5496bd07712e0a793017ecccd1e98e1a",
+          "size": "133548",
+          "sha256": "f40b3fa02b803a2904dc3c6f310b81973d3697b5215dbaab8198140dd26c71ba",
+          "path": "client/versions/26.1.2/26.1.2.json"
+        },
+        {
+          "id": "1qekJzscDxZUi7pxtocN-e3N3-K7MHUzt",
+          "name": "Axiom-5.4.2-for-MC26.1.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1qekJzscDxZUi7pxtocN-e3N3-K7MHUzt&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1qekJzscDxZUi7pxtocN-e3N3-K7MHUzt/view?usp=drivesdk",
+          "md5Checksum": "bffae68b60b772234e5fc1af616ff233",
+          "size": "46821470",
+          "sha256": "e49aefae000aeb9393f25e7b668479c30d75bdbc6aab00f0e2c9754adcf4f116",
+          "path": "client/mods/Axiom-5.4.2-for-MC26.1.jar"
+        },
+        {
+          "id": "16WMVBqgGsAyh-VMieabQKeVXjPHRzSvI",
+          "name": "Eclipse-RolePlay-Checksums-20261025-173208.json",
+          "webContentLink": "https://drive.google.com/uc?id=16WMVBqgGsAyh-VMieabQKeVXjPHRzSvI&export=download",
+          "webViewLink": "https://drive.google.com/file/d/16WMVBqgGsAyh-VMieabQKeVXjPHRzSvI/view?usp=drivesdk",
+          "md5Checksum": "631a422326117494959abb1af424e618",
+          "size": "611",
+          "sha256": "9d63ec2b7198b513bd33005b4558f9815616a6399405d833210401d917686689",
+          "path": "google-drive/Eclipse-RolePlay-Checksums-20261025-173208.json"
+        },
+        {
+          "id": "1P1XDmIBeP1lN5jrkuNngWtMKico81z1F",
+          "name": "Eclipse-RolePlay-Client-20261025-173208.zip",
+          "webContentLink": "https://drive.google.com/uc?id=1P1XDmIBeP1lN5jrkuNngWtMKico81z1F&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1P1XDmIBeP1lN5jrkuNngWtMKico81z1F/view?usp=drivesdk",
+          "md5Checksum": "e4057e077833123a4e550dd7f3d136b2",
+          "size": "69405495",
+          "sha256": "0eef02fe002e190d086d3d4b75951d585a6ef7d7823f2623f38c2aa959333c61",
+          "path": "google-drive/Eclipse-RolePlay-Client-20261025-173208.zip"
+        },
+        {
+          "id": "13AH10UacgUg_ak8lIWq-Omg8ybtFAeIZ",
+          "name": "Eclipse-RolePlay-Launcher-Setup-1.0.24.exe",
+          "webContentLink": "https://drive.google.com/uc?id=13AH10UacgUg_ak8lIWq-Omg8ybtFAeIZ&export=download",
+          "webViewLink": "https://drive.google.com/file/d/13AH10UacgUg_ak8lIWq-Omg8ybtFAeIZ/view?usp=drivesdk",
+          "md5Checksum": "5461de26aa0dbca540987f8195ce8c29",
+          "size": "80292737",
+          "sha256": "6846169939a1183592de770f125ed1c8384f3c8e64968b6e2e5c847d4e10b2a5",
+          "path": "launcher/stable/Eclipse-RolePlay-Launcher-Setup-1.0.24.exe"
+        },
+        {
+          "id": "1u4hB4aypU-fw_gwc-dEz747e2nn64yFf",
+          "name": "eclipse-client-1.5.73.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1u4hB4aypU-fw_gwc-dEz747e2nn64yFf&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1u4hB4aypU-fw_gwc-dEz747e2nn64yFf/view?usp=drivesdk",
+          "md5Checksum": "756d756f7c01f90e56ac3385027f7fa8",
+          "size": "5891712",
+          "sha256": "da8a83d02bea8892107b9b2eb0da887725867010b881e51b067d31a8b70324af",
+          "path": "client/mods/eclipse-client-1.5.73.jar"
+        },
+        {
+          "id": "1xaqGUipq_LXvTIDv943RUAV0asogpNTV",
+          "name": "entity_model_features-3.2.4-26.1-fabric.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1xaqGUipq_LXvTIDv943RUAV0asogpNTV&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1xaqGUipq_LXvTIDv943RUAV0asogpNTV/view?usp=drivesdk",
+          "md5Checksum": "284d6a82fb26f31343793eb0f1b231ae",
+          "size": "577617",
+          "sha256": "07ff1b184ad9fcb9c540d3bb8d004d903474f90c195e4e3ce00be56faac243b8",
+          "path": "client/mods/entity_model_features-3.2.4-26.1-fabric.jar"
+        },
+        {
+          "id": "1eZpo2ILtRRy0EXGHR80Ql3JgN7aJEGjW",
+          "name": "entity_texture_features_26.1-fabric-7.1.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1eZpo2ILtRRy0EXGHR80Ql3JgN7aJEGjW&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1eZpo2ILtRRy0EXGHR80Ql3JgN7aJEGjW/view?usp=drivesdk",
+          "md5Checksum": "f334249fd9d10d9e8b62c1db141a3c83",
+          "size": "740706",
+          "sha256": "7e9cf735b26d2d5ea8d1cc247dd60351be8bd401b30556b84054df85d334f9c4",
+          "path": "client/mods/entity_texture_features_26.1-fabric-7.1.jar"
+        },
+        {
+          "id": "1f1mcNBtOo24Dx6naTN0vFjBsRu7HrZCW",
+          "name": "fabric-api-0.153.0+26.1.2.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1f1mcNBtOo24Dx6naTN0vFjBsRu7HrZCW&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1f1mcNBtOo24Dx6naTN0vFjBsRu7HrZCW/view?usp=drivesdk",
+          "md5Checksum": "30952d1f910eea141328b4c21531c0b1",
+          "size": "2504357",
+          "sha256": "2a604ccc66c1294f860acb8d0763c8887e927b3ed34aa262ac79e26d8626b94c",
+          "path": "client/mods/fabric-api-0.153.0+26.1.2.jar"
+        },
+        {
+          "id": "1VhK6xDac1-cQgyQMM3LScHDtK-2Mo5ld",
+          "name": "fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1VhK6xDac1-cQgyQMM3LScHDtK-2Mo5ld&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1VhK6xDac1-cQgyQMM3LScHDtK-2Mo5ld/view?usp=drivesdk",
+          "md5Checksum": "dff437aac8aae6eb76ae9db6b6ea9cb0",
+          "size": "8076848",
+          "sha256": "36c5dd8b728e3470d2882ae63119b93a20500fc0ea6f5c945c12bf65b5ab1832",
+          "path": "client/mods/fabric-language-kotlin-1.13.12+kotlin.2.4.0.jar"
+        },
+        {
+          "id": "1vU9M2HvACOUqe5iE2QRVN2xf_DG2_77M",
+          "name": "iris-fabric-1.10.9+mc26.1.1.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1vU9M2HvACOUqe5iE2QRVN2xf_DG2_77M&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1vU9M2HvACOUqe5iE2QRVN2xf_DG2_77M/view?usp=drivesdk",
+          "md5Checksum": "0037a947d04dd252c4348c16d271c6b2",
+          "size": "2803860",
+          "sha256": "aea0eefb174d19ad97a812b6de2e304f0d3abc50357b316908cf1035f1514b07",
+          "path": "client/mods/iris-fabric-1.10.9+mc26.1.1.jar"
+        },
+        {
+          "id": "1UvaHqhGk2n2jx1O2D8kgDaLqFMCLSF-g",
+          "name": "mcef_fabric_2.2.0_MC_26.1.1.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1UvaHqhGk2n2jx1O2D8kgDaLqFMCLSF-g&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1UvaHqhGk2n2jx1O2D8kgDaLqFMCLSF-g/view?usp=drivesdk",
+          "md5Checksum": "8b30a1233ce96f1edc728a2e7adb2d6e",
+          "size": "453664",
+          "sha256": "566d033e9818651e13a618622990cd41cc120811db744e45bd7b0497e6d1e964",
+          "path": "client/mods/mcef_fabric_2.2.0_MC_26.1.1.jar"
+        },
+        {
+          "id": "1hDt1PojED-8PV86Z1I5w-SsD-O3TpC34",
+          "name": "mods.json",
+          "webContentLink": "https://drive.google.com/uc?id=1hDt1PojED-8PV86Z1I5w-SsD-O3TpC34&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1hDt1PojED-8PV86Z1I5w-SsD-O3TpC34/view?usp=drivesdk",
+          "md5Checksum": "9acb7d30b81579492f05030fa3d4f87b",
+          "size": "5359",
+          "sha256": "5fdb0dac38d6795ed33238fc7635d718cd2fa4178af1b3768841420647344971",
+          "path": "client/mods.json"
+        },
+        {
+          "id": "1SLA7ol1i7gkP3ck97EL9QRGQmGTkai7N",
+          "name": "production.json",
+          "webContentLink": "https://drive.google.com/uc?id=1SLA7ol1i7gkP3ck97EL9QRGQmGTkai7N&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1SLA7ol1i7gkP3ck97EL9QRGQmGTkai7N/view?usp=drivesdk",
+          "md5Checksum": "3ba1c30007bf130ffd9e746ddac13214",
+          "size": "8539",
+          "sha256": "9110fe17af5d31f3d064ee893181d0e8779813cc47a6a5ac5a8f3421d465cc42",
+          "path": "manifests/production.json"
+        },
+        {
+          "id": "1u9qysVe9Y5qn3l0xk7iu7W3MXXc-Qxer",
+          "name": "sodium-fabric-0.8.12+mc26.1.2.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1u9qysVe9Y5qn3l0xk7iu7W3MXXc-Qxer&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1u9qysVe9Y5qn3l0xk7iu7W3MXXc-Qxer/view?usp=drivesdk",
+          "md5Checksum": "0e23e1fa43b2b2ce7c8b7bb8e0bc0e54",
+          "size": "1844226",
+          "sha256": "e084c5c3c520dc0718dbaef1deafef0ba2c7c0d77c701ac34c07646f6ccb81df",
+          "path": "client/mods/sodium-fabric-0.8.12+mc26.1.2.jar"
+        },
+        {
+          "id": "1Gq8Us2_5fvfT820BDtnK2la8omqY6WdN",
+          "name": "yet_another_config_lib_v3-3.9.5+26.1-fabric.jar",
+          "webContentLink": "https://drive.google.com/uc?id=1Gq8Us2_5fvfT820BDtnK2la8omqY6WdN&export=download",
+          "webViewLink": "https://drive.google.com/file/d/1Gq8Us2_5fvfT820BDtnK2la8omqY6WdN/view?usp=drivesdk",
+          "md5Checksum": "69274b230d709b479f93bac0eaa53590",
+          "size": "1121083",
+          "sha256": "836c823e18cdd9d15e7011a2e8b64f93bf4fb44e8f8e8df38d9114d265d1fe41",
+          "path": "client/mods/yet_another_config_lib_v3-3.9.5+26.1-fabric.jar"
+        },
+        {
+          "id": "13Prm4uBWbBoMHnJD2ecqnjlH9FQbYQ4w",
+          "name": "zoomify-2.16.1+26.1.jar",
+          "webContentLink": "https://drive.google.com/uc?id=13Prm4uBWbBoMHnJD2ecqnjlH9FQbYQ4w&export=download",
+          "webViewLink": "https://drive.google.com/file/d/13Prm4uBWbBoMHnJD2ecqnjlH9FQbYQ4w/view?usp=drivesdk",
+          "md5Checksum": "c8497aa4320d6787d7f2f86a49879f80",
+          "size": "561967",
+          "sha256": "944b6bbf0667edb273eee84d58f828445b07d68d4ee7155d0639009496c36f7a",
+          "path": "client/mods/zoomify-2.16.1+26.1.jar"
+        }
+      ]
+    }
+  },
+  "signature": "hJEJpl7dttmxWSgiQcyiRTgdBJamrVEKYfBXtki+Fj+SoG+EA94brgPgLXWIQVcvty9vWZjyhASY/WHaY63LCQ=="
+}
